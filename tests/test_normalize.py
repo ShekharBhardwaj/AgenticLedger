@@ -574,3 +574,78 @@ class TestNormalizeResponseEmpty:
         }
         resp = normalize_response(body, latency_ms=1.0)
         assert resp.cost_usd is None
+
+
+# ── Prompt-cache tokens + thinking blocks ────────────────────────────────────
+
+class TestCacheAndThinking:
+    def test_anthropic_cache_tokens_extracted_and_priced(self):
+        """cache_read/cache_creation usage fields are captured and billed
+        additively (Anthropic reports them outside input_tokens)."""
+        body = {
+            "content": [{"type": "text", "text": "hi"}],
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 100, "output_tokens": 10,
+                "cache_read_input_tokens": 1000,
+                "cache_creation_input_tokens": 200,
+            },
+        }
+        resp = normalize_response(body, latency_ms=5.0, model_id="claude-sonnet-4")
+        assert resp.cache_read_tokens == 1000
+        assert resp.cache_write_tokens == 200
+        expected = (100 * 3.00 + 1000 * 0.30 + 200 * 3.75 + 10 * 15.00) / 1_000_000
+        assert resp.cost_usd == round(expected, 8)
+
+    def test_openai_cached_tokens_extracted_and_discounted(self):
+        """prompt_tokens_details.cached_tokens is the cached subset of
+        prompt_tokens — extracted and priced at the discounted rate."""
+        body = {
+            "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+            "usage": {
+                "prompt_tokens": 1000, "completion_tokens": 10,
+                "prompt_tokens_details": {"cached_tokens": 400},
+            },
+        }
+        resp = normalize_response(body, latency_ms=5.0, model_id="gpt-4o")
+        assert resp.cache_read_tokens == 400
+        expected = (600 * 2.50 + 400 * 1.25 + 10 * 10.00) / 1_000_000
+        assert resp.cost_usd == round(expected, 8)
+
+    def test_openai_null_prompt_tokens_details_tolerated(self):
+        """An explicit null prompt_tokens_details must not crash extraction."""
+        body = {
+            "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2,
+                      "prompt_tokens_details": None},
+        }
+        resp = normalize_response(body, latency_ms=1.0, model_id="gpt-4o")
+        assert resp.cache_read_tokens is None
+
+    def test_responses_api_cached_tokens_extracted(self):
+        """Responses API reports the cached subset under input_tokens_details."""
+        body = {
+            "object": "response", "status": "completed",
+            "output": [{"type": "message",
+                        "content": [{"type": "output_text", "text": "ok"}]}],
+            "usage": {"input_tokens": 500, "output_tokens": 5,
+                      "input_tokens_details": {"cached_tokens": 200}},
+        }
+        resp = normalize_response(body, latency_ms=1.0, model_id="gpt-4o")
+        assert resp.cache_read_tokens == 200
+        expected = (300 * 2.50 + 200 * 1.25 + 5 * 10.00) / 1_000_000
+        assert resp.cost_usd == round(expected, 8)
+
+    def test_anthropic_thinking_block_captured_alongside_text(self):
+        """A thinking block lands in resp.thinking; text stays in resp.content."""
+        body = {
+            "content": [
+                {"type": "thinking", "thinking": "step by step...", "signature": "sig"},
+                {"type": "text", "text": "final answer"},
+            ],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 5, "output_tokens": 3},
+        }
+        resp = normalize_response(body, latency_ms=1.0, model_id="claude-sonnet-4")
+        assert resp.thinking == "step by step..."
+        assert resp.content == "final answer"

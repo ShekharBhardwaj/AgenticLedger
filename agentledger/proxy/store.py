@@ -34,6 +34,9 @@ _MIGRATION_COLUMNS = [
     ("handoff_to",       "TEXT"),
     ("status_code",      "INTEGER"),
     ("error_detail",     "TEXT"),
+    ("cache_read_tokens",  "INTEGER"),
+    ("cache_write_tokens", "INTEGER"),
+    ("thinking",           "TEXT"),
 ]
 
 
@@ -223,8 +226,9 @@ class _SqliteStore(Store):
                  user_id, agent_name, app_id, parent_action_id, environment,
                  system_prompt, temperature, max_tokens,
                  tool_results, cost_usd, handoff_from, handoff_to,
-                 status_code, error_detail)
-            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?)
+                 status_code, error_detail,
+                 cache_read_tokens, cache_write_tokens, thinking)
+            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?, ?,?,?)
             """,
             (
                 action_id, session_id, req.timestamp, req.model_id, req.provider,
@@ -238,6 +242,7 @@ class _SqliteStore(Store):
                 json.dumps(req.tool_results) if req.tool_results is not None else None,
                 resp.cost_usd, handoff_from, handoff_to,
                 status_code, error_detail,
+                resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
             ),
         )
         await self._db.commit()
@@ -520,7 +525,8 @@ class _PostgresStore(Store):
                      user_id, agent_name, app_id, parent_action_id, environment,
                      system_prompt, temperature, max_tokens,
                      tool_results, cost_usd, handoff_from, handoff_to,
-                     status_code, error_detail)
+                     status_code, error_detail,
+                     cache_read_tokens, cache_write_tokens, thinking)
                 VALUES
                     ($1,$2,to_timestamp($3),$4,$5,
                      $6::jsonb,$7::jsonb,$8,$9::jsonb,$10,
@@ -528,7 +534,8 @@ class _PostgresStore(Store):
                      $14,$15,$16,$17,$18,
                      $19,$20,$21,
                      $22::jsonb,$23,$24,$25,
-                     $26,$27)
+                     $26,$27,
+                     $28,$29,$30)
                 """,
                 uuid.UUID(action_id),
                 session_id,
@@ -543,6 +550,7 @@ class _PostgresStore(Store):
                 json.dumps(req.tool_results) if req.tool_results is not None else None,
                 resp.cost_usd, handoff_from, handoff_to,
                 status_code, error_detail,
+                resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
             )
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:

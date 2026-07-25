@@ -72,6 +72,7 @@ class _Resp:
     def __init__(self):
         self.content = f"reply {EMAIL}"
         self.tool_calls = [{"name": "t", "arguments": EMAIL}]
+        self.thinking = f"pondering {EMAIL}"
 
 
 def test_metadata_level_strips_all_content():

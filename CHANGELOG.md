@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-06-19
+### Upgrade notes
+- **Costs for cache-heavy traffic (e.g. Claude Code) are now accurate.** Prompt-cache
+  reads/writes were previously ignored, so `tokens_in` could reflect under 1% of the
+  real context and `cost_usd` was significantly under-reported — which also meant
+  budgets and alerts under-enforced. Newly captured calls will show higher, correct
+  costs. Three new columns are added automatically: `cache_read_tokens`,
+  `cache_write_tokens`, `thinking`.
+
+### Added
+- **Prompt-cache accounting.** Anthropic `cache_read_input_tokens` /
+  `cache_creation_input_tokens` (native and via LiteLLM) and OpenAI
+  `prompt_tokens_details.cached_tokens` / Responses `input_tokens_details.cached_tokens`
+  are captured, stored, and priced with the correct provider convention (Anthropic:
+  reads 0.1×, writes 1.25× on top of input; OpenAI: cached subset re-billed at 0.5×).
+  Pricing overrides accept an extended `[input, output, cache_read, cache_write]` form.
+- **Extended-thinking capture.** Anthropic `thinking` blocks (streaming
+  `thinking_delta` and non-streaming) are stored in a new `thinking` field, covered by
+  capture levels and redaction like all other content.
+- **OpenAI Responses API streaming capture.** `response.*` SSE events (OpenAI Agents
+  SDK et al.) are now reconstructed from the terminal `response.completed` /
+  `response.incomplete` / `response.failed` event — previously they were misrouted to
+  the Anthropic reconstructor and captured as an empty response.
+- **Errored and interrupted streams are captured.** Streaming calls that return a
+  non-200 are recorded with the upstream status and error body; client disconnects
+  mid-stream record a partial capture (`error_detail: partial: client disconnected…`);
+  mid-stream provider error events (e.g. Anthropic `overloaded_error` after a 200) are
+  surfaced as `stream_error: …` instead of posing as clean calls.
+
+### Changed
+- The request body is parsed once per call instead of two-to-three times — a real
+  saving on multi-megabyte coding-agent contexts.
 
 ### Upgrade notes
 - **Postgres:** on first connect, `session_id` is migrated in place from `UUID` to `TEXT`

@@ -71,7 +71,7 @@ from .otel import emit_span
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import Redactor, apply_capture_policy, normalize_capture_level
 from .store import Store
-from .stream import reconstruct_from_sse
+from .stream import detect_stream_error, reconstruct_from_sse
 
 logger = logging.getLogger(__name__)
 
@@ -578,8 +578,18 @@ def create_app(
 
         body_bytes = await request.body()
 
-        is_llm_path = request.method == "POST" and path in _LLM_PATHS and body_bytes
-        is_streaming = is_llm_path and _is_streaming(body_bytes)
+        # Parse the request body exactly once — streaming detection, budget
+        # capture, and normalization all need it, and coding-agent bodies can
+        # be megabytes of context.
+        body_json: Optional[dict] = None
+        if request.method == "POST" and path in _LLM_PATHS and body_bytes:
+            with suppress(Exception):
+                parsed = json.loads(body_bytes)
+                if isinstance(parsed, dict):
+                    body_json = parsed
+
+        is_llm_path = body_json is not None
+        is_streaming = is_llm_path and bool(body_json.get("stream"))
         is_llm_call = is_llm_path and not is_streaming
 
         action_id = str(uuid.uuid4()) if is_llm_path else None
@@ -620,7 +630,7 @@ def create_app(
                 if should_block:
                     # Save blocked call with empty response, then reject
                     try:
-                        canonical_req = normalize_request(json.loads(body_bytes), path)
+                        canonical_req = normalize_request(body_json, path)
                         blocked_resp = _empty_response(0)
                         apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
                         await request.app.state.store.save(
@@ -664,8 +674,8 @@ def create_app(
 
         if is_streaming:
             return await _streaming_proxy(
-                request, path, body_bytes, forward_headers, action_id, meta,
-                _capture, _budget_warning,
+                request, path, body_bytes, body_json, forward_headers, action_id,
+                meta, _capture, _budget_warning,
             )
 
         start = time.monotonic()
@@ -680,8 +690,7 @@ def create_app(
 
         if is_llm_call:
             try:
-                req_body = json.loads(body_bytes)
-                canonical_req = normalize_request(req_body, path)
+                canonical_req = normalize_request(body_json, path)
                 status_code = upstream_resp.status_code
                 if status_code == 200:
                     canonical_resp = normalize_response(
@@ -712,6 +721,7 @@ async def _streaming_proxy(
     request: Request,
     path: str,
     body_bytes: bytes,
+    body_json: dict,
     forward_headers: dict,
     action_id: str,
     meta: dict,
@@ -731,35 +741,68 @@ async def _streaming_proxy(
     upstream = await stream_ctx.__aenter__()
     start = time.monotonic()
 
-    should_capture = upstream.status_code == 200
-    canonical_req = None
-    if should_capture:
-        try:
-            canonical_req = normalize_request(json.loads(body_bytes), path)
-        except Exception:
-            should_capture = False
+    canonical_req: Optional[CanonicalRequest] = None
+    try:
+        canonical_req = normalize_request(body_json, path)
+    except Exception:
+        canonical_req = None
+
+    def _build_job(raw: bytes, completed: bool) -> _CaptureJob:
+        latency_ms = (time.monotonic() - start) * 1000
+        if upstream.status_code == 200:
+            canonical_resp = reconstruct_from_sse(raw, latency_ms, canonical_req.model_id)
+            parts: list[str] = []
+            if budget_warning:
+                parts.append(f"budget_warning: {budget_warning}")
+            stream_err = detect_stream_error(raw)
+            if stream_err:
+                parts.append(f"stream_error: {stream_err}")
+            if not completed:
+                parts.append("partial: client disconnected before stream completed")
+            return _CaptureJob(
+                action_id, canonical_req, canonical_resp, 200,
+                "; ".join(parts) or None, meta, budget_warning,
+            )
+        detail = (
+            raw.decode("utf-8", errors="replace")[:300]
+            or f"upstream returned {upstream.status_code}"
+        )
+        return _CaptureJob(
+            action_id, canonical_req, _empty_response(latency_ms),
+            upstream.status_code, detail, meta, budget_warning,
+        )
 
     async def generator() -> AsyncIterator[bytes]:
         chunks: list[bytes] = []
+        captured = False
         try:
             async for chunk in upstream.aiter_bytes():
-                if should_capture:
+                if canonical_req is not None:
                     chunks.append(chunk)
                 yield chunk
 
-            if should_capture and canonical_req and chunks:
-                latency_ms = (time.monotonic() - start) * 1000
+            # Normal completion: capture inline, so the record exists by the
+            # time the client sees the stream end. Errored upstreams (non-200)
+            # are captured too, with the buffered error body as detail.
+            if canonical_req is not None:
+                captured = True
                 try:
-                    canonical_resp = reconstruct_from_sse(
-                        b"".join(chunks), latency_ms, canonical_req.model_id
-                    )
-                    _err = f"budget_warning: {budget_warning}" if budget_warning else None
-                    await capture(_CaptureJob(
-                        action_id, canonical_req, canonical_resp, 200, _err, meta, budget_warning,
-                    ))
+                    await capture(_build_job(b"".join(chunks), completed=True))
                 except Exception:
                     _record_capture_drop(request.app, action_id)
         finally:
+            # Abnormal teardown — client disconnect or cancellation — means the
+            # inline capture above never ran. Schedule it on a task instead of
+            # awaiting: an await here can be interrupted by the very
+            # cancellation that tore the stream down, losing the record.
+            if canonical_req is not None and not captured:
+                try:
+                    _spawn_capture(
+                        request.app, capture,
+                        _build_job(b"".join(chunks), completed=False), action_id,
+                    )
+                except Exception:
+                    _record_capture_drop(request.app, action_id)
             await stream_ctx.__aexit__(None, None, None)
 
     return StreamingResponse(
@@ -869,8 +912,18 @@ def _response_headers(
     return headers
 
 
-def _is_streaming(body_bytes: bytes) -> bool:
-    try:
-        return bool(json.loads(body_bytes).get("stream"))
-    except Exception:
-        return False
+_BG_CAPTURE_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_capture(app: FastAPI, capture, job: _CaptureJob, action_id: Optional[str]) -> None:
+    """Schedule a capture without awaiting it. The task set holds strong
+    references until each task completes, so the event loop can't GC them."""
+    async def _run() -> None:
+        try:
+            await capture(job)
+        except Exception:
+            _record_capture_drop(app, action_id)
+
+    task = asyncio.get_running_loop().create_task(_run())
+    _BG_CAPTURE_TASKS.add(task)
+    task.add_done_callback(_BG_CAPTURE_TASKS.discard)

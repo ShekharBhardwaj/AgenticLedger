@@ -293,3 +293,62 @@ def test_file_overrides_win_over_inline_for_same_key(restore_prices, monkeypatch
 
     # overrides.update(file) runs after overrides.update(inline), so file wins.
     assert pricing.compute_cost("dup-model", 1_000_000, 0) == 9.0
+
+
+# ── Prompt-cache pricing ──────────────────────────────────────────────────────
+
+def test_anthropic_cache_tokens_billed_additively():
+    """Anthropic reports cache traffic outside input_tokens: reads at 0.1x and
+    writes at 1.25x the input rate are billed on top of the base tokens."""
+    cost = pricing.compute_cost(
+        "claude-sonnet-4", 100, 10,
+        cache_read_tokens=1000, cache_write_tokens=200, provider="anthropic",
+    )
+    expected = (100 * 3.00 + 1000 * 0.30 + 200 * 3.75 + 10 * 15.00) / 1_000_000
+    assert cost == round(expected, 8)
+
+
+def test_openai_cached_tokens_billed_as_discounted_subset():
+    """OpenAI's cached tokens are a subset of prompt_tokens — the cached portion
+    is re-billed at 0.5x instead of the full input rate."""
+    cost = pricing.compute_cost("gpt-4o", 1000, 10, cache_read_tokens=400, provider="openai")
+    expected = (600 * 2.50 + 400 * 1.25 + 10 * 10.00) / 1_000_000
+    assert cost == round(expected, 8)
+
+
+def test_cache_args_default_to_previous_behavior():
+    """Without cache tokens the result is identical to the pre-cache formula."""
+    assert pricing.compute_cost("gpt-4o", 100, 10) == round((100 * 2.50 + 10 * 10.00) / 1_000_000, 8)
+
+
+def test_openai_cached_exceeding_prompt_clamps_base_to_zero():
+    """A cached count larger than prompt_tokens must not go negative."""
+    cost = pricing.compute_cost("gpt-4o", 100, 0, cache_read_tokens=500, provider="openai")
+    expected = (0 * 2.50 + 500 * 1.25) / 1_000_000
+    assert cost == round(expected, 8)
+
+
+def test_unknown_provider_uses_openai_cache_convention():
+    """An empty/unknown provider falls back to the OpenAI subset convention."""
+    assert pricing.compute_cost("gpt-4o", 1000, 0, cache_read_tokens=400) == \
+        pricing.compute_cost("gpt-4o", 1000, 0, cache_read_tokens=400, provider="openai")
+
+
+def test_four_element_override_sets_explicit_cache_prices(restore_prices, monkeypatch):
+    """A [in, out, cache_read, cache_write] override pins exact cache rates."""
+    snapshot = dict(pricing._CACHE_PRICES)
+    try:
+        monkeypatch.setenv(
+            "AGENTLEDGER_PRICING", json.dumps({"my-model": [1.0, 2.0, 0.25, 1.5]})
+        )
+        monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
+        pricing._load_overrides()
+        cost = pricing.compute_cost(
+            "my-model", 100, 0,
+            cache_read_tokens=1000, cache_write_tokens=100, provider="anthropic",
+        )
+        expected = (100 * 1.0 + 1000 * 0.25 + 100 * 1.5) / 1_000_000
+        assert cost == round(expected, 8)
+    finally:
+        pricing._CACHE_PRICES.clear()
+        pricing._CACHE_PRICES.update(snapshot)

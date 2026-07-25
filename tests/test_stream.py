@@ -18,7 +18,7 @@ behavior described in the module docstring and the task spec:
 import json
 
 from agentledger.proxy.pricing import compute_cost
-from agentledger.proxy.stream import reconstruct_from_sse
+from agentledger.proxy.stream import detect_stream_error, reconstruct_from_sse
 
 from .conftest import anthropic_sse, openai_sse, sse
 
@@ -404,3 +404,132 @@ def test_leading_malformed_lines_before_real_chunk():
     ).encode("utf-8")
     resp = reconstruct_from_sse(raw, latency_ms=1.0, model_id="gpt-4o")
     assert resp.content == "ok"
+
+
+# ── Anthropic cache tokens + thinking ────────────────────────────────────────
+
+def test_anthropic_cache_tokens_from_message_start():
+    """cache_read/cache_creation counts in message_start usage are captured and
+    priced with the Anthropic additive convention."""
+    chunks = [
+        {"type": "message_start", "message": {"usage": {
+            "input_tokens": 10,
+            "cache_read_input_tokens": 900,
+            "cache_creation_input_tokens": 50,
+        }}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "hi"}},
+        {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}},
+    ]
+    resp = reconstruct_from_sse(sse(*chunks), latency_ms=1.0, model_id="claude-sonnet-4")
+    assert resp.cache_read_tokens == 900
+    assert resp.cache_write_tokens == 50
+    assert resp.tokens_in == 10
+    assert resp.tokens_out == 5
+    expected = (10 * 3.00 + 900 * 0.30 + 50 * 3.75 + 5 * 15.00) / 1_000_000
+    assert resp.cost_usd == round(expected, 8)
+
+
+def test_anthropic_thinking_deltas_accumulated_separately():
+    """thinking_delta events build resp.thinking; text stays in resp.content;
+    signature_delta events are skipped without error."""
+    chunks = [
+        {"type": "message_start", "message": {"usage": {"input_tokens": 3}}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "let me "}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "think"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "abc"}},
+        {"type": "content_block_stop", "index": 0},
+        {"type": "content_block_start", "index": 1, "content_block": {"type": "text"}},
+        {"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": "answer"}},
+        {"type": "content_block_stop", "index": 1},
+        {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 4}},
+    ]
+    resp = reconstruct_from_sse(sse(*chunks), latency_ms=1.0, model_id="claude-sonnet-4")
+    assert resp.thinking == "let me think"
+    assert resp.content == "answer"
+
+
+def test_openai_sse_cached_tokens_in_usage():
+    """prompt_tokens_details.cached_tokens in the final usage chunk is captured
+    and the cached subset is priced at the discounted rate."""
+    chunks = [
+        {"choices": [{"index": 0, "delta": {"content": "x"}, "finish_reason": None}]},
+        {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+         "usage": {"prompt_tokens": 100, "completion_tokens": 5,
+                   "prompt_tokens_details": {"cached_tokens": 60}}},
+    ]
+    resp = reconstruct_from_sse(sse(*chunks), latency_ms=1.0, model_id="gpt-4o")
+    assert resp.cache_read_tokens == 60
+    expected = (40 * 2.50 + 60 * 1.25 + 5 * 10.00) / 1_000_000
+    assert resp.cost_usd == round(expected, 8)
+
+
+# ── OpenAI Responses API SSE ─────────────────────────────────────────────────
+
+def test_responses_sse_reconstructed_from_completed_event():
+    """response.* typed events route to the Responses reconstructor (not the
+    Anthropic one) and the terminal response.completed payload wins."""
+    final = {
+        "object": "response", "status": "completed", "model": "gpt-4o",
+        "output": [{"type": "message",
+                    "content": [{"type": "output_text", "text": "Hello!"}]}],
+        "usage": {"input_tokens": 20, "output_tokens": 6},
+    }
+    chunks = [
+        {"type": "response.created", "response": {"object": "response", "status": "in_progress"}},
+        {"type": "response.output_text.delta", "delta": "Hel"},
+        {"type": "response.output_text.delta", "delta": "lo!"},
+        {"type": "response.completed", "response": final},
+    ]
+    resp = reconstruct_from_sse(sse(*chunks), latency_ms=2.0, model_id="gpt-4o")
+    assert resp.content == "Hello!"
+    assert resp.tokens_in == 20
+    assert resp.tokens_out == 6
+    assert resp.stop_reason == "completed"
+    assert resp.cost_usd == compute_cost("gpt-4o", 20, 6)
+
+
+def test_responses_sse_partial_falls_back_to_text_deltas():
+    """Without a terminal event (interrupted stream) the accumulated
+    output_text deltas are preserved instead of an empty response."""
+    chunks = [
+        {"type": "response.created", "response": {"object": "response"}},
+        {"type": "response.output_text.delta", "delta": "par"},
+        {"type": "response.output_text.delta", "delta": "tial"},
+    ]
+    resp = reconstruct_from_sse(sse(*chunks), latency_ms=2.0, model_id="gpt-4o")
+    assert resp.content == "partial"
+    assert resp.tokens_in is None
+
+
+def test_responses_sse_function_call_in_completed_event():
+    """Function calls in the terminal response object map to tool_calls."""
+    final = {
+        "object": "response", "status": "completed",
+        "output": [{"type": "function_call", "call_id": "c1",
+                    "name": "search", "arguments": "{\"q\":1}"}],
+        "usage": {"input_tokens": 5, "output_tokens": 3},
+    }
+    chunks = [
+        {"type": "response.created", "response": {}},
+        {"type": "response.completed", "response": final},
+    ]
+    resp = reconstruct_from_sse(sse(*chunks), latency_ms=1.0, model_id="gpt-4o")
+    assert resp.tool_calls == [{"id": "c1", "name": "search", "arguments": "{\"q\":1}"}]
+
+
+# ── Mid-stream error detection ───────────────────────────────────────────────
+
+def test_detect_stream_error_anthropic_error_event():
+    """An Anthropic error event after message_start is surfaced."""
+    chunks = [
+        {"type": "message_start", "message": {"usage": {"input_tokens": 3}}},
+        {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}},
+    ]
+    assert detect_stream_error(sse(*chunks)) == "Overloaded"
+
+
+def test_detect_stream_error_none_on_clean_streams():
+    assert detect_stream_error(openai_sse("hi")) is None
+    assert detect_stream_error(anthropic_sse("hi")) is None

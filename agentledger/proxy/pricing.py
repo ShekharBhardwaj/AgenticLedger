@@ -9,9 +9,17 @@ User overrides (merged over the built-in table at startup):
 
   AGENTLEDGER_PRICING       Inline JSON — useful for Docker env vars
                             e.g. '{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'
+                            A 4-element form also sets cache pricing:
+                            '{"my-model": [in, out, cache_read, cache_write]}'
 
   AGENTLEDGER_PRICING_FILE  Path to a JSON file with the same format
                             e.g. /etc/agentledger/pricing.json
+
+Prompt-cache pricing: when a model has no explicit cache entry, provider
+conventions apply — Anthropic bills cache reads at 0.1x and cache writes at
+1.25x the input rate (and reports them *outside* usage.input_tokens);
+OpenAI bills cached prompt tokens at 0.5x the input rate (reported as a
+*subset* of usage.prompt_tokens) and does not bill cache writes.
 """
 
 import json
@@ -60,6 +68,15 @@ _PRICES: dict[str, tuple[float, float]] = {
     "gemini-1.5-flash":  (0.075,  0.30),
 }
 
+# (cache_read_per_million, cache_write_per_million) in USD — explicit entries
+# only; models without one fall back to provider-convention multipliers in
+# compute_cost(). Populated from 4-element pricing overrides.
+_CACHE_PRICES: dict[str, tuple[float, float]] = {}
+
+# Provider-convention cache multipliers applied to the input rate.
+_CACHE_READ_MULT  = {"anthropic": 0.10, "openai": 0.50}
+_CACHE_WRITE_MULT = {"anthropic": 1.25, "openai": 0.0}
+
 
 def _load_overrides() -> None:
     """Merge user-supplied pricing overrides into _PRICES at startup."""
@@ -83,8 +100,13 @@ def _load_overrides() -> None:
     for model, price in overrides.items():
         try:
             _PRICES[model.lower()] = (float(price[0]), float(price[1]))
+            if len(price) >= 4:
+                _CACHE_PRICES[model.lower()] = (float(price[2]), float(price[3]))
         except Exception:
-            logger.warning("Invalid pricing entry %r: %r — expected [input, output]", model, price)
+            logger.warning(
+                "Invalid pricing entry %r: %r — expected [input, output] or "
+                "[input, output, cache_read, cache_write]", model, price,
+            )
 
 _load_overrides()
 
@@ -93,6 +115,9 @@ def compute_cost(
     model_id: str,
     tokens_in: Optional[int],
     tokens_out: Optional[int],
+    cache_read_tokens: Optional[int] = None,
+    cache_write_tokens: Optional[int] = None,
+    provider: str = "",
 ) -> Optional[float]:
     """Return estimated cost in USD, or None if model is not in the pricing table.
 
@@ -100,18 +125,44 @@ def compute_cost(
     LONGEST (most specific) matching pattern. This ensures a model like
     "gpt-4o-mini" is priced at its own rate rather than the more general
     "gpt-4o" rate that is also a substring of its id.
+
+    Cache accounting follows the provider's reporting convention:
+    - "anthropic": usage.input_tokens EXCLUDES cache traffic, so cache reads
+      and writes are billed on top of tokens_in.
+    - "openai" (and default): cached tokens are a SUBSET of tokens_in, so the
+      cached portion is re-billed at the discounted rate instead.
     """
     if tokens_in is None and tokens_out is None:
         return None
     model_lower = model_id.lower()
-    best_match: Optional[tuple[float, float]] = None
+    best_pattern: Optional[str] = None
     best_len = -1
-    for pattern, prices in _PRICES.items():
+    for pattern in _PRICES:
         if pattern in model_lower and len(pattern) > best_len:
-            best_match = prices
+            best_pattern = pattern
             best_len = len(pattern)
-    if best_match is None:
+    if best_pattern is None:
         return None
-    in_price, out_price = best_match
-    cost = ((tokens_in or 0) * in_price + (tokens_out or 0) * out_price) / 1_000_000
+    in_price, out_price = _PRICES[best_pattern]
+
+    explicit = _CACHE_PRICES.get(best_pattern)
+    if explicit is not None:
+        read_price, write_price = explicit
+    else:
+        conv = provider if provider in _CACHE_READ_MULT else "openai"
+        read_price = in_price * _CACHE_READ_MULT[conv]
+        write_price = in_price * _CACHE_WRITE_MULT[conv]
+
+    reads = cache_read_tokens or 0
+    writes = cache_write_tokens or 0
+    # Anthropic reports cache traffic outside tokens_in; OpenAI reports the
+    # cached subset inside it, so the base portion is tokens_in minus reads.
+    billable_in = (tokens_in or 0) if provider == "anthropic" else max((tokens_in or 0) - reads, 0)
+
+    cost = (
+        billable_in * in_price
+        + reads * read_price
+        + writes * write_price
+        + (tokens_out or 0) * out_price
+    ) / 1_000_000
     return round(cost, 8)

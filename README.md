@@ -150,6 +150,8 @@ Every LLM call is stored with:
 | `content` | Model's text output |
 | `stop_reason` | Why the model stopped |
 | `tokens_in` / `tokens_out` | Token usage |
+| `cache_read_tokens` / `cache_write_tokens` | Prompt-cache usage — reads and writes are priced correctly per provider |
+| `thinking` | Extended-thinking output (Anthropic), captured separately from `content` |
 | `cost_usd` | Estimated cost based on model pricing |
 | `latency_ms` | End-to-end response time |
 | `status_code` | HTTP status from upstream — errors are captured too |

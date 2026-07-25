@@ -322,3 +322,84 @@ def test_wrong_api_key_rejected(proxy, monkeypatch):
 
     resp = client.get("/api/sessions", headers={"x-agentledger-api-key": "wrong"})
     assert resp.status_code == 401
+
+
+# ── Streaming capture: errored and mid-stream-failed upstreams ────────────────
+
+def test_streaming_upstream_error_is_captured(proxy):
+    """A non-200 from upstream on a streaming request reaches the client AND is
+    recorded with the upstream status + error body (previously never captured)."""
+    client = proxy(handler=lambda r: httpx.Response(
+        529, json={"error": {"type": "overloaded_error", "message": "Overloaded"}},
+    ))
+
+    resp = client.post(
+        "/v1/chat/completions",
+        json={**_CHAT_BODY, "stream": True},
+        headers={"x-agentledger-session-id": "s-stream-err"},
+    )
+    assert resp.status_code == 529
+
+    session = client.get("/session/s-stream-err").json()
+    assert len(session) == 1
+    assert session[0]["status_code"] == 529
+    assert "Overloaded" in session[0]["error_detail"]
+
+
+def test_streaming_mid_stream_error_event_recorded(proxy):
+    """A 200 stream that carries a provider error event is captured with the
+    error surfaced in error_detail instead of posing as a clean call."""
+    from .conftest import sse, stream_response
+
+    chunks = [
+        {"type": "message_start", "message": {"usage": {"input_tokens": 3}}},
+        {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}},
+    ]
+    client = proxy(handler=lambda r: stream_response(sse(*chunks)))
+
+    resp = client.post(
+        "/v1/messages",
+        json={"model": "claude-sonnet-4", "stream": True,
+              "messages": [{"role": "user", "content": "hi"}]},
+        headers={"x-agentledger-session-id": "s-mid-err"},
+    )
+    assert resp.status_code == 200
+
+    session = client.get("/session/s-mid-err").json()
+    assert len(session) == 1
+    assert session[0]["status_code"] == 200
+    assert "stream_error: Overloaded" in session[0]["error_detail"]
+
+
+def test_streaming_capture_includes_cache_tokens(proxy):
+    """Anthropic cache-token usage flows through streaming capture into the
+    stored row and the computed cost."""
+    from .conftest import sse, stream_response
+
+    chunks = [
+        {"type": "message_start", "message": {"usage": {
+            "input_tokens": 10,
+            "cache_read_input_tokens": 900,
+            "cache_creation_input_tokens": 50,
+        }}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+        {"type": "content_block_delta", "index": 0,
+         "delta": {"type": "text_delta", "text": "hi"}},
+        {"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+         "usage": {"output_tokens": 5}},
+    ]
+    client = proxy(handler=lambda r: stream_response(sse(*chunks)))
+
+    resp = client.post(
+        "/v1/messages",
+        json={"model": "claude-sonnet-4", "stream": True,
+              "messages": [{"role": "user", "content": "hi"}]},
+        headers={"x-agentledger-session-id": "s-cache"},
+    )
+    assert resp.status_code == 200
+
+    row = client.get("/session/s-cache").json()[0]
+    assert row["cache_read_tokens"] == 900
+    assert row["cache_write_tokens"] == 50
+    expected = (10 * 3.00 + 900 * 0.30 + 50 * 3.75 + 5 * 15.00) / 1_000_000
+    assert row["cost_usd"] == round(expected, 8)

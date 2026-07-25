@@ -127,6 +127,7 @@ def apply_capture_policy(req, resp, level: str, redactor: Optional[Redactor]) ->
         req.tool_results = None
         resp.content = None
         resp.tool_calls = None
+        resp.thinking = None
         return
 
     if redactor is not None and redactor.enabled:
@@ -139,3 +140,5 @@ def apply_capture_policy(req, resp, level: str, redactor: Optional[Redactor]) ->
             resp.content = redactor.redact_text(resp.content)
         if resp.tool_calls:
             resp.tool_calls = redactor.scrub(resp.tool_calls)
+        if resp.thinking:
+            resp.thinking = redactor.redact_text(resp.thinking)

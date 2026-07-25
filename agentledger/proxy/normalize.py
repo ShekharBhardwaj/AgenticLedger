@@ -5,7 +5,13 @@ canonical internal schema.
 Canonical request:  { messages, tools, model_id, provider, timestamp,
                       system_prompt, temperature, max_tokens, tool_results }
 Canonical response: { content, tool_calls, stop_reason, tokens_in,
-                      tokens_out, latency_ms, cost_usd }
+                      tokens_out, latency_ms, cost_usd,
+                      cache_read_tokens, cache_write_tokens, thinking }
+
+Token semantics follow the provider's wire format: Anthropic's tokens_in
+EXCLUDES cache reads/writes (they are reported separately), OpenAI's
+tokens_in INCLUDES cached tokens (cache_read_tokens is the cached subset).
+compute_cost() understands both conventions via its provider argument.
 
 Never store provider-native formats as source of truth.
 """
@@ -39,6 +45,9 @@ class CanonicalResponse:
     tokens_out: Optional[int]
     latency_ms: float
     cost_usd: Optional[float] = None
+    cache_read_tokens: Optional[int] = None
+    cache_write_tokens: Optional[int] = None
+    thinking: Optional[str] = None
 
 
 def detect_provider(path: str, model: str) -> str:  # noqa: ARG001
@@ -143,6 +152,9 @@ def normalize_response(body: dict, latency_ms: float, model_id: str = "") -> Can
         usage = body.get("usage", {})
         tokens_in = usage.get("prompt_tokens")
         tokens_out = usage.get("completion_tokens")
+        cache_read = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+        # LiteLLM forwards Anthropic cache writes under the native key.
+        cache_write = usage.get("cache_creation_input_tokens")
         return CanonicalResponse(
             content=content,
             tool_calls=tool_calls,
@@ -150,7 +162,13 @@ def normalize_response(body: dict, latency_ms: float, model_id: str = "") -> Can
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             latency_ms=latency_ms,
-            cost_usd=compute_cost(model_id, tokens_in, tokens_out),
+            cost_usd=compute_cost(
+                model_id, tokens_in, tokens_out,
+                cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+                provider="openai",
+            ),
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
         )
 
     # Anthropic format
@@ -158,6 +176,10 @@ def normalize_response(body: dict, latency_ms: float, model_id: str = "") -> Can
     if content_blocks:
         text = next(
             (b["text"] for b in content_blocks if b.get("type") == "text"), None
+        )
+        thinking = next(
+            (b.get("thinking") for b in content_blocks if b.get("type") == "thinking"),
+            None,
         )
         tool_calls = [
             {"id": b.get("id"), "name": b.get("name"), "arguments": b.get("input")}
@@ -168,6 +190,8 @@ def normalize_response(body: dict, latency_ms: float, model_id: str = "") -> Can
         usage = body.get("usage", {})
         tokens_in = usage.get("input_tokens")
         tokens_out = usage.get("output_tokens")
+        cache_read = usage.get("cache_read_input_tokens")
+        cache_write = usage.get("cache_creation_input_tokens")
         return CanonicalResponse(
             content=text,
             tool_calls=tool_calls,
@@ -175,7 +199,14 @@ def normalize_response(body: dict, latency_ms: float, model_id: str = "") -> Can
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             latency_ms=latency_ms,
-            cost_usd=compute_cost(model_id, tokens_in, tokens_out),
+            cost_usd=compute_cost(
+                model_id, tokens_in, tokens_out,
+                cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+                provider="anthropic",
+            ),
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+            thinking=thinking,
         )
 
     return CanonicalResponse(
@@ -210,6 +241,7 @@ def _normalize_responses_response(body: dict, latency_ms: float, model_id: str) 
     usage = body.get("usage", {})
     tokens_in = usage.get("input_tokens")
     tokens_out = usage.get("output_tokens")
+    cache_read = (usage.get("input_tokens_details") or {}).get("cached_tokens")
     return CanonicalResponse(
         content=text,
         tool_calls=tool_calls or None,
@@ -217,7 +249,11 @@ def _normalize_responses_response(body: dict, latency_ms: float, model_id: str) 
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         latency_ms=latency_ms,
-        cost_usd=compute_cost(model_id, tokens_in, tokens_out),
+        cost_usd=compute_cost(
+            model_id, tokens_in, tokens_out,
+            cache_read_tokens=cache_read, provider="openai",
+        ),
+        cache_read_tokens=cache_read,
     )
 
 
