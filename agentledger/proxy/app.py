@@ -59,6 +59,7 @@ from .auth import (
     valid_role,
 )
 from .dashboard import get_dashboard_html
+from .detect import detect_agent
 from .export import build_export, render_html_report
 from .mcp import handle_mcp
 from .normalize import (
@@ -88,6 +89,7 @@ _AL_HEADERS = {
     "x-agentledger-environment",
     "x-agentledger-handoff-from",
     "x-agentledger-handoff-to",
+    "x-agentledger-framework",
     "x-agentledger-ingest-key",
     "x-agentledger-api-key",
 }
@@ -593,7 +595,7 @@ def create_app(
         is_llm_call = is_llm_path and not is_streaming
 
         action_id = str(uuid.uuid4()) if is_llm_path else None
-        meta = _extract_meta(request)
+        meta = _extract_meta(request, body_json)
 
         # ── Rate limit check ─────────────────────────────────────────────────
         # Fail open: a rate-limiter error must never block the agent's LLM call.
@@ -878,19 +880,28 @@ def _extract_error(resp: httpx.Response) -> str:
         return resp.text[:300]
 
 
-def _extract_meta(request: Request) -> dict:
+def _extract_meta(request: Request, body_json: Optional[dict] = None) -> dict:
     import datetime
     h = request.headers
-    session_id = h.get("x-agentledger-session-id") or f"auto-{datetime.date.today().isoformat()}"
+    # Explicit headers always win; fingerprint detection only fills the gaps
+    # (framework tag, agent identity, and a real per-run session id for
+    # clients like Claude Code that never send x-agentledger-* headers).
+    detected = detect_agent(h, body_json)
+    session_id = (
+        h.get("x-agentledger-session-id")
+        or detected["session_id"]
+        or f"auto-{datetime.date.today().isoformat()}"
+    )
     return {
         "session_id":       session_id,
         "user_id":          h.get("x-agentledger-user-id"),
-        "agent_name":       h.get("x-agentledger-agent-name"),
+        "agent_name":       h.get("x-agentledger-agent-name") or detected["agent_name"],
         "app_id":           h.get("x-agentledger-app-id"),
         "parent_action_id": h.get("x-agentledger-parent-action-id"),
         "environment":      h.get("x-agentledger-environment", "development"),
         "handoff_from":     h.get("x-agentledger-handoff-from"),
         "handoff_to":       h.get("x-agentledger-handoff-to"),
+        "framework":        h.get("x-agentledger-framework") or detected["framework"],
     }
 
 

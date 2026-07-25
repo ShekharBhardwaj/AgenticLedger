@@ -403,3 +403,71 @@ def test_streaming_capture_includes_cache_tokens(proxy):
     assert row["cache_write_tokens"] == 50
     expected = (10 * 3.00 + 900 * 0.30 + 50 * 3.75 + 5 * 15.00) / 1_000_000
     assert row["cost_usd"] == round(expected, 8)
+
+
+# ── Zero-config agent detection ───────────────────────────────────────────────
+
+_CC_UUID = "3f2a1b0c-4d5e-6f70-8192-a3b4c5d6e7f8"
+
+
+def _claude_code_body():
+    return {
+        "model": "claude-sonnet-4",
+        "system": [{"type": "text", "text": "You are Claude Code, Anthropic's official CLI."}],
+        "messages": [{"role": "user", "content": "hi"}],
+        "metadata": {"user_id": f"user_ab12_account_cd34_session_{_CC_UUID}"},
+    }
+
+
+def test_claude_code_traffic_auto_tagged_and_sessioned(proxy):
+    """Untagged Claude Code traffic gets framework=claude-code, an agent name,
+    and its real session UUID instead of the shared auto-<date> bucket."""
+    from .conftest import anthropic_response
+
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()))
+
+    resp = client.post(
+        "/v1/messages", json=_claude_code_body(),
+        headers={"user-agent": "claude-cli/2.0.14 (external, cli)"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers["x-agentledger-session-id"] == _CC_UUID
+
+    row = client.get(f"/session/{_CC_UUID}").json()[0]
+    assert row["framework"] == "claude-code"
+    assert row["agent_name"] == "claude-code"
+    assert row["session_id"] == _CC_UUID
+
+
+def test_explicit_headers_win_over_detection(proxy):
+    """x-agentledger-* headers always beat fingerprint detection."""
+    from .conftest import anthropic_response
+
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()))
+
+    client.post(
+        "/v1/messages", json=_claude_code_body(),
+        headers={
+            "user-agent": "claude-cli/2.0.14 (external, cli)",
+            "x-agentledger-session-id": "my-run",
+            "x-agentledger-agent-name": "researcher",
+            "x-agentledger-framework": "my-stack",
+        },
+    )
+
+    row = client.get("/session/my-run").json()[0]
+    assert row["session_id"] == "my-run"
+    assert row["agent_name"] == "researcher"
+    assert row["framework"] == "my-stack"
+
+
+def test_framework_header_stripped_before_upstream(proxy):
+    """The new x-agentledger-framework header never leaks upstream."""
+    client = proxy(handler=_ok_handler())
+
+    client.post(
+        "/v1/chat/completions", json=_CHAT_BODY,
+        headers={"x-agentledger-framework": "my-stack"},
+    )
+    fwd = client.upstream.last_request.headers
+    assert "x-agentledger-framework" not in fwd

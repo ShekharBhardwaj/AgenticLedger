@@ -131,6 +131,43 @@ The dashboard updates live via WebSocket as calls come in. No refresh needed.
 
 ---
 
+## Coding agents — Claude Code, Ralph loops & friends
+
+Claude Code (and most coding agents) can be pointed at the proxy with a single
+environment variable — no headers, no code changes:
+
+```bash
+AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com uv run python -m agentledger.proxy
+```
+
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:8000
+claude
+```
+
+Agentic Ledger fingerprints Claude Code traffic automatically: every call is
+tagged `framework=claude-code`, and instead of one undifferentiated bucket,
+each Claude Code session appears under its **real session UUID** (the same id
+`claude --resume` shows), with prompt-cache reads/writes captured and priced
+correctly — cache traffic is where most of a coding agent's real spend lives.
+
+Running an overnight loop (Ralph-style `while :; do cat PROMPT.md | claude -p; done`)?
+Add budgets so a stuck loop can't burn through your quota, and check the
+dashboard in the morning:
+
+```bash
+AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com \
+AGENTLEDGER_BUDGET_DAILY=25.00 \
+uv run python -m agentledger.proxy
+```
+
+The same recipe works for any client with a base-URL override (Codex CLI,
+opencode, OpenClaw, LiteLLM-based stacks) — set the OpenAI/Anthropic base URL
+to the proxy and traffic is captured; add `x-agentledger-*` headers when you
+want explicit attribution.
+
+---
+
 ## What gets captured
 
 Every LLM call is stored with:
@@ -156,7 +193,8 @@ Every LLM call is stored with:
 | `latency_ms` | End-to-end response time |
 | `status_code` | HTTP status from upstream — errors are captured too |
 | `error_detail` | Upstream error message for non-200 responses |
-| `agent_name` | From `x-agentledger-agent-name` header |
+| `agent_name` | From `x-agentledger-agent-name` header, or auto-detected (e.g. `claude-code`) |
+| `framework` | From `x-agentledger-framework` header, or fingerprint-detected (e.g. `claude-code`, `litellm`) |
 | `user_id` | From `x-agentledger-user-id` header |
 | `app_id` | From `x-agentledger-app-id` header |
 | `environment` | From `x-agentledger-environment` header |
@@ -395,6 +433,7 @@ Pass these from your agent on each LLM call. All optional. They enrich captured 
 | `x-agentledger-environment` | `development` | `production`, `staging`, or `development`. Shown in the dashboard. |
 | `x-agentledger-handoff-from` | _(none)_ | Agent handing off control (e.g. `"orchestrator"`). Renders as a directed edge in the Flow DAG. |
 | `x-agentledger-handoff-to` | _(none)_ | Agent receiving control (e.g. `"researcher"`). Renders as a directed edge in the Flow DAG. |
+| `x-agentledger-framework` | _(auto-detected)_ | Framework/tool making the call (e.g. `"langgraph"`, `"bmad"`). When absent, well-known clients are fingerprinted automatically (Claude Code, LiteLLM). |
 
 **Single agent — fully annotated:**
 ```python

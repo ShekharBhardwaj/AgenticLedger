@@ -37,6 +37,7 @@ _MIGRATION_COLUMNS = [
     ("cache_read_tokens",  "INTEGER"),
     ("cache_write_tokens", "INTEGER"),
     ("thinking",           "TEXT"),
+    ("framework",          "TEXT"),
 ]
 
 
@@ -66,6 +67,7 @@ class Store(ABC):
         handoff_to: Optional[str] = None,
         status_code: int = 200,
         error_detail: Optional[str] = None,
+        framework: Optional[str] = None,
     ) -> None: ...
 
     @abstractmethod
@@ -216,7 +218,7 @@ class _SqliteStore(Store):
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
                    agent_name=None, app_id=None, parent_action_id=None,
                    environment="development", handoff_from=None, handoff_to=None,
-                   status_code=200, error_detail=None) -> None:
+                   status_code=200, error_detail=None, framework=None) -> None:
         await self._db.execute(
             """
             INSERT INTO llm_calls
@@ -227,8 +229,8 @@ class _SqliteStore(Store):
                  system_prompt, temperature, max_tokens,
                  tool_results, cost_usd, handoff_from, handoff_to,
                  status_code, error_detail,
-                 cache_read_tokens, cache_write_tokens, thinking)
-            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?, ?,?,?)
+                 cache_read_tokens, cache_write_tokens, thinking, framework)
+            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?, ?,?,?,?)
             """,
             (
                 action_id, session_id, req.timestamp, req.model_id, req.provider,
@@ -243,6 +245,7 @@ class _SqliteStore(Store):
                 resp.cost_usd, handoff_from, handoff_to,
                 status_code, error_detail,
                 resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
+                framework,
             ),
         )
         await self._db.commit()
@@ -514,7 +517,7 @@ class _PostgresStore(Store):
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
                    agent_name=None, app_id=None, parent_action_id=None,
                    environment="development", handoff_from=None, handoff_to=None,
-                   status_code=200, error_detail=None) -> None:
+                   status_code=200, error_detail=None, framework=None) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -526,7 +529,7 @@ class _PostgresStore(Store):
                      system_prompt, temperature, max_tokens,
                      tool_results, cost_usd, handoff_from, handoff_to,
                      status_code, error_detail,
-                     cache_read_tokens, cache_write_tokens, thinking)
+                     cache_read_tokens, cache_write_tokens, thinking, framework)
                 VALUES
                     ($1,$2,to_timestamp($3),$4,$5,
                      $6::jsonb,$7::jsonb,$8,$9::jsonb,$10,
@@ -535,7 +538,7 @@ class _PostgresStore(Store):
                      $19,$20,$21,
                      $22::jsonb,$23,$24,$25,
                      $26,$27,
-                     $28,$29,$30)
+                     $28,$29,$30,$31)
                 """,
                 uuid.UUID(action_id),
                 session_id,
@@ -551,6 +554,7 @@ class _PostgresStore(Store):
                 resp.cost_usd, handoff_from, handoff_to,
                 status_code, error_detail,
                 resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
+                framework,
             )
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:

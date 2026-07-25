@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mid-stream provider error events (e.g. Anthropic `overloaded_error` after a 200) are
   surfaced as `stream_error: …` instead of posing as clean calls.
 
+- **Zero-config agent detection.** Well-known clients are fingerprinted when no
+  `x-agentledger-*` headers are present: Claude Code traffic is tagged
+  `framework=claude-code` / `agent_name=claude-code` and grouped under its **real
+  session UUID** (extracted from `metadata.user_id`, the same id `claude --resume`
+  shows) instead of the shared `auto-<date>` bucket. LiteLLM clients are tagged
+  `framework=litellm`. Explicit headers always win. New `framework` column and
+  `x-agentledger-framework` header.
+
 ### Changed
 - The request body is parsed once per call instead of two-to-three times — a real
   saving on multi-megabyte coding-agent contexts.
