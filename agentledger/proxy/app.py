@@ -79,6 +79,10 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LLM_PATHS = {"v1/chat/completions", "v1/messages", "v1/responses"}
 _extra = os.getenv("AGENTLEDGER_EXTRA_PATHS", "")
 _LLM_PATHS = _DEFAULT_LLM_PATHS | {p.strip() for p in _extra.split(",") if p.strip()}
+# Free metering endpoints: captured for a complete record, but exempt from
+# rate-limit/budget enforcement (the calls cost nothing) and never streamed.
+_COUNT_TOKENS_PATHS = {"v1/messages/count_tokens"}
+_CAPTURED_PATHS = _LLM_PATHS | _COUNT_TOKENS_PATHS
 
 _AL_HEADERS = {
     "x-agentledger-session-id",
@@ -590,14 +594,15 @@ def create_app(
         # capture, and normalization all need it, and coding-agent bodies can
         # be megabytes of context.
         body_json: Optional[dict] = None
-        if request.method == "POST" and path in _LLM_PATHS and body_bytes:
+        if request.method == "POST" and path in _CAPTURED_PATHS and body_bytes:
             with suppress(Exception):
                 parsed = json.loads(body_bytes)
                 if isinstance(parsed, dict):
                     body_json = parsed
 
         is_llm_path = body_json is not None
-        is_streaming = is_llm_path and bool(body_json.get("stream"))
+        is_count_tokens = is_llm_path and path in _COUNT_TOKENS_PATHS
+        is_streaming = is_llm_path and not is_count_tokens and bool(body_json.get("stream"))
         is_llm_call = is_llm_path and not is_streaming
 
         action_id = str(uuid.uuid4()) if is_llm_path else None
@@ -605,7 +610,8 @@ def create_app(
 
         # ── Rate limit check ─────────────────────────────────────────────────
         # Fail open: a rate-limiter error must never block the agent's LLM call.
-        if is_llm_path:
+        # count_tokens is free — it neither consumes quota nor gets blocked.
+        if is_llm_path and not is_count_tokens:
             try:
                 rate_error = _rate_limiter.check(
                     meta.get("session_id"), meta.get("agent_name"), meta.get("user_id")
@@ -623,7 +629,7 @@ def create_app(
         # Fail open: if the store is unavailable the agent must not be blocked.
         # Budget enforcement resumes automatically once the store recovers.
         _budget_warning: Optional[str] = None  # set in warn mode; carried into actual save
-        if is_llm_path and (budget_session is not None or budget_agent is not None or budget_daily is not None):
+        if is_llm_path and not is_count_tokens and (budget_session is not None or budget_agent is not None or budget_daily is not None):
             try:
                 budget_error = await _check_budgets(
                     request.app.state.store, meta,

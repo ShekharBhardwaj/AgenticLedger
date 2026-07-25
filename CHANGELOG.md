@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mid-stream provider error events (e.g. Anthropic `overloaded_error` after a 200) are
   surfaced as `stream_error: …` instead of posing as clean calls.
 
+- **`count_tokens` capture.** `POST /v1/messages/count_tokens` is now recorded
+  (previously it was forwarded by the catch-all but invisible in the ledger). Captured
+  calls are marked `stop_reason="count_tokens"` with the counted value in `content`,
+  carry zero cost and no `tokens_in`/`tokens_out` — so session cost/token aggregates
+  are unaffected — and are exempt from rate-limit and budget enforcement (the
+  endpoint is free).
 - **Zero-config agent detection.** Well-known clients are fingerprinted when no
   `x-agentledger-*` headers are present: Claude Code traffic is tagged
   `framework=claude-code` / `agent_name=claude-code` and grouped under its **real

@@ -649,3 +649,29 @@ class TestCacheAndThinking:
         resp = normalize_response(body, latency_ms=1.0, model_id="claude-sonnet-4")
         assert resp.thinking == "step by step..."
         assert resp.content == "final answer"
+
+
+# ── count_tokens ──────────────────────────────────────────────────────────────
+
+class TestNormalizeResponseCountTokens:
+    def test_count_tokens_shape_is_marked_and_free(self):
+        """{"input_tokens": N} (Anthropic count_tokens) is marked via stop_reason,
+        keeps the count in content, and carries no tokens/cost to sum."""
+        resp = normalize_response({"input_tokens": 2095}, latency_ms=12.0)
+        assert resp.stop_reason == "count_tokens"
+        assert resp.content == "input_tokens: 2095"
+        assert resp.tokens_in is None and resp.tokens_out is None
+        assert resp.cost_usd == 0.0
+        assert resp.tool_calls is None
+
+    def test_real_anthropic_response_not_mistaken_for_count_tokens(self):
+        """A normal messages response (input_tokens nested under usage) still
+        routes to the Anthropic branch."""
+        body = {
+            "content": [{"type": "text", "text": "hi"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 5, "output_tokens": 3},
+        }
+        resp = normalize_response(body, latency_ms=1.0)
+        assert resp.stop_reason == "end_turn"
+        assert resp.tokens_in == 5
