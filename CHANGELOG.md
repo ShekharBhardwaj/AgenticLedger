@@ -43,6 +43,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `framework=litellm`. Explicit headers always win. New `framework` column and
   `x-agentledger-framework` header.
 
+- **Loop engine (v1).** Raw traffic is stitched into agentic structure with no
+  client cooperation:
+  - *ReAct threads* — message-chain prefix matching links calls into threads with
+    `thread_id`, `step_index`, `turn_index`, and `prev_action_id` columns.
+  - *Runs* — `x-agentledger-run-id`/`x-agentledger-iteration` headers, or automatic
+    grouping of fresh-context loop iterations (new session, same system-prompt hash,
+    within `AGENTLEDGER_LOOP_RUN_GAP_SECONDS`) — the Ralph-loop pattern. New
+    `GET /api/runs` aggregation endpoint.
+  - *Stuck-loop detection* — consecutive identical tool calls
+    (`AGENTLEDGER_LOOP_REPEAT_THRESHOLD`, default 3) and step budgets
+    (`AGENTLEDGER_LOOP_MAX_STEPS`) raise `loop_flags` on the call, fire a
+    `loop_flag` webhook alert, and — with `AGENTLEDGER_LOOP_ACTION=block` — return
+    HTTP 429 (`loop_detected`) before the next call burns more budget.
+
 ### Changed
 - The request body is parsed once per call instead of two-to-three times — a real
   saving on multi-megabyte coding-agent contexts.

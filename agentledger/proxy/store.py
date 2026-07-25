@@ -38,6 +38,13 @@ _MIGRATION_COLUMNS = [
     ("cache_write_tokens", "INTEGER"),
     ("thinking",           "TEXT"),
     ("framework",          "TEXT"),
+    ("thread_id",          "TEXT"),
+    ("step_index",         "INTEGER"),
+    ("turn_index",         "INTEGER"),
+    ("prev_action_id",     "TEXT"),
+    ("run_id",             "TEXT"),
+    ("iteration",          "INTEGER"),
+    ("loop_flags",         "TEXT"),   # JSON list of flags raised by THIS call
 ]
 
 
@@ -68,7 +75,20 @@ class Store(ABC):
         status_code: int = 200,
         error_detail: Optional[str] = None,
         framework: Optional[str] = None,
+        thread_id: Optional[str] = None,
+        step_index: Optional[int] = None,
+        turn_index: Optional[int] = None,
+        prev_action_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        iteration: Optional[int] = None,
+        loop_flags: Optional[str] = None,
     ) -> None: ...
+
+    @abstractmethod
+    async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Aggregate calls by run_id, newest first. Inferred one-iteration
+        runs (auto-run-*) are hidden until a second iteration confirms a loop."""
+        ...
 
     @abstractmethod
     async def get(self, action_id: str) -> Optional[dict[str, Any]]: ...
@@ -218,7 +238,10 @@ class _SqliteStore(Store):
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
                    agent_name=None, app_id=None, parent_action_id=None,
                    environment="development", handoff_from=None, handoff_to=None,
-                   status_code=200, error_detail=None, framework=None) -> None:
+                   status_code=200, error_detail=None, framework=None,
+                   thread_id=None, step_index=None, turn_index=None,
+                   prev_action_id=None, run_id=None, iteration=None,
+                   loop_flags=None) -> None:
         await self._db.execute(
             """
             INSERT INTO llm_calls
@@ -229,8 +252,10 @@ class _SqliteStore(Store):
                  system_prompt, temperature, max_tokens,
                  tool_results, cost_usd, handoff_from, handoff_to,
                  status_code, error_detail,
-                 cache_read_tokens, cache_write_tokens, thinking, framework)
-            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?, ?,?,?,?)
+                 cache_read_tokens, cache_write_tokens, thinking, framework,
+                 thread_id, step_index, turn_index, prev_action_id,
+                 run_id, iteration, loop_flags)
+            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?, ?,?,?,?, ?,?,?,?, ?,?,?)
             """,
             (
                 action_id, session_id, req.timestamp, req.model_id, req.provider,
@@ -246,9 +271,38 @@ class _SqliteStore(Store):
                 status_code, error_detail,
                 resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
                 framework,
+                thread_id, step_index, turn_index, prev_action_id,
+                run_id, iteration, loop_flags,
             ),
         )
         await self._db.commit()
+
+    async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            """
+            SELECT
+                run_id,
+                MAX(iteration)                AS iterations,
+                COUNT(*)                      AS call_count,
+                COUNT(DISTINCT session_id)    AS session_count,
+                MIN(timestamp)                AS started_at,
+                MAX(timestamp)                AS last_call_at,
+                SUM(COALESCE(cost_usd, 0))    AS total_cost_usd,
+                SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
+                SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
+                MAX(framework)                AS framework,
+                SUM(CASE WHEN loop_flags IS NOT NULL THEN 1 ELSE 0 END) AS flagged_calls
+            FROM llm_calls
+            WHERE run_id IS NOT NULL
+            GROUP BY run_id
+            HAVING run_id NOT LIKE 'auto-run-%' OR MAX(iteration) >= 2
+            ORDER BY MAX(timestamp) DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_sqlite_run_row(r) for r in rows]
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:
         async with self._db.execute(
@@ -430,6 +484,13 @@ def _sqlite_session_row(row) -> dict[str, Any]:
     return d
 
 
+def _sqlite_run_row(row) -> dict[str, Any]:
+    d = dict(row)
+    d["started_at"] = _unix_to_iso(d["started_at"])
+    d["last_call_at"] = _unix_to_iso(d["last_call_at"])
+    return d
+
+
 def _unix_to_iso(ts: float) -> str:
     return datetime.datetime.fromtimestamp(
         ts, tz=datetime.timezone.utc
@@ -517,7 +578,10 @@ class _PostgresStore(Store):
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
                    agent_name=None, app_id=None, parent_action_id=None,
                    environment="development", handoff_from=None, handoff_to=None,
-                   status_code=200, error_detail=None, framework=None) -> None:
+                   status_code=200, error_detail=None, framework=None,
+                   thread_id=None, step_index=None, turn_index=None,
+                   prev_action_id=None, run_id=None, iteration=None,
+                   loop_flags=None) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -529,7 +593,9 @@ class _PostgresStore(Store):
                      system_prompt, temperature, max_tokens,
                      tool_results, cost_usd, handoff_from, handoff_to,
                      status_code, error_detail,
-                     cache_read_tokens, cache_write_tokens, thinking, framework)
+                     cache_read_tokens, cache_write_tokens, thinking, framework,
+                     thread_id, step_index, turn_index, prev_action_id,
+                     run_id, iteration, loop_flags)
                 VALUES
                     ($1,$2,to_timestamp($3),$4,$5,
                      $6::jsonb,$7::jsonb,$8,$9::jsonb,$10,
@@ -538,7 +604,9 @@ class _PostgresStore(Store):
                      $19,$20,$21,
                      $22::jsonb,$23,$24,$25,
                      $26,$27,
-                     $28,$29,$30,$31)
+                     $28,$29,$30,$31,
+                     $32,$33,$34,$35,
+                     $36,$37,$38)
                 """,
                 uuid.UUID(action_id),
                 session_id,
@@ -555,7 +623,36 @@ class _PostgresStore(Store):
                 status_code, error_detail,
                 resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
                 framework,
+                thread_id, step_index, turn_index, prev_action_id,
+                run_id, iteration, loop_flags,
             )
+
+    async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    run_id,
+                    MAX(iteration)                AS iterations,
+                    COUNT(*)                      AS call_count,
+                    COUNT(DISTINCT session_id)    AS session_count,
+                    MIN(timestamp)                AS started_at,
+                    MAX(timestamp)                AS last_call_at,
+                    SUM(COALESCE(cost_usd, 0))    AS total_cost_usd,
+                    SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
+                    SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
+                    MAX(framework)                AS framework,
+                    SUM(CASE WHEN loop_flags IS NOT NULL THEN 1 ELSE 0 END) AS flagged_calls
+                FROM llm_calls
+                WHERE run_id IS NOT NULL
+                GROUP BY run_id
+                HAVING run_id NOT LIKE 'auto-run-%' OR MAX(iteration) >= 2
+                ORDER BY MAX(timestamp) DESC
+                LIMIT $1
+                """,
+                limit,
+            )
+        return [_pg_run_row(r) for r in rows]
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:
         async with self._pool.acquire() as conn:
@@ -735,4 +832,12 @@ def _pg_row(row) -> dict[str, Any]:
 def _pg_session_row(row) -> dict[str, Any]:
     d = dict(row)
     d["started_at"] = d["started_at"].isoformat()
+    return d
+
+
+def _pg_run_row(row) -> dict[str, Any]:
+    d = dict(row)
+    d["started_at"] = d["started_at"].isoformat()
+    d["last_call_at"] = d["last_call_at"].isoformat()
+    d["total_cost_usd"] = float(d["total_cost_usd"] or 0)
     return d

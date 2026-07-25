@@ -15,10 +15,14 @@ Caller-supplied headers (all optional):
     x-agentledger-environment      prod / staging / development (default)
     x-agentledger-handoff-from     Agent handing off control
     x-agentledger-handoff-to       Agent receiving control
+    x-agentledger-framework        Framework making the call (else fingerprinted)
+    x-agentledger-run-id           Loop run grouping (else inferred for fresh-context loops)
+    x-agentledger-iteration        Iteration within the run
 
 Endpoints:
     GET  /                             Dashboard (live via WebSocket)
     GET  /api/sessions                 List recent sessions
+    GET  /api/runs                     List loop runs (explicit or inferred)
     GET  /api/search?q=...             Full-text search across calls
     GET  /explain/{action_id}          Single captured call
     GET  /session/{session_id}         All calls in a run, ordered by time
@@ -61,6 +65,7 @@ from .auth import (
 from .dashboard import get_dashboard_html
 from .detect import detect_agent
 from .export import build_export, render_html_report
+from .loops import DEFAULT_REPEAT_THRESHOLD, DEFAULT_RUN_GAP_SECONDS, LoopTracker
 from .mcp import handle_mcp
 from .normalize import (
     CanonicalRequest,
@@ -90,6 +95,8 @@ _AL_HEADERS = {
     "x-agentledger-handoff-from",
     "x-agentledger-handoff-to",
     "x-agentledger-framework",
+    "x-agentledger-run-id",
+    "x-agentledger-iteration",
     "x-agentledger-ingest-key",
     "x-agentledger-api-key",
 }
@@ -176,10 +183,21 @@ def create_app(
     retention_days: Optional[float] = None,
     retention_interval_seconds: float = 3600.0,
     audit_enabled: bool = True,
+    loop_action: str = "warn",   # "warn" | "block" | "off"
+    loop_max_steps: Optional[int] = None,
+    loop_repeat_threshold: int = DEFAULT_REPEAT_THRESHOLD,
+    loop_run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
 ) -> FastAPI:
 
     broadcaster = _Broadcaster()
     _rate_limiter = RateLimiter(rate_limit_config or RateLimitConfig())
+    # Loop/run inference over the capture stream + optional in-path guard.
+    _loop_action = loop_action if loop_action in ("warn", "block", "off") else "warn"
+    _loop_tracker = LoopTracker(
+        repeat_threshold=loop_repeat_threshold,
+        run_gap_seconds=loop_run_gap_seconds,
+        max_steps=loop_max_steps,
+    )
     _alert_config = alert_config or AlertConfig(
         webhook_url=None, cost_per_call=None,
         latency_ms=None, error_rate=None, daily_spend=None,
@@ -239,11 +257,19 @@ def create_app(
         critical part (and counts the capture); span/broadcast/alerts are best-effort."""
         # Apply governance here so every sink (store, OTel span, dashboard) sees the
         # redacted/leveled copy. In async mode this runs off the request hot path.
+        # Loop/run inference must run BEFORE the capture policy — metadata level
+        # empties req.messages, and the chain hashes need the raw content.
+        loop_fields = (
+            _loop_tracker.annotate(job.action_id, job.req, job.resp, job.meta)
+            if _loop_action != "off" and job.status_code == 200
+            else {}
+        )
         apply_capture_policy(job.req, job.resp, _capture_level, _redactor)
         store = app.state.store
         await store.save(
             job.action_id, job.req, job.resp,
-            status_code=job.status_code, error_detail=job.error_detail, **job.meta,
+            status_code=job.status_code, error_detail=job.error_detail,
+            **{**job.meta, **loop_fields},
         )
         app.state.capture_persisted += 1
         with suppress(Exception):
@@ -261,6 +287,19 @@ def create_app(
                 _alert_config, store, job.resp, job.action_id,
                 job.meta.get("session_id"), job.meta.get("agent_name"), job.status_code,
             )
+        if loop_fields.get("loop_flags") and _alert_config.webhook_url:
+            with suppress(Exception):
+                from .alerts import _fire
+                await _fire(_alert_config.webhook_url, {
+                    "type": "loop_flag",
+                    "message": f"Loop health flags raised: {loop_fields['loop_flags']}",
+                    "flags": json.loads(loop_fields["loop_flags"]),
+                    "action_id": job.action_id,
+                    "session_id": job.meta.get("session_id"),
+                    "agent_name": job.meta.get("agent_name"),
+                    "thread_id": loop_fields.get("thread_id"),
+                    "step_index": loop_fields.get("step_index"),
+                })
 
     async def _capture_worker(app: FastAPI) -> None:
         """Drain the capture queue, persisting each job off the request hot path."""
@@ -432,6 +471,12 @@ def create_app(
         await _require(request, ROLE_VIEWER)
         sessions = await request.app.state.store.list_sessions()
         return JSONResponse(sessions)
+
+    @app.get("/api/runs")
+    async def api_runs(request: Request) -> JSONResponse:
+        await _require(request, ROLE_VIEWER)
+        runs = await request.app.state.store.list_runs()
+        return JSONResponse(runs)
 
     @app.delete("/api/sessions/{session_id}")
     async def delete_session(session_id: str, request: Request) -> JSONResponse:
@@ -610,6 +655,17 @@ def create_app(
             if rate_error:
                 return JSONResponse(
                     {"error": {"type": "rate_limit_exceeded", "message": rate_error}},
+                    status_code=429,
+                )
+
+        # ── Loop circuit breaker ─────────────────────────────────────────────
+        # Only in block mode: warn mode surfaces flags via alerts/dashboard,
+        # and detection state comes from already-captured calls (cheap lookup).
+        if is_llm_path and _loop_action == "block":
+            loop_error = _loop_tracker.check_block(meta.get("session_id"))
+            if loop_error:
+                return JSONResponse(
+                    {"error": {"type": "loop_detected", "message": loop_error}},
                     status_code=429,
                 )
 
@@ -902,7 +958,16 @@ def _extract_meta(request: Request, body_json: Optional[dict] = None) -> dict:
         "handoff_from":     h.get("x-agentledger-handoff-from"),
         "handoff_to":       h.get("x-agentledger-handoff-to"),
         "framework":        h.get("x-agentledger-framework") or detected["framework"],
+        "run_id":           h.get("x-agentledger-run-id"),
+        "iteration":        _int_or_none(h.get("x-agentledger-iteration")),
     }
+
+
+def _int_or_none(value) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _response_headers(

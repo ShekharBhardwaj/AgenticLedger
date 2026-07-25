@@ -1,0 +1,291 @@
+"""
+Loop & run inference from raw LLM traffic.
+
+The proxy only sees individual LLM calls, but agentic workloads have
+structure the calls themselves reveal:
+
+* **ReAct threads** — call N+1 of a tool-use loop contains call N's messages
+  plus the assistant reply and tool results. Hashing each message and
+  matching known chains as prefixes stitches calls into threads with a
+  step index and an explicit prev link, with no client cooperation.
+
+* **Ralph runs** — fresh-context loop iterations (`while :; do claude -p ...`)
+  share NO message prefix; each spawn is a new session. They do share a
+  system prompt. A new session whose system-prompt hash matches a recently
+  seen one is grouped as the next iteration of the same run.
+
+* **Loop health** — a thread issuing the same tool call with the same
+  arguments over and over is stuck. Flags are recorded per call, alerts can
+  fire, and (opt-in) the proxy can circuit-break the session with a 429
+  before more budget burns.
+
+Explicit headers always win over inference: x-agentledger-run-id and
+x-agentledger-iteration pin run grouping exactly.
+
+All state is in-memory and best-effort: a proxy restart forgets chains
+(calls then start new threads), and multi-replica deployments need sticky
+routing for coherent inference. Inference metadata is never a security
+boundary.
+"""
+
+import hashlib
+import json
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Optional
+
+# Consecutive identical tool-call signatures before a thread is flagged stuck.
+DEFAULT_REPEAT_THRESHOLD = 3
+
+# Seconds between fresh-context spawns that still count as the same run.
+DEFAULT_RUN_GAP_SECONDS = 900.0
+
+_MAX_SESSIONS = 10_000       # LRU bound on tracked sessions
+_MAX_THREADS_PER_SESSION = 64
+_HASH_CONTENT_CAP = 4_000    # per-message bytes hashed — enough to disambiguate
+
+
+def _digest(value: object) -> str:
+    try:
+        raw = json.dumps(value, sort_keys=True, default=str)[:_HASH_CONTENT_CAP]
+    except Exception:
+        raw = str(value)[:_HASH_CONTENT_CAP]
+    return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+
+def _message_chain(messages: list) -> tuple[str, ...]:
+    return tuple(
+        _digest({"role": m.get("role"), "content": m.get("content"),
+                 "tool_calls": m.get("tool_calls")})
+        if isinstance(m, dict) else _digest(m)
+        for m in messages
+    )
+
+
+def _count_turns(messages: list) -> int:
+    """User turns — user messages that aren't pure tool-result carriers."""
+    turns = 0
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if (
+            isinstance(content, list) and content
+            and all(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+        ):
+            continue
+        turns += 1
+    return turns
+
+
+def _system_digest(req) -> Optional[str]:
+    """Stable hash of the system prompt in any wire shape, or None."""
+    if req.system_prompt:
+        return _digest(req.system_prompt)
+    for m in req.messages[:1]:
+        if isinstance(m, dict) and m.get("role") == "system":
+            return _digest(m.get("content"))
+    return None
+
+
+def _tool_signature(tool_calls: Optional[list]) -> Optional[tuple[str, ...]]:
+    if not tool_calls:
+        return None
+    return tuple(
+        f"{tc.get('name')}:{_digest(tc.get('arguments'))}"
+        for tc in tool_calls
+        if isinstance(tc, dict)
+    ) or None
+
+
+@dataclass
+class _Thread:
+    thread_id: str
+    chain: tuple[str, ...]
+    step_index: int
+    last_action_id: str
+    last_tool_sig: Optional[tuple[str, ...]] = None
+    repeat_streak: int = 1
+
+
+@dataclass
+class _SessionState:
+    threads: list = field(default_factory=list)
+    run_id: Optional[str] = None
+    iteration: Optional[int] = None
+    flags: set = field(default_factory=set)
+    last_seen: float = 0.0
+
+
+class LoopTracker:
+    """Stateful inference over the capture stream. One instance per app.
+
+    Not thread-safe by design: the proxy calls annotate() from a single event
+    loop (sync capture) or a single FIFO worker (async capture), never
+    concurrently.
+    """
+
+    def __init__(
+        self,
+        repeat_threshold: int = DEFAULT_REPEAT_THRESHOLD,
+        run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
+        max_steps: Optional[int] = None,
+        clock=time.time,
+    ) -> None:
+        self._repeat_threshold = repeat_threshold
+        self._run_gap = run_gap_seconds
+        self._max_steps = max_steps
+        self._clock = clock
+        self._sessions: dict[str, _SessionState] = {}
+        # (app-or-framework, system-prompt hash) → run grouping state
+        self._run_sigs: dict[tuple, dict] = {}
+
+    # ── capture-time annotation ──────────────────────────────────────────────
+
+    def annotate(self, action_id: str, req, resp, meta: dict) -> dict:
+        """Infer loop fields for one captured call. Returns the columns to
+        store: thread_id, step_index, turn_index, prev_action_id, run_id,
+        iteration, loop_flags. Never raises."""
+        try:
+            return self._annotate(action_id, req, resp, meta)
+        except Exception:
+            return {
+                "thread_id": None, "step_index": None, "turn_index": None,
+                "prev_action_id": None,
+                "run_id": meta.get("run_id"), "iteration": _as_int(meta.get("iteration")),
+                "loop_flags": None,
+            }
+
+    def _annotate(self, action_id: str, req, resp, meta: dict) -> dict:
+        now = self._clock()
+        session_id = meta.get("session_id") or "-"
+        state = self._session(session_id)
+        new_session = state.last_seen == 0.0
+        state.last_seen = now
+
+        # ── Run grouping (explicit headers win; else fresh-context inference)
+        run_id = meta.get("run_id")
+        iteration = _as_int(meta.get("iteration"))
+        if run_id is None:
+            if new_session:
+                self._assign_run(state, req, meta, now)
+            run_id = state.run_id
+            if iteration is None:
+                iteration = state.iteration
+        else:
+            state.run_id, state.iteration = run_id, iteration
+
+        # ── Thread stitching via message-chain prefix match
+        chain = _message_chain(req.messages)
+        thread = self._match_thread(state, chain)
+        new_flags: list[str] = []
+
+        if thread is None:
+            thread = _Thread(
+                thread_id=f"t-{action_id[:13]}", chain=chain,
+                step_index=1, last_action_id=action_id,
+            )
+            state.threads.append(thread)
+            del state.threads[:-_MAX_THREADS_PER_SESSION]
+            prev_action_id = None
+        else:
+            prev_action_id = thread.last_action_id
+            thread.step_index += 1
+            thread.chain = chain
+            thread.last_action_id = action_id
+
+        # ── Stuck-loop detection: identical tool-call signature streaks
+        sig = _tool_signature(resp.tool_calls)
+        if sig is not None and sig == thread.last_tool_sig:
+            thread.repeat_streak += 1
+            if thread.repeat_streak >= self._repeat_threshold:
+                new_flags.append("repeat_tool_call")
+        else:
+            thread.repeat_streak = 1
+        thread.last_tool_sig = sig
+
+        if self._max_steps is not None and thread.step_index >= self._max_steps:
+            new_flags.append("step_budget_exceeded")
+
+        state.flags.update(new_flags)
+
+        return {
+            "thread_id": thread.thread_id,
+            "step_index": thread.step_index,
+            "turn_index": _count_turns(req.messages),
+            "prev_action_id": prev_action_id,
+            "run_id": run_id,
+            "iteration": iteration,
+            "loop_flags": json.dumps(new_flags) if new_flags else None,
+        }
+
+    # ── request-time circuit breaker ─────────────────────────────────────────
+
+    def check_block(self, session_id: Optional[str]) -> Optional[str]:
+        """Return a block reason when the session tripped a loop guard.
+        Cheap dict lookups only — safe on the hot path."""
+        state = self._sessions.get(session_id or "-")
+        if state is None:
+            return None
+        if "repeat_tool_call" in state.flags:
+            return (
+                f"Loop guard: the agent issued the same tool call with identical "
+                f"arguments {self._repeat_threshold}+ times in a row. Session: {session_id}"
+            )
+        if "step_budget_exceeded" in state.flags:
+            return (
+                f"Loop guard: a thread in this session exceeded the "
+                f"{self._max_steps}-step budget. Session: {session_id}"
+            )
+        return None
+
+    # ── internals ────────────────────────────────────────────────────────────
+
+    def _session(self, session_id: str) -> _SessionState:
+        state = self._sessions.get(session_id)
+        if state is None:
+            if len(self._sessions) >= _MAX_SESSIONS:
+                oldest = min(self._sessions, key=lambda k: self._sessions[k].last_seen)
+                del self._sessions[oldest]
+            state = _SessionState()
+            self._sessions[session_id] = state
+        return state
+
+    def _assign_run(self, state: _SessionState, req, meta: dict, now: float) -> None:
+        """Group fresh-context sessions sharing a system prompt into a run."""
+        sys_digest = _system_digest(req)
+        if sys_digest is None:
+            return
+        key = (meta.get("app_id") or meta.get("framework") or "-", sys_digest)
+        sig = self._run_sigs.get(key)
+        if sig is not None and now - sig["last_seen"] <= self._run_gap:
+            sig["iteration"] += 1
+            sig["last_seen"] = now
+        else:
+            # The auto- prefix marks inferred runs so read paths can hide
+            # one-iteration "runs" (every one-off session starts one) until a
+            # second fresh-context iteration confirms an actual loop.
+            sig = {"run_id": f"auto-run-{uuid.uuid4().hex[:12]}", "iteration": 1, "last_seen": now}
+            self._run_sigs[key] = sig
+        state.run_id = sig["run_id"]
+        state.iteration = sig["iteration"]
+
+    @staticmethod
+    def _match_thread(state: _SessionState, chain: tuple[str, ...]) -> Optional[_Thread]:
+        best: Optional[_Thread] = None
+        for t in state.threads:
+            if (
+                len(t.chain) <= len(chain)
+                and chain[: len(t.chain)] == t.chain
+                and (best is None or len(t.chain) > len(best.chain))
+            ):
+                best = t
+        return best
+
+
+def _as_int(value) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None

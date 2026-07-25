@@ -215,6 +215,7 @@ Every LLM call is stored with:
 | `GET` | `/` | Live dashboard |
 | `WS` | `/ws` | WebSocket stream — powers live dashboard updates |
 | `GET` | `/api/sessions` | List recent sessions with aggregated stats |
+| `GET` | `/api/runs` | List loop runs (explicit or auto-inferred) with iterations, cost, and flagged-call counts |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |
@@ -325,6 +326,15 @@ Once connected, you can ask your assistant things like:
 | `AGENTLEDGER_RATE_LIMIT_AGENT_RPM` | _(none)_ | Max requests per minute per `agent_name`. |
 | `AGENTLEDGER_RATE_LIMIT_USER_RPM` | _(none)_ | Max requests per minute per `user_id`. |
 
+**Loop engine** — every call is stitched into ReAct threads (`thread_id`, `step_index`, `prev_action_id`) and fresh-context loop iterations are grouped into runs, with stuck-loop detection:
+
+| Variable | Default | Description |
+|---|---|---|
+| `AGENTLEDGER_LOOP_ACTION` | `warn` | `warn` records `loop_flags` and fires a `loop_flag` webhook alert; `block` additionally returns HTTP 429 (`loop_detected`) for a session that tripped a guard; `off` disables inference. |
+| `AGENTLEDGER_LOOP_REPEAT_THRESHOLD` | `3` | Consecutive identical tool calls (same tool, same arguments) before a thread is flagged stuck. |
+| `AGENTLEDGER_LOOP_MAX_STEPS` | _(none)_ | Flag (and in block mode, stop) threads that exceed this many ReAct steps. |
+| `AGENTLEDGER_LOOP_RUN_GAP_SECONDS` | `900` | Max gap between fresh-context spawns (same system prompt) that still count as iterations of one run. |
+
 **Alerts** — POST to your webhook when a threshold is breached (does not block calls — see [Alerts](#alerts)):
 
 | Variable | Default | Description |
@@ -434,6 +444,8 @@ Pass these from your agent on each LLM call. All optional. They enrich captured 
 | `x-agentledger-handoff-from` | _(none)_ | Agent handing off control (e.g. `"orchestrator"`). Renders as a directed edge in the Flow DAG. |
 | `x-agentledger-handoff-to` | _(none)_ | Agent receiving control (e.g. `"researcher"`). Renders as a directed edge in the Flow DAG. |
 | `x-agentledger-framework` | _(auto-detected)_ | Framework/tool making the call (e.g. `"langgraph"`, `"bmad"`). When absent, well-known clients are fingerprinted automatically (Claude Code, LiteLLM). |
+| `x-agentledger-run-id` | _(auto-inferred)_ | Groups sessions into a loop run (e.g. a Ralph overnight run). When absent, fresh-context sessions sharing a system prompt within `AGENTLEDGER_LOOP_RUN_GAP_SECONDS` are grouped automatically. |
+| `x-agentledger-iteration` | _(auto-inferred)_ | Iteration number within the run. |
 
 **Single agent — fully annotated:**
 ```python

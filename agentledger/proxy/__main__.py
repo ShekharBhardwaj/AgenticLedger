@@ -137,6 +137,10 @@ app = create_app(
     ),
     retention_days=_float_env("AGENTLEDGER_RETENTION_DAYS"),
     audit_enabled=os.environ.get("AGENTLEDGER_AUDIT_LOG", "1").lower() not in ("0", "false", "no", "off"),
+    loop_action=os.environ.get("AGENTLEDGER_LOOP_ACTION", "warn"),
+    loop_max_steps=int(os.environ["AGENTLEDGER_LOOP_MAX_STEPS"]) if os.environ.get("AGENTLEDGER_LOOP_MAX_STEPS") else None,
+    loop_repeat_threshold=int(os.environ.get("AGENTLEDGER_LOOP_REPEAT_THRESHOLD", "3")),
+    loop_run_gap_seconds=float(os.environ.get("AGENTLEDGER_LOOP_RUN_GAP_SECONDS", "900")),
 )
 
 _logger = logging.getLogger("agentledger")

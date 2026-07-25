@@ -1,0 +1,149 @@
+"""Unit tests for agentledger/proxy/loops.py — loop & run inference.
+
+LoopTracker stitches raw calls into ReAct threads (message-chain prefix
+matching), groups fresh-context sessions into Ralph runs (shared system-prompt
+hash within a time gap), counts user turns, and raises stuck-loop flags.
+"""
+
+import json
+
+from agentledger.proxy.loops import LoopTracker
+from agentledger.proxy.normalize import CanonicalRequest, CanonicalResponse
+
+
+def _req(messages, system_prompt=None, ts=0.0):
+    return CanonicalRequest(
+        messages=messages, model_id="gpt-4o", provider="openai",
+        timestamp=ts, system_prompt=system_prompt,
+    )
+
+
+def _resp(tool_calls=None):
+    return CanonicalResponse(
+        content="ok", tool_calls=tool_calls, stop_reason="stop",
+        tokens_in=1, tokens_out=1, latency_ms=1.0,
+    )
+
+
+def _meta(session="s1", **kw):
+    return {"session_id": session, "run_id": None, "iteration": None, **kw}
+
+
+U1 = {"role": "user", "content": "find the bug"}
+A1 = {"role": "assistant", "content": None,
+      "tool_calls": [{"id": "c1", "function": {"name": "grep", "arguments": "{\"q\":1}"}}]}
+T1 = {"role": "tool", "tool_call_id": "c1", "content": "match at line 3"}
+A2 = {"role": "assistant", "content": None,
+      "tool_calls": [{"id": "c2", "function": {"name": "read", "arguments": "{\"f\":2}"}}]}
+T2 = {"role": "tool", "tool_call_id": "c2", "content": "file contents"}
+
+
+def test_react_chain_stitched_into_one_thread():
+    tracker = LoopTracker()
+    f1 = tracker.annotate("a1", _req([U1]), _resp([{"name": "grep", "arguments": "{}"}]), _meta())
+    f2 = tracker.annotate("a2", _req([U1, A1, T1]), _resp([{"name": "read", "arguments": "{}"}]), _meta())
+    f3 = tracker.annotate("a3", _req([U1, A1, T1, A2, T2]), _resp(), _meta())
+
+    assert f1["thread_id"] == f2["thread_id"] == f3["thread_id"]
+    assert (f1["step_index"], f2["step_index"], f3["step_index"]) == (1, 2, 3)
+    assert f1["prev_action_id"] is None
+    assert f2["prev_action_id"] == "a1"
+    assert f3["prev_action_id"] == "a2"
+
+
+def test_diverging_history_starts_a_new_thread():
+    tracker = LoopTracker()
+    f1 = tracker.annotate("a1", _req([U1]), _resp(), _meta())
+    other = {"role": "user", "content": "different conversation"}
+    f2 = tracker.annotate("a2", _req([other]), _resp(), _meta())
+    assert f1["thread_id"] != f2["thread_id"]
+    assert f2["step_index"] == 1
+
+
+def test_turn_index_counts_real_user_turns_only():
+    tracker = LoopTracker()
+    tool_result_msg = {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "c1", "content": "out"},
+    ]}
+    f = tracker.annotate(
+        "a1",
+        _req([U1, {"role": "assistant", "content": "x"}, tool_result_msg,
+              {"role": "user", "content": "follow-up"}]),
+        _resp(), _meta(),
+    )
+    assert f["turn_index"] == 2  # U1 + follow-up; the tool_result carrier doesn't count
+
+
+def test_repeat_tool_call_flag_and_block():
+    tracker = LoopTracker(repeat_threshold=3)
+    same = [{"name": "grep", "arguments": "{\"q\": \"bug\"}"}]
+    msgs = [U1]
+    flags = []
+    for i in range(3):
+        f = tracker.annotate(f"a{i}", _req(list(msgs)), _resp(list(same)), _meta())
+        flags.append(f["loop_flags"])
+        msgs = msgs + [dict(A1), dict(T1)] * 1  # extend so calls stay in-thread
+        msgs[-1] = {**T1, "content": f"result {i}"}  # results differ; tool call doesn't
+
+    assert flags[0] is None and flags[1] is None
+    assert json.loads(flags[2]) == ["repeat_tool_call"]
+    assert "same tool call" in tracker.check_block("s1")
+    assert tracker.check_block("other-session") is None
+
+
+def test_step_budget_flag():
+    tracker = LoopTracker(max_steps=2)
+    msgs = [U1]
+    tracker.annotate("a1", _req(list(msgs)), _resp(), _meta())
+    f2 = tracker.annotate("a2", _req(msgs + [A1, T1]), _resp(), _meta())
+    assert "step_budget_exceeded" in (f2["loop_flags"] or "")
+    assert "step budget" in tracker.check_block("s1")
+
+
+def test_ralph_sessions_grouped_into_one_run():
+    """Fresh-context spawns (new session, same system prompt) within the gap
+    are grouped as iterations of one run."""
+    now = [1000.0]
+    tracker = LoopTracker(run_gap_seconds=600, clock=lambda: now[0])
+    sys_prompt = "You are working from PROMPT.md. Complete one task."
+
+    f1 = tracker.annotate("a1", _req([U1], system_prompt=sys_prompt), _resp(), _meta("sess-1"))
+    now[0] += 120
+    f2 = tracker.annotate("a2", _req([U1], system_prompt=sys_prompt), _resp(), _meta("sess-2"))
+    now[0] += 120
+    f3 = tracker.annotate("a3", _req([U1], system_prompt=sys_prompt), _resp(), _meta("sess-3"))
+
+    assert f1["run_id"] == f2["run_id"] == f3["run_id"]
+    assert f1["run_id"].startswith("auto-run-")
+    assert (f1["iteration"], f2["iteration"], f3["iteration"]) == (1, 2, 3)
+
+
+def test_ralph_grouping_expires_after_gap():
+    now = [1000.0]
+    tracker = LoopTracker(run_gap_seconds=600, clock=lambda: now[0])
+    sys_prompt = "loop prompt"
+    f1 = tracker.annotate("a1", _req([U1], system_prompt=sys_prompt), _resp(), _meta("sess-1"))
+    now[0] += 3600  # beyond the gap — a new run begins
+    f2 = tracker.annotate("a2", _req([U1], system_prompt=sys_prompt), _resp(), _meta("sess-2"))
+    assert f1["run_id"] != f2["run_id"]
+    assert f2["iteration"] == 1
+
+
+def test_explicit_run_headers_override_inference():
+    tracker = LoopTracker()
+    f = tracker.annotate(
+        "a1", _req([U1], system_prompt="x"), _resp(),
+        _meta("s1", run_id="my-run", iteration=7),
+    )
+    assert f["run_id"] == "my-run"
+    assert f["iteration"] == 7
+
+
+def test_annotate_never_raises_on_garbage():
+    tracker = LoopTracker()
+    weird = _req([None, "raw", {"role": None, "content": {"a": object()}}])
+    fields = tracker.annotate("a1", weird, _resp(), {"session_id": None})
+    assert set(fields) == {
+        "thread_id", "step_index", "turn_index", "prev_action_id",
+        "run_id", "iteration", "loop_flags",
+    }

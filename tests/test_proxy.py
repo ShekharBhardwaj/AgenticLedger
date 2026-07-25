@@ -471,3 +471,105 @@ def test_framework_header_stripped_before_upstream(proxy):
     )
     fwd = client.upstream.last_request.headers
     assert "x-agentledger-framework" not in fwd
+
+
+# ── Loop engine: thread stitching, runs, circuit breaker ──────────────────────
+
+_U = {"role": "user", "content": "find the bug"}
+_A = {"role": "assistant", "content": None,
+      "tool_calls": [{"id": "c1", "type": "function",
+                      "function": {"name": "grep", "arguments": "{\"q\":1}"}}]}
+_T = {"role": "tool", "tool_call_id": "c1", "content": "match at line 3"}
+
+
+def test_react_calls_stitched_into_thread(proxy):
+    """Two calls where the second extends the first's history share a thread
+    with linked steps — no headers required."""
+    from .conftest import openai_tool_call
+
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response(
+        tool_calls=[openai_tool_call()],
+    )))
+
+    client.post("/v1/chat/completions",
+                json={"model": "gpt-4o", "messages": [_U]},
+                headers={"x-agentledger-session-id": "s-loop"})
+    client.post("/v1/chat/completions",
+                json={"model": "gpt-4o", "messages": [_U, _A, _T]},
+                headers={"x-agentledger-session-id": "s-loop"})
+
+    rows = client.get("/session/s-loop").json()
+    assert len(rows) == 2
+    assert rows[0]["thread_id"] == rows[1]["thread_id"]
+    assert (rows[0]["step_index"], rows[1]["step_index"]) == (1, 2)
+    assert rows[1]["prev_action_id"] == rows[0]["action_id"]
+
+
+def test_explicit_run_headers_stored_and_listed(proxy):
+    """x-agentledger-run-id / -iteration are stored and aggregated by /api/runs."""
+    client = proxy(handler=_ok_handler())
+
+    for i in (1, 2):
+        client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
+            "x-agentledger-session-id": f"iter-{i}",
+            "x-agentledger-run-id": "overnight-1",
+            "x-agentledger-iteration": str(i),
+        })
+
+    runs = client.get("/api/runs").json()
+    assert len(runs) == 1
+    run = runs[0]
+    assert run["run_id"] == "overnight-1"
+    assert run["iterations"] == 2
+    assert run["call_count"] == 2
+    assert run["session_count"] == 2
+
+
+def test_loop_circuit_breaker_blocks_after_repeat(proxy):
+    """In block mode, a session that repeats the identical tool call 3x is
+    429'd before the next call reaches the upstream."""
+    from .conftest import openai_tool_call
+
+    client = proxy(
+        handler=lambda r: httpx.Response(200, json=openai_response(
+            tool_calls=[openai_tool_call(name="grep", arguments='{"q":"bug"}')],
+        )),
+        loop_action="block",
+    )
+
+    msgs = [_U]
+    for i in range(3):
+        resp = client.post("/v1/chat/completions",
+                           json={"model": "gpt-4o", "messages": list(msgs)},
+                           headers={"x-agentledger-session-id": "s-stuck"})
+        assert resp.status_code == 200
+        msgs = msgs + [dict(_A), {**_T, "content": f"result {i}"}]
+
+    forwarded_before = len(client.upstream.requests)
+    resp = client.post("/v1/chat/completions",
+                       json={"model": "gpt-4o", "messages": list(msgs)},
+                       headers={"x-agentledger-session-id": "s-stuck"})
+    assert resp.status_code == 429
+    assert resp.json()["error"]["type"] == "loop_detected"
+    assert len(client.upstream.requests) == forwarded_before  # never reached upstream
+
+
+def test_loop_warn_mode_never_blocks(proxy):
+    """Default warn mode records flags but lets every call through."""
+    from .conftest import openai_tool_call
+
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response(
+        tool_calls=[openai_tool_call(name="grep", arguments='{"q":"bug"}')],
+    )))
+
+    msgs = [_U]
+    for i in range(4):
+        resp = client.post("/v1/chat/completions",
+                           json={"model": "gpt-4o", "messages": list(msgs)},
+                           headers={"x-agentledger-session-id": "s-warn"})
+        assert resp.status_code == 200
+        msgs = msgs + [dict(_A), {**_T, "content": f"result {i}"}]
+
+    rows = client.get("/session/s-warn").json()
+    flagged = [r for r in rows if r["loop_flags"]]
+    assert flagged, "repeat flag should be recorded in warn mode"
