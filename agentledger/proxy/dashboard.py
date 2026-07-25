@@ -575,7 +575,14 @@ function escHtml(str) {
 
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  // Forward the page's credential (?api_key= / ?token=) so /ws passes auth.
+  const pageQS = new URLSearchParams(location.search);
+  const creds = new URLSearchParams();
+  for (const k of ['api_key', 'token']) {
+    if (pageQS.get(k)) creds.set(k, pageQS.get(k));
+  }
+  const qs = creds.toString();
+  const ws = new WebSocket(`${proto}://${location.host}/ws${qs ? '?' + qs : ''}`);
   const dot = document.getElementById('live-dot');
 
   ws.onopen = () => dot.classList.add('connected');

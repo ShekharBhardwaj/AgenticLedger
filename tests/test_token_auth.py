@@ -7,6 +7,8 @@ and bootstraps token creation; tokens grant their own role (viewer < editor < ad
 import time
 
 import httpx
+import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from agentledger.proxy.app import _token_is_valid
 from agentledger.proxy.auth import (
@@ -179,3 +181,48 @@ def test_endpoints_open_when_auth_disabled(proxy):
     assert client.get("/api/sessions").status_code == 200
     # token management is reachable too (but tokens are not enforced while auth is off)
     assert client.get("/api/tokens").status_code == 200
+
+
+# ── WebSocket auth (/ws) ──────────────────────────────────────────────────────
+
+def test_ws_open_when_auth_disabled(proxy):
+    """With no master key, the live-events socket is open (dev UX)."""
+    client = proxy()
+    with client.websocket_connect("/ws"):
+        pass
+
+
+def test_ws_rejects_missing_or_invalid_credential(proxy, monkeypatch):
+    """When auth is enabled, unauthenticated connects are closed with 1008."""
+    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    client = proxy()
+    for url in ("/ws", "/ws?api_key=wrong", "/ws?token=agl_not-a-real-token"):
+        with pytest.raises(WebSocketDisconnect) as exc, client.websocket_connect(url):
+            pass
+        assert exc.value.code == 1008, url
+
+
+def test_ws_accepts_master_key_and_viewer_token(proxy, monkeypatch):
+    """The same credentials the dashboard uses (?api_key= / ?token= / Bearer) work."""
+    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    client = proxy()
+    viewer = _mint(client, "ws-viewer", ROLE_VIEWER)
+    with client.websocket_connect("/ws?api_key=master-key"):
+        pass
+    with client.websocket_connect(f"/ws?token={viewer}"):
+        pass
+    with client.websocket_connect("/ws", headers=_bearer(viewer)):
+        pass
+
+
+def test_ws_authenticated_client_receives_call_events(proxy, monkeypatch):
+    """An authenticated socket still gets the live call broadcast."""
+    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
+    with client.websocket_connect("/ws?api_key=master-key") as ws:
+        client.post("/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+                    headers={"x-agentledger-session-id": "s-ws"})
+        event = ws.receive_json()
+    assert event["type"] == "call"
+    assert event["session_id"] == "s-ws"

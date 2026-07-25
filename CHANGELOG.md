@@ -56,6 +56,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gpt-4o-mini` was billed at `gpt-4o` rates). Newly captured costs will be lower/accurate.
 
 ### Security
+- **The live-events WebSocket (`/ws`) now requires auth.** When `AGENTLEDGER_API_KEY`
+  is set, `/ws` accepts the same credentials as the dashboard and API (master key or
+  API token via `?api_key=`/`?token=`, `Authorization: Bearer`, or
+  `x-agentledger-token`) and closes unauthenticated connects with code 1008.
+  Previously any client could connect and observe live call metadata (action ids,
+  session ids, status codes). The dashboard forwards its page credential to the
+  socket automatically.
 - Optional **proxy-ingest key** (`AGENTLEDGER_INGEST_KEY`): when set, the proxy only
   forwards requests that carry a matching `x-agentledger-ingest-key`, closing the open
   relay. Off by default to preserve the zero-config quickstart, with a loud startup
@@ -100,7 +107,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `x-agentledger-token`, or `?token=`. Read endpoints require `viewer`, session delete
   requires `editor`, token management requires `admin`. Auth is enforced only when
   `AGENTLEDGER_API_KEY` is set (the master key grants `admin` and bootstraps tokens).
-  `/ws` dashboard-credential propagation is deliberately deferred (see ROADMAP.md).
 - `/readyz` readiness probe (runs a store `SELECT 1`; returns 503 when the store is
   unreachable) so load balancers and k8s can gate traffic. `/health` remains a pure
   liveness check that never touches the store.

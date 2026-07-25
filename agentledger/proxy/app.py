@@ -418,6 +418,12 @@ def create_app(
 
     @app.websocket("/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:
+        # Live events carry call metadata (session ids, status codes) — require
+        # the same credential as the dashboard when auth is configured. Closing
+        # before accept rejects the handshake with 1008 (policy violation).
+        if _auth_enabled and await _authenticate(websocket) is None:
+            await websocket.close(code=1008)
+            return
         await broadcaster.connect(websocket)
         try:
             while True:
