@@ -1,4 +1,4 @@
-<!-- Thanks for contributing to AgentLedger! Please fill this out so reviews go fast. -->
+<!-- Thanks for contributing to Agentic Ledger! Please fill this out so reviews go fast. -->
 
 ## What & why
 

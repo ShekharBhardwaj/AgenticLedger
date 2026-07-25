@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AgentLedger are documented here.
+All notable changes to Agentic Ledger are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -106,8 +106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!--
 ## [0.1.7] - YYYY-MM-DD
 Older releases predate this changelog. See the GitHub Releases page for history:
-https://github.com/ShekharBhardwaj/AgentLedger/releases
+https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgentLedger/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/ShekharBhardwaj/AgentLedger/compare/v0.1.7...v0.2.0
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.1.7...v0.2.0

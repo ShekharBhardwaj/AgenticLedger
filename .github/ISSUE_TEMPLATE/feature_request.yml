@@ -14,7 +14,7 @@ body:
     id: proposal
     attributes:
       label: Proposed solution
-      description: What would you like AgentLedger to do?
+      description: What would you like Agentic Ledger to do?
     validations:
       required: true
   - type: textarea

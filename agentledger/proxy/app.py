@@ -1,5 +1,5 @@
 """
-AgentLedger proxy — sits between the agent and LiteLLM (or any OpenAI-compatible
+Agentic Ledger proxy — sits between the agent and LiteLLM (or any OpenAI-compatible
 upstream).
 
 Intercepts POST /v1/chat/completions and POST /v1/messages, assigns an action_id,
@@ -226,7 +226,7 @@ def create_app(
         await app.state.store.close()
         await app.state.client.aclose()
 
-    app = FastAPI(title="AgentLedger Proxy", lifespan=lifespan)
+    app = FastAPI(title="Agentic Ledger Proxy", lifespan=lifespan)
     # Count calls whose capture failed (served to the agent but not recorded), so
     # silent data loss is observable instead of invisible. Surfaced via /readyz.
     app.state.capture_dropped = 0

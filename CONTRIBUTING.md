@@ -1,18 +1,18 @@
-# Contributing to AgentLedger
+# Contributing to Agentic Ledger
 
-Thanks for your interest in improving AgentLedger! This project is an observability
+Thanks for your interest in improving Agentic Ledger! This project is an observability
 proxy for AI agents — small, dependency-light, and meant to be easy to read. Contributions
 of all sizes are welcome: bug fixes, tests, docs, new provider support, and features.
 
 ## Quick start (development setup)
 
-AgentLedger uses [`uv`](https://github.com/astral-sh/uv) for fast, reproducible environments,
+Agentic Ledger uses [`uv`](https://github.com/astral-sh/uv) for fast, reproducible environments,
 but plain `pip` works too.
 
 ```bash
 # clone your fork
-git clone https://github.com/<you>/AgentLedger.git
-cd AgentLedger
+git clone https://github.com/<you>/AgenticLedger.git
+cd Agentic Ledger
 
 # create an isolated environment and install the package with dev tooling
 uv venv

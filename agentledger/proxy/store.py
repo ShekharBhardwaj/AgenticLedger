@@ -1,5 +1,5 @@
 """
-Storage backends for AgentLedger.
+Storage backends for Agentic Ledger.
 
 Store.connect(dsn) returns the right backend based on the DSN prefix:
 

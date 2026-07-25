@@ -1,5 +1,5 @@
 """
-Normalize provider-native request/response formats to AgentLedger's
+Normalize provider-native request/response formats to Agentic Ledger's
 canonical internal schema.
 
 Canonical request:  { messages, tools, model_id, provider, timestamp,

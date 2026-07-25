@@ -1,5 +1,5 @@
 """
-AgentLedger — runtime observability for AI agents.
+Agentic Ledger — runtime observability for AI agents.
 
 Run as a proxy:
     python -m agentledger.proxy

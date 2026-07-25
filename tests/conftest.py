@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures and helpers for the AgentLedger test suite.
+Shared pytest fixtures and helpers for the Agentic Ledger test suite.
 
 The proxy forwards every request to ``app.state.client`` (an ``httpx.AsyncClient``
 pointed at the upstream LLM). Tests swap that client for one backed by an

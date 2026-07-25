@@ -4,7 +4,7 @@
 
 Please report security vulnerabilities **privately** — do not open a public issue.
 
-- Preferred: use GitHub's [private vulnerability reporting](https://github.com/ShekharBhardwaj/AgentLedger/security/advisories/new)
+- Preferred: use GitHub's [private vulnerability reporting](https://github.com/ShekharBhardwaj/AgenticLedger/security/advisories/new)
   ("Report a vulnerability" under the repository's **Security** tab).
 - Alternatively, email **shekhar.nik@gmail.com** with the details.
 
@@ -14,14 +14,14 @@ to provide a remediation timeline after triage.
 
 ## Supported versions
 
-AgentLedger is pre-1.0 and ships fixes on the latest released version. Please upgrade
+Agentic Ledger is pre-1.0 and ships fixes on the latest released version. Please upgrade
 to the most recent release before reporting, and test against `main` if you can.
 
 ## Handling sensitive data — read this before deploying
 
-AgentLedger is an observability proxy: **by design it captures the full content of
+Agentic Ledger is an observability proxy: **by design it captures the full content of
 every LLM request and response**, including system prompts, user messages, tool
-definitions, and tool results. Treat the AgentLedger datastore and dashboard as
+definitions, and tool results. Treat the Agentic Ledger datastore and dashboard as
 containing the same sensitivity as your most sensitive prompts.
 
 Recommendations for any non-local deployment:

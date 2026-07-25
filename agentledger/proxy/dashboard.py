@@ -1,5 +1,5 @@
 """
-Serves the AgentLedger visual dashboard at GET /.
+Serves the Agentic Ledger visual dashboard at GET /.
 Single-file HTML/CSS/JS — no build step, no external dependencies.
 """
 
@@ -18,7 +18,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentLedger</title>
+<title>Agentic Ledger</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231a1a2e'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='13' font-weight='bold' fill='%237c3aed' text-anchor='middle'%3EAL%3C/text%3E%3C/svg%3E">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -472,7 +472,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <header>
   <div class="live-dot" id="live-dot"></div>
   {mascot_img}
-  <h1>AgentLedger</h1>
+  <h1>Agentic Ledger</h1>
   <div class="search-wrap">
     <span class="search-icon">⌕</span>
     <input class="search-input" id="search-input" type="text"
@@ -1378,7 +1378,7 @@ connectWS();
 
 def get_dashboard_html() -> str:
     if _MASCOT_B64:
-        img = f'<img src="data:image/jpeg;base64,{_MASCOT_B64}" style="height:36px;width:36px;object-fit:cover;border-radius:50%;flex-shrink:0;" alt="AgentLedger mascot">'
+        img = f'<img src="data:image/jpeg;base64,{_MASCOT_B64}" style="height:36px;width:36px;object-fit:cover;border-radius:50%;flex-shrink:0;" alt="Agentic Ledger mascot">'
     else:
         img = ""
     return DASHBOARD_HTML.replace("{mascot_img}", img)

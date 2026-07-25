@@ -55,9 +55,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage   = "https://github.com/ShekharBhardwaj/AgentLedger"
-Repository = "https://github.com/ShekharBhardwaj/AgentLedger"
-Issues     = "https://github.com/ShekharBhardwaj/AgentLedger/issues"
+Homepage   = "https://github.com/ShekharBhardwaj/AgenticLedger"
+Repository = "https://github.com/ShekharBhardwaj/AgenticLedger"
+Issues     = "https://github.com/ShekharBhardwaj/AgenticLedger/issues"
 
 [tool.hatch.version]
 source = "vcs"

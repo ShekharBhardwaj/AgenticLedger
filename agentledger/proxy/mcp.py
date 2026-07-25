@@ -1,5 +1,5 @@
 """
-MCP (Model Context Protocol) server — exposes AgentLedger traces as tools.
+MCP (Model Context Protocol) server — exposes Agentic Ledger traces as tools.
 
 Implements the JSON-RPC 2.0 over HTTP transport (MCP spec 2024-11-05).
 

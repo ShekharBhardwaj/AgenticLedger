@@ -1,5 +1,5 @@
 """
-OpenTelemetry export for AgentLedger.
+OpenTelemetry export for Agentic Ledger.
 
 Each intercepted LLM call becomes an OTel span sent to any OTLP-compatible
 collector: Grafana Tempo, Jaeger, Honeycomb, Datadog, Dynatrace, etc.
@@ -74,7 +74,7 @@ def init_otel(
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     _tracer = trace.get_tracer("agentledger", schema_url="https://opentelemetry.io/schemas/1.24.0")
-    logger.info("AgentLedger OTel export enabled → %s", endpoint)
+    logger.info("Agentic Ledger OTel export enabled → %s", endpoint)
 
 
 def emit_span(

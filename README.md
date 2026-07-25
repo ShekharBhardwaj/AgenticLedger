@@ -1,7 +1,7 @@
-# AgentLedger
+# Agentic Ledger
 
-[![CI](https://github.com/ShekharBhardwaj/AgentLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/ShekharBhardwaj/AgentLedger/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/ShekharBhardwaj/AgentLedger/actions/workflows/codeql.yml/badge.svg)](https://github.com/ShekharBhardwaj/AgentLedger/actions/workflows/codeql.yml)
+[![CI](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/codeql.yml/badge.svg)](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/codeql.yml)
 [![PyPI](https://img.shields.io/pypi/v/agentic-ledger)](https://pypi.org/project/agentic-ledger/)
 [![Python versions](https://img.shields.io/pypi/pyversions/agentic-ledger)](https://pypi.org/project/agentic-ledger/)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/shekharbhardwaj/agentledger)
@@ -15,10 +15,10 @@ Works with **any agent framework**, **any LLM provider**, **any model gateway**.
 
 ## How it works
 
-AgentLedger runs as a transparent proxy between your agent and the LLM provider. It intercepts every request and response, assigns it an `action_id`, stores it, and returns the upstream response unmodified. Your agent never knows the proxy is there.
+Agentic Ledger runs as a transparent proxy between your agent and the LLM provider. It intercepts every request and response, assigns it an `action_id`, stores it, and returns the upstream response unmodified. Your agent never knows the proxy is there.
 
 ```
-Your Agent  →  AgentLedger Proxy  →  OpenAI / Anthropic / LiteLLM / any LLM
+Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any LLM
                       ↓
                SQLite or Postgres
                       ↓
@@ -107,10 +107,10 @@ client = anthropic.Anthropic(
 
 **LiteLLM / OpenRouter / any gateway:**
 ```bash
-# Point AgentLedger at your gateway
+# Point Agentic Ledger at your gateway
 AGENTLEDGER_UPSTREAM_URL=http://localhost:4000 uv run python -m agentledger.proxy
 
-# Then point your agent at AgentLedger
+# Then point your agent at Agentic Ledger
 client = OpenAI(base_url="http://localhost:8000/v1", ...)
 ```
 
@@ -202,7 +202,7 @@ open http://localhost:8000/export/run-1/report
 
 ## MCP server
 
-AgentLedger exposes its captured data as an MCP (Model Context Protocol) tool server at `POST /mcp`. Point Claude Desktop, Cursor, or any MCP-compatible client at it to query traces directly from your AI assistant.
+Agentic Ledger exposes its captured data as an MCP (Model Context Protocol) tool server at `POST /mcp`. Point Claude Desktop, Cursor, or any MCP-compatible client at it to query traces directly from your AI assistant.
 
 **Tools available:**
 
@@ -442,7 +442,7 @@ The Flow tab renders `orchestrator → researcher` as a DAG with cost and latenc
 
 **OpenAI Agents SDK (`openai-agents`) — per-agent clients:**
 
-The `openai-agents` SDK uses its own internal OpenAI client. To pass AgentLedger headers you need to create a client per agent using `OpenAIResponsesModel` and set it as the agent's `model`.
+The `openai-agents` SDK uses its own internal OpenAI client. To pass Agentic Ledger headers you need to create a client per agent using `OpenAIResponsesModel` and set it as the agent's `model`.
 
 ```python
 import uuid
@@ -456,7 +456,7 @@ BASE_URL = os.getenv("OPENAI_BASE_URL")      # e.g. http://localhost:8000/v1
 
 def al_model(agent_name: str, model: str = "gpt-4o-mini",
              handoff_from: str | None = None, handoff_to: str | None = None):
-    """Create a model instance that sends AgentLedger metadata headers."""
+    """Create a model instance that sends Agentic Ledger metadata headers."""
     if not BASE_URL:
         return model  # proxy not configured — use default client
     headers = {
@@ -485,7 +485,7 @@ Each agent's calls are tagged with its name and pipeline position. The Flow tab 
 
 ## Alerts
 
-AgentLedger fires a `POST` to your webhook URL when a threshold is breached. You connect it to whatever you already use — Slack, PagerDuty, Discord, email, or a custom endpoint. AgentLedger sends the payload; the integration is on your side.
+Agentic Ledger fires a `POST` to your webhook URL when a threshold is breached. You connect it to whatever you already use — Slack, PagerDuty, Discord, email, or a custom endpoint. Agentic Ledger sends the payload; the integration is on your side.
 
 **Payload format:**
 ```json
@@ -527,7 +527,7 @@ AgentLedger fires a `POST` to your webhook URL when a threshold is breached. You
 
 ## OpenTelemetry export
 
-AgentLedger can emit every intercepted LLM call as an OTel span to any OTLP-compatible collector: Grafana Tempo, Jaeger, Honeycomb, Datadog, Dynatrace, or any vendor that supports OTLP/HTTP.
+Agentic Ledger can emit every intercepted LLM call as an OTel span to any OTLP-compatible collector: Grafana Tempo, Jaeger, Honeycomb, Datadog, Dynatrace, or any vendor that supports OTLP/HTTP.
 
 **Install the extra** (Docker image includes OTel — no extra step needed when using Docker):
 ```bash
@@ -621,7 +621,7 @@ This runs three jobs:
    ```
    PyPI project name:  agentic-ledger
    Owner:              ShekharBhardwaj
-   Repository:         AgentLedger
+   Repository:         AgenticLedger
    Workflow name:      release.yml
    Environment name:   pypi
    ```

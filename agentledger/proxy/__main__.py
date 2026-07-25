@@ -149,7 +149,7 @@ if not os.environ.get("AGENTLEDGER_INGEST_KEY"):
 if not os.environ.get("AGENTLEDGER_API_KEY"):
     _logger.warning(
         "AGENTLEDGER_API_KEY is not set — the dashboard, API, and MCP endpoints are "
-        "UNAUTHENTICATED. Set it (or configure API tokens) before exposing AgentLedger "
+        "UNAUTHENTICATED. Set it (or configure API tokens) before exposing Agentic Ledger "
         "beyond localhost."
     )
 

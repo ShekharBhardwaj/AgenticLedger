@@ -1,7 +1,7 @@
 """
 Capture-time data governance: redaction and capture levels.
 
-AgentLedger captures full prompts and responses by default. For privacy-sensitive
+Agentic Ledger captures full prompts and responses by default. For privacy-sensitive
 or regulated deployments, two controls reduce what is stored (and traced/broadcast):
 
 * **Capture level** (``AGENTLEDGER_CAPTURE_LEVEL``):

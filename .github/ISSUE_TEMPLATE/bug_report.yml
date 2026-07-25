@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with AgentLedger
+description: Report a problem with Agentic Ledger
 labels: ["bug"]
 body:
   - type: markdown
@@ -29,7 +29,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: AgentLedger version
+      label: Agentic Ledger version
       description: Output of `pip show agentic-ledger` or the Docker image tag.
       placeholder: "0.x.y / ghcr.io/...:latest"
     validations:

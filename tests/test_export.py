@@ -225,7 +225,7 @@ def test_call_count_and_session_id():
 def test_export_metadata_present():
     """The export block carries generator name and an integrity field."""
     export = build_export("s", [make_call()])
-    assert export["export"]["generator"] == "AgentLedger"
+    assert export["export"]["generator"] == "Agentic Ledger"
     assert "generated_at" in export["export"]
     assert export["calls"] == [make_call()] or len(export["calls"]) == 1
 

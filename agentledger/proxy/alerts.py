@@ -1,7 +1,7 @@
 """
 Anomaly detection and webhook alerts.
 
-AgentLedger fires a POST to AGENTLEDGER_ALERT_WEBHOOK_URL whenever a
+Agentic Ledger fires a POST to AGENTLEDGER_ALERT_WEBHOOK_URL whenever a
 threshold is breached. The payload is plain JSON — wire it to Slack,
 PagerDuty, Discord, or your own endpoint on your side.
 
