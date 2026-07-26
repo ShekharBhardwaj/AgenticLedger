@@ -8,7 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Integration guides for opencode, LangGraph/LangChain, and the OpenAI Agents
+- Per-framework integration guides for all fourteen supported tools under
+  docs/integrations/ with an index and an OTLP protocol note (JSON encoding;
+  Collector bridge snippet for protobuf-only Python SDKs). Initially:
+  guides for opencode, LangGraph/LangChain, and the OpenAI Agents
   SDK (docs/integrations/), plus an MCP registry manifest (server.json) as a
   PyPI package listing with the ownership marker in the README; the release
   workflow re-publishes the registry listing on every tag via GitHub OIDC.

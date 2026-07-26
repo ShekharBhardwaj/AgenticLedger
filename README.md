@@ -197,13 +197,11 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 ```
 
-**Framework guides:** [BMAD-METHOD](docs/integrations/bmad.md) — persona
-auto-detection (`bmad:sm`, `bmad:dev`, `bmad:qa`, …) and per-story budgets ·
-[OpenClaw](docs/integrations/openclaw.md) — the hard spend cap OpenClaw
-doesn't have, plus per-agent attribution ·
-[opencode](docs/integrations/opencode.md) ·
-[LangGraph / LangChain](docs/integrations/langgraph.md) ·
-[OpenAI Agents SDK](docs/integrations/openai-agents.md).
+**Framework guides** — one per integration in
+[docs/integrations](docs/integrations/README.md): Claude Code, Codex CLI,
+opencode, OpenClaw, BMAD-METHOD, LangGraph/LangChain, CrewAI, OpenAI Agents
+SDK, Gemini CLI, AutoGen/AG2, Pydantic AI, Vercel AI SDK, LiteLLM, and
+OpenRouter.
 
 ---
 
