@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha.3] - 2026-07-26
+
+Alpha-tester feedback release — everything here came out of first-contact
+dogfooding.
+
+### Added
+- **Flag drill-down.** New `GET /api/runs/{run_id}/flags` and a "Flags — what
+  happened and why" section in the Loop Lens: each flagged call gets a
+  plain-English explanation, the offending tool call and arguments, and an
+  "Open session" jump into the Sessions view. Flag badges carry explanatory
+  tooltips everywhere; `completion_promise` renders green (it's the good flag).
+- **Call tiles show tools and interaction types.** Collapsed call cards show
+  which tools the call issued, plus H2A / A2T / A2A / A2H indicators (human→agent,
+  agent→tool, agent→agent handoff, agent→human) derived from captured data.
+- **Abstract raccoon mark** in the web app's top bar and favicon — inline SVG,
+  theme-aware, no image assets.
+- **Fresh-install CI job**: builds the wheel, installs it with `--pre` into a
+  clean venv, boots the proxy, and checks `/health` and `/app` — the exact
+  first-contact path that broke in alpha.1.
+- **Troubleshooting section** in the README (Rosetta/arch mismatch, port
+  conflicts, expired OAuth, source installs without the web-app build).
+
 ## [0.3.0-alpha.2] - 2026-07-26
 
 ### Fixed
@@ -222,7 +244,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.2...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.3...HEAD
+[0.3.0-alpha.3]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.2...v0.3.0-alpha.3
 [0.3.0-alpha.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.1...v0.3.0-alpha.2
 [0.3.0-alpha.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...v0.3.0-alpha.1
 [0.2.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.1.7...v0.2.0

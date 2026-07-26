@@ -75,3 +75,44 @@ jobs:
           name: coverage
           path: coverage.xml
           if-no-files-found: ignore
+
+  # A tester's first contact, exercised on every push: build the wheel the way
+  # the release does, install it with --pre into a clean venv (which loosens
+  # dependency resolution — this is what let httpx 1.0.dev3 in before
+  # v0.3.0-alpha.2), boot the proxy, and check /health and the web app.
+  fresh-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build web app
+        run: |
+          cd dashboard-app
+          npm ci
+          npm run build
+
+      - name: Build wheel
+        run: |
+          pip install hatchling hatch-vcs build
+          python -m build --wheel
+
+      - name: Install with --pre into a clean venv and smoke test
+        run: |
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/pip install --pre dist/*.whl
+          cd /tmp
+          AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com /tmp/fresh/bin/python -m agentledger.proxy &
+          sleep 4
+          curl -sf http://localhost:8000/health
+          curl -sf -o /dev/null http://localhost:8000/app
+          echo "fresh install boots, /health and /app respond"

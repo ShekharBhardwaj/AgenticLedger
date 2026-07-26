@@ -722,6 +722,32 @@ This runs three jobs:
 
 ---
 
+## Troubleshooting
+
+**`incompatible architecture (have 'arm64', need 'x86_64')`** on macOS — your
+terminal is running under Rosetta, so Python picks its x86_64 slice while pip
+installed arm64 native wheels. Check with `arch` (should print `arm64` on
+Apple Silicon). Quick fix: prefix the command with `arch -arm64`. Permanent
+fix: uncheck "Open using Rosetta" on your terminal app, use an Apple Silicon
+build of your editor, and restart any long-lived `tmux` server.
+
+**`module 'httpx' has no attribute 'AsyncClient'`** — fixed in
+`0.3.0-alpha.2`; upgrade with `pip install --pre --upgrade agentic-ledger`.
+
+**Port 8000 already in use** — another proxy instance (or app) is running;
+stop it or set `AGENTLEDGER_PORT`.
+
+**`401 OAuth access token has expired` from Claude Code** — the proxy passed
+Anthropic's answer through unmodified; re-authenticate with `claude` →
+`/login`. Errored calls are still captured, so you'll see the 401 in the
+dashboard.
+
+**`/app` returns 404** — you're running from a source checkout without the
+web-app build. `cd dashboard-app && npm ci && npm run build`, or use the
+classic dashboard at `/`. PyPI and Docker installs always include the app.
+
+---
+
 ## License
 
 MIT
