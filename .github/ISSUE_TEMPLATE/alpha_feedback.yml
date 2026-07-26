@@ -1,5 +1,5 @@
-name: Alpha feedback
-description: Tell us how the v0.3 alpha worked (or didn't) with your agent stack
+name: Alpha/beta feedback
+description: Tell us how the v0.3 pre-release worked (or didn't) with your agent stack
 title: "[alpha] "
 labels: ["alpha-feedback"]
 body:
@@ -37,4 +37,4 @@ body:
     id: version
     attributes:
       label: Version
-      placeholder: "0.3.0-alpha.1 (pip show agentic-ledger)"
+      placeholder: "0.3.0-beta.1 (pip show agentic-ledger)"

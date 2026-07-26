@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-beta.1] - 2026-07-26
+
 ### Added
 - **Gateway-tolerant pricing + unpriced-model visibility.** Model-id matching
   now unifies dots and dashes, so OpenRouter (`anthropic/claude-3.5-sonnet`),
@@ -274,7 +276,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.4...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-beta.1...HEAD
+[0.3.0-beta.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.4...v0.3.0-beta.1
 [0.3.0-alpha.4]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.3...v0.3.0-alpha.4
 [0.3.0-alpha.3]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.2...v0.3.0-alpha.3
 [0.3.0-alpha.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.1...v0.3.0-alpha.2
