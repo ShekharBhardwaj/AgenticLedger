@@ -606,6 +606,8 @@ Agentic Ledger fires a `POST` to your webhook URL when a threshold is breached. 
 | `high_error_rate` | Session error rate exceeds `AGENTLEDGER_ALERT_ERROR_RATE` |
 | `daily_spend` | Daily total spend crosses `AGENTLEDGER_ALERT_DAILY_SPEND` |
 | `budget_exceeded` | A budget limit is hit and `AGENTLEDGER_BUDGET_ACTION` is `warn` or `both` |
+| `loop_flag` | The loop engine raised flags on a call (`repeat_tool_call`, `step_budget_exceeded`, `completion_promise`) |
+| `run_complete` | A run's completion promise was seen — the payload carries the full run summary (iterations, cost, tokens, flagged calls) |
 
 **Budgets vs alerts:**
 - **Budgets** (`AGENTLEDGER_BUDGET_*`) — block the call before it reaches the LLM. Agent gets HTTP 429.
