@@ -91,19 +91,27 @@ def _system_digest(req) -> Optional[str]:
     return None
 
 
-# Claude Code fires small utility calls (session titles, summaries) at the
-# same endpoint as the main loop. Its real coding calls request tens of
-# thousands of max_tokens; utility calls cap out low — a stable discriminator.
+# Claude Code fires small utility calls at the same endpoint as the main
+# loop: startup probes (a max_tokens=1 "quota" ping on the main model) and
+# haiku-class title/summary calls (max_tokens in the hundreds). Main calls
+# default to 32k-64k max_tokens, but users shrink that arbitrarily via
+# CLAUDE_CODE_MAX_OUTPUT_TOKENS — so a small cap alone cannot discriminate:
+# it must pair with a haiku-class model, except for the near-zero probes no
+# real completion could fit in.
+_PROBE_MAX_TOKENS = 8
 _UTILITY_MAX_TOKENS = 1024
 
 
 def is_utility_call(req, meta: dict) -> bool:
     """True for framework housekeeping calls that must stay out of loop
     inference — chaining them inflates step counts and resets repeat streaks."""
+    if meta.get("framework") != "claude-code" or req.max_tokens is None:
+        return False
+    if req.max_tokens <= _PROBE_MAX_TOKENS:
+        return True
     return (
-        meta.get("framework") == "claude-code"
-        and req.max_tokens is not None
-        and req.max_tokens <= _UTILITY_MAX_TOKENS
+        req.max_tokens <= _UTILITY_MAX_TOKENS
+        and "haiku" in (req.model_id or "").lower()
     )
 
 
