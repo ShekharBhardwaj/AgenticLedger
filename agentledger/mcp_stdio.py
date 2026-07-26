@@ -21,6 +21,7 @@ else corrupts the stream. Diagnostics go to stderr.
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -64,10 +65,8 @@ async def serve() -> None:
 
 
 def main() -> int:
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(serve())
-    except KeyboardInterrupt:
-        pass
     return 0
 
 

@@ -24,7 +24,7 @@ def test_stdio_transport_answers_initialize_and_tools(tmp_path):
     )
     assert proc.returncode == 0, proc.stderr
 
-    lines = [json.loads(l) for l in proc.stdout.splitlines() if l.strip()]
+    lines = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
     by_id = {r.get("id"): r for r in lines}
 
     # stdout carries ONLY JSON-RPC — three responses (the notification is silent)
@@ -46,6 +46,6 @@ def test_stdio_transport_survives_garbage(tmp_path):
         env={"AGENTLEDGER_DSN": f"sqlite:///{tmp_path}/mcp.db", "PATH": "/usr/bin:/bin"},
     )
     assert proc.returncode == 0
-    lines = [json.loads(l) for l in proc.stdout.splitlines() if l.strip()]
+    lines = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
     assert lines[0]["error"]["code"] == -32700  # parse error reported, not fatal
     assert "tools" in lines[1]["result"]        # stream keeps working
