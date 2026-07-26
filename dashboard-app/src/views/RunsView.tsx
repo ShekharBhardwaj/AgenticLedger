@@ -1,0 +1,139 @@
+import { useCallback, useEffect, useState } from "react";
+import { fmtNum, fmtTime, fmtUsd, get, Iteration, liveUpdates, Run } from "../api";
+
+export default function RunsView() {
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Run | null>(null);
+  const [iterations, setIterations] = useState<Iteration[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    get<Run[]>("/api/runs").then(setRuns).catch((e) => setError(String(e)));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    return liveUpdates(refresh);
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!selected) return;
+    get<Run>(`/api/runs/${encodeURIComponent(selected)}`).then(setDetail).catch(() => setDetail(null));
+    get<Iteration[]>(`/api/runs/${encodeURIComponent(selected)}/iterations`)
+      .then(setIterations)
+      .catch(() => setIterations([]));
+  }, [selected, runs]);
+
+  const maxCost = Math.max(...iterations.map((i) => i.cost_usd || 0), 0.000001);
+
+  return (
+    <div className="layout">
+      <div className="sidebar">
+        {error && <div className="empty">{error}</div>}
+        {runs.length === 0 && !error && (
+          <div className="empty">
+            No loop runs yet.
+            <br />
+            <span className="muted">
+              Start one with <code>agentledger run -- …</code> or send
+              x-agentledger-run-id headers.
+            </span>
+          </div>
+        )}
+        {runs.map((r) => (
+          <div
+            key={r.run_id}
+            className={`card ${selected === r.run_id ? "selected" : ""}`}
+            onClick={() => setSelected(r.run_id)}
+          >
+            <div className="card-title">
+              {r.run_id} <span className={`badge ${r.status}`}>{r.status}</span>
+            </div>
+            <div className="card-sub">
+              <span>{r.iterations ?? "?"} iterations</span>
+              <span>{r.call_count} calls</span>
+              <span>{fmtUsd(r.total_cost_usd)}</span>
+              {r.framework && <span className="badge fw">{r.framework}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="main">
+        {!detail ? (
+          <div className="empty">Select a run to open the Loop Lens.</div>
+        ) : (
+          <>
+            <h2 className="page-title">
+              {detail.run_id}{" "}
+              <span className={`badge ${detail.status}`}>{detail.status}</span>
+            </h2>
+            <div className="muted">
+              started {fmtTime(detail.started_at)} · last call {fmtTime(detail.last_call_at)}
+            </div>
+
+            <div className="stats-row">
+              <div className="stat"><div className="v">{detail.iterations ?? "—"}</div><div className="l">iterations</div></div>
+              <div className="stat"><div className="v">{fmtUsd(detail.total_cost_usd)}</div><div className="l">total cost</div></div>
+              <div className="stat"><div className="v">{detail.call_count}</div><div className="l">llm calls</div></div>
+              <div className="stat"><div className="v">{fmtNum(detail.total_tokens_in)}</div><div className="l">tokens in</div></div>
+              <div className="stat"><div className="v">{fmtNum(detail.total_tokens_out)}</div><div className="l">tokens out</div></div>
+              <div className="stat">
+                <div className="v" style={{ color: detail.flagged_calls ? "var(--amber)" : undefined }}>
+                  {detail.flagged_calls}
+                </div>
+                <div className="l">flagged calls</div>
+              </div>
+            </div>
+
+            {iterations.length > 0 && (
+              <>
+                <div className="section-title">Cost per iteration</div>
+                <div className="ribbon">
+                  {iterations.map((it) => (
+                    <div
+                      key={String(it.iteration)}
+                      className={`bar ${it.error_calls ? "errored" : it.flagged_calls ? "flagged" : ""}`}
+                      style={{ height: `${Math.max((100 * (it.cost_usd || 0)) / maxCost, 3)}%` }}
+                      title={`iteration ${it.iteration}: ${fmtUsd(it.cost_usd)}, ${it.call_count} calls`}
+                    />
+                  ))}
+                </div>
+                <div className="ribbon-labels">
+                  {iterations.map((it) => (
+                    <div key={String(it.iteration)}>{it.iteration ?? "?"}</div>
+                  ))}
+                </div>
+
+                <div className="section-title">Iterations</div>
+                <table className="grid">
+                  <thead>
+                    <tr>
+                      <th>#</th><th>calls</th><th>cost</th><th>tokens in/out</th>
+                      <th>cache reads</th><th>flags</th><th>errors</th><th>started</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {iterations.map((it) => (
+                      <tr key={String(it.iteration)}>
+                        <td>{it.iteration ?? "—"}</td>
+                        <td>{it.call_count}</td>
+                        <td>{fmtUsd(it.cost_usd)}</td>
+                        <td>{fmtNum(it.tokens_in)} / {fmtNum(it.tokens_out)}</td>
+                        <td>{fmtNum(it.cache_read_tokens)}</td>
+                        <td>{it.flagged_calls ? <span className="badge flagged">{it.flagged_calls}</span> : "—"}</td>
+                        <td>{it.error_calls ? <span className="badge error">{it.error_calls}</span> : "—"}</td>
+                        <td>{fmtTime(it.started_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -36,6 +36,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build web app
+        run: |
+          cd dashboard-app
+          npm ci
+          npm run build
+
       - name: Build wheel
         run: |
           pip install hatchling hatch-vcs build
@@ -87,6 +97,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build web app
+        run: |
+          cd dashboard-app
+          npm ci
+          npm run build
 
       - name: Install build tools
         run: pip install hatchling hatch-vcs build

@@ -639,3 +639,45 @@ def test_tool_executions_endpoint(proxy):
     assert tools[0]["tool_name"] == "grep"
     assert tools[0]["latency_ms"] >= 0
     assert tools[0]["issued_by_action_id"] != tools[0]["resolved_by_action_id"]
+
+
+# ── Run iterations endpoint + SPA serving ─────────────────────────────────────
+
+def test_run_iterations_endpoint(proxy):
+    client = proxy(handler=_ok_handler())
+    for i in (1, 1, 2):
+        client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
+            "x-agentledger-session-id": f"ri-{i}",
+            "x-agentledger-run-id": "iter-run",
+            "x-agentledger-iteration": str(i),
+        })
+
+    its = client.get("/api/runs/iter-run/iterations").json()
+    assert [it["iteration"] for it in its] == [1, 2]
+    assert its[0]["call_count"] == 2
+    assert its[1]["call_count"] == 1
+    assert its[0]["cost_usd"] > 0
+
+
+def test_spa_served_or_explains_absence(proxy):
+    """/app serves the built SPA when assets exist, else a clear 404."""
+    import pathlib
+
+    client = proxy(handler=_ok_handler())
+    built = (pathlib.Path("agentledger/proxy/static/index.html")).is_file()
+    resp = client.get("/app")
+    if built:
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+    else:
+        assert resp.status_code == 404
+        assert "npm run build" in resp.json()["detail"]
+
+
+def test_spa_asset_unknown_file_404s(proxy):
+    """The asset route only serves real files from the build directory.
+    (Encoded-slash traversal can't even reach it — a single-segment path
+    param never matches a decoded slash, so such URLs fall through to the
+    upstream proxy; the resolve() guard is defense-in-depth.)"""
+    client = proxy(handler=_ok_handler())
+    assert client.get("/app/assets/nope.js").status_code == 404

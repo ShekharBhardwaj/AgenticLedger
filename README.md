@@ -119,10 +119,15 @@ client = OpenAI(base_url="http://localhost:8000/v1", ...)
 **Step 3 — Open the dashboard**
 
 ```
-http://localhost:8000
+http://localhost:8000/app
 ```
 
-The dashboard updates live via WebSocket as calls come in. No refresh needed.
+The web app updates live via WebSocket as calls come in. No refresh needed.
+
+- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, and a per-iteration table (calls, tokens, cache reads, flags, errors)
+- **Sessions** — every session with expandable call cards: response, thinking, tool calls, tool results, cache tokens, cost, loop flags
+
+The classic single-file dashboard still lives at `http://localhost:8000`:
 
 - **Calls tab** — every LLM call with full prompt, system prompt, tool calls, tool results, output, tokens, cost, latency, and errors
 - **Flow tab** — visual DAG of your multi-agent system. Each agent is a node with aggregated cost, latency, and call count. Edges represent handoffs. Click a node to highlight its calls.

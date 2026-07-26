@@ -45,11 +45,12 @@ import time
 import uuid
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import AsyncIterator, Optional
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from .alerts import AlertConfig, check_and_fire
 from .auth import (
@@ -80,6 +81,9 @@ from .store import Store
 from .stream import detect_stream_error, reconstruct_from_sse
 
 logger = logging.getLogger(__name__)
+
+# Built SPA assets (dashboard-app/ → vite build). Absent in source checkouts.
+_SPA_DIR = Path(__file__).parent / "static"
 
 _DEFAULT_LLM_PATHS = {"v1/chat/completions", "v1/messages", "v1/responses"}
 _extra = os.getenv("AGENTLEDGER_EXTRA_PATHS", "")
@@ -460,6 +464,33 @@ def create_app(
         await _require(request, ROLE_VIEWER)
         return HTMLResponse(get_dashboard_html())
 
+    # ── Web app (React SPA — Loop Lens) ──────────────────────────────────────
+    # Built from dashboard-app/ into agentledger/proxy/static/ and shipped in
+    # the wheel. When the assets are missing (e.g. a source checkout without a
+    # Node build), /app explains itself and the classic dashboard still works.
+
+    @app.get("/app", response_class=HTMLResponse)
+    async def spa_index(request: Request) -> HTMLResponse:
+        await _require(request, ROLE_VIEWER)
+        index = _SPA_DIR / "index.html"
+        if not index.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="Web app not built — run `npm run build` in dashboard-app/, "
+                       "or use the classic dashboard at /",
+            )
+        return HTMLResponse(index.read_text(encoding="utf-8"))
+
+    @app.get("/app/assets/{filename}")
+    async def spa_asset(filename: str) -> FileResponse:
+        # Hashed build artifacts (js/css) — no data inside, served ungated so
+        # the browser can load them without credential plumbing.
+        asset_dir = (_SPA_DIR / "assets").resolve()
+        target = (asset_dir / filename).resolve()
+        if not str(target).startswith(str(asset_dir)) or not target.is_file():
+            raise HTTPException(status_code=404)
+        return FileResponse(target)
+
     # ── WebSocket (live events) ───────────────────────────────────────────────
 
     @app.websocket("/ws")
@@ -502,6 +533,12 @@ def create_app(
         if run is None:
             raise HTTPException(status_code=404, detail="run not found")
         return JSONResponse(_with_run_status(run))
+
+    @app.get("/api/runs/{run_id}/iterations")
+    async def api_run_iterations(run_id: str, request: Request) -> JSONResponse:
+        await _require(request, ROLE_VIEWER)
+        iterations = await request.app.state.store.get_run_iterations(run_id)
+        return JSONResponse(iterations)
 
     @app.delete("/api/sessions/{session_id}")
     async def delete_session(session_id: str, request: Request) -> JSONResponse:

@@ -61,9 +61,31 @@ _RUN_AGGREGATE_COLUMNS = """
                 SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
                 SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
                 MAX(framework)                AS framework,
-                SUM(CASE WHEN loop_flags IS NOT NULL THEN 1 ELSE 0 END) AS flagged_calls,
+                SUM(CASE WHEN loop_flags IS NOT NULL AND loop_flags != '["completion_promise"]' THEN 1 ELSE 0 END) AS flagged_calls,
                 MAX(CASE WHEN loop_flags LIKE '%completion_promise%' THEN 1 ELSE 0 END) AS promise_seen
 """
+
+# Per-iteration projection for the Loop Lens iteration ribbon.
+_ITERATION_AGGREGATE_COLUMNS = """
+                iteration,
+                COUNT(*)                      AS call_count,
+                MIN(timestamp)                AS started_at,
+                MAX(timestamp)                AS last_call_at,
+                SUM(COALESCE(cost_usd, 0))    AS cost_usd,
+                SUM(COALESCE(tokens_in, 0))   AS tokens_in,
+                SUM(COALESCE(tokens_out, 0))  AS tokens_out,
+                SUM(COALESCE(cache_read_tokens, 0)) AS cache_read_tokens,
+                SUM(CASE WHEN loop_flags IS NOT NULL AND loop_flags != '["completion_promise"]' THEN 1 ELSE 0 END) AS flagged_calls,
+                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END)     AS error_calls
+"""
+
+
+def _iteration_row(d: dict) -> dict:
+    d["started_at"] = _unix_to_iso(d["started_at"]) if isinstance(d["started_at"], (int, float)) else d["started_at"].isoformat()
+    d["last_call_at"] = _unix_to_iso(d["last_call_at"]) if isinstance(d["last_call_at"], (int, float)) else d["last_call_at"].isoformat()
+    if d.get("cost_usd") is not None:
+        d["cost_usd"] = float(d["cost_usd"])
+    return d
 
 
 class Store(ABC):
@@ -112,6 +134,11 @@ class Store(ABC):
     async def get_run(self, run_id: str) -> Optional[dict[str, Any]]:
         """Aggregate one run, including promise_seen (completion-promise flag
         observed on any call). None when the run has no calls."""
+        ...
+
+    @abstractmethod
+    async def get_run_iterations(self, run_id: str) -> list[dict[str, Any]]:
+        """Per-iteration aggregates for one run, in iteration order."""
         ...
 
     @abstractmethod
@@ -357,6 +384,20 @@ class _SqliteStore(Store):
         ) as cur:
             row = await cur.fetchone()
         return _sqlite_run_row(row) if row else None
+
+    async def get_run_iterations(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            f"""
+            SELECT {_ITERATION_AGGREGATE_COLUMNS}
+            FROM llm_calls
+            WHERE run_id = ?
+            GROUP BY iteration
+            ORDER BY iteration ASC
+            """,
+            (run_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_iteration_row(dict(r)) for r in rows]
 
     async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
         if not executions:
@@ -772,6 +813,20 @@ class _PostgresStore(Store):
                 run_id,
             )
         return _pg_run_row(row) if row else None
+
+    async def get_run_iterations(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"""
+                SELECT {_ITERATION_AGGREGATE_COLUMNS}
+                FROM llm_calls
+                WHERE run_id = $1
+                GROUP BY iteration
+                ORDER BY iteration ASC
+                """,
+                run_id,
+            )
+        return [_iteration_row(dict(r)) for r in rows]
 
     async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
         if not executions:

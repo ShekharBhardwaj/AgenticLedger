@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tool name, arguments, wall-clock latency (the gap between the calls), and
   error status (from Anthropic `is_error`). Served at
   `GET /api/sessions/{session_id}/tools`.
+- **New web app at `/app` (React SPA).** Loop Lens — runs with status badges,
+  a cost-per-iteration chart, and per-iteration breakdowns (calls, tokens,
+  cache reads, flags, errors, via new `GET /api/runs/{run_id}/iterations`) —
+  plus a Sessions browser with expandable call cards (response, thinking, tool
+  calls, cache tokens, loop flags) and live WebSocket updates. Built from
+  `dashboard-app/` (Vite + React), shipped inside the wheel; source installs
+  without the build keep the classic dashboard at `/`. The SPA attaches the
+  api key to its requests (the classic dashboard's fetches didn't).
 
 ### Changed
 - The request body is parsed once per call instead of two-to-three times — a real

@@ -67,13 +67,23 @@ source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentledger"]
-artifacts = ["agentledger/proxy/mascot.jpg"]
+# artifacts force-includes VCS-ignored files: the mascot and the built SPA
+# (dashboard-app/ -> vite build -> agentledger/proxy/static/). Release CI runs
+# the npm build before python -m build; a source install without the assets
+# still works — /app falls back with a clear message.
+artifacts = [
+    "agentledger/proxy/mascot.jpg",
+    "agentledger/proxy/static/",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "/agentledger",
     "/README.md",
     "/LICENSE",
+]
+artifacts = [
+    "agentledger/proxy/static/",
 ]
 
 [tool.pytest.ini_options]
