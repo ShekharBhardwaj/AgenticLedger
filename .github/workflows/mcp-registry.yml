@@ -1,0 +1,66 @@
+# Publishes/updates the MCP registry listing. Runs on every release tag and
+# on demand (workflow_dispatch) so a failed listing never requires re-tagging.
+# Auth is GitHub OIDC — no stored secrets. Ownership is verified against the
+# mcp-name marker in the PyPI package's long description.
+name: MCP Registry
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (PEP 440, e.g. 0.3.0). Defaults to the latest tag."
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+              VERSION="${GITHUB_REF_NAME#v}"
+            else
+              VERSION="$(git describe --tags --abbrev=0 | sed 's/^v//')"
+            fi
+          fi
+          # v0.3.0-beta.1 -> 0.3.0b1 (PEP 440, matching the published wheel)
+          VERSION=$(echo "$VERSION" | sed -E 's/-alpha\./a/; s/-beta\./b/; s/-rc\./rc/')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "publishing version $VERSION"
+
+      - name: Sync manifest version
+        run: |
+          python3 - "$VERSION" << 'PY'
+          import json, sys
+          version = sys.argv[1]
+          with open("server.json") as f:
+              manifest = json.load(f)
+          manifest["version"] = version
+          for pkg in manifest.get("packages", []):
+              pkg["version"] = version
+          with open("server.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+          print("manifest version ->", version)
+          PY
+
+      - name: Install mcp-publisher
+        run: |
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+
+      - name: Publish listing
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
