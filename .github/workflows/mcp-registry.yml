@@ -56,6 +56,23 @@ jobs:
           print("manifest version ->", version)
           PY
 
+      - name: Wait for the version to appear on PyPI
+        run: |
+          # On tag pushes this workflow races the Release workflow's PyPI
+          # publish; the registry validates the exact package version, so
+          # wait (up to ~10 minutes) until PyPI serves it.
+          for i in $(seq 1 40); do
+            if curl -sf "https://pypi.org/pypi/agentic-ledger/json" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if '$VERSION' in d['releases'] else 1)"; then
+              echo "PyPI has $VERSION"
+              exit 0
+            fi
+            echo "waiting for $VERSION on PyPI ($i/40)"
+            sleep 15
+          done
+          echo "gave up waiting for $VERSION on PyPI" >&2
+          exit 1
+
       - name: Install mcp-publisher
         run: |
           curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
