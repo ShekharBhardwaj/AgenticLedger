@@ -77,3 +77,43 @@ def test_malformed_body_shapes_tolerated():
         {"messages": [None]},
     ):
         detect_agent({}, body)  # must not raise
+
+
+def test_bmad_persona_detected_from_system_prompt():
+    body = {
+        "system": [{"type": "text", "text":
+            "# dev\n\nCRITICAL: Read the full YAML from .bmad-core/agents/dev.md. "
+            "You are James, the Developer. Implement the story."}],
+        "messages": [{"role": "user", "content": "implement story 2.3"}],
+    }
+    meta = detect_agent({}, body)
+    assert meta["framework"] == "bmad"
+    assert meta["agent_name"] == "bmad:dev"
+
+
+def test_bmad_test_architect_beats_architect():
+    body = {"system": "BMAD-METHOD agent bundle. You are Quinn, the Test Architect."}
+    meta = detect_agent({}, body)
+    assert meta["framework"] == "bmad"
+    assert meta["agent_name"] == "bmad:qa"
+
+
+def test_bmad_marker_without_persona_still_tags_framework():
+    body = {"system": "Loaded from bmad/bmm/agents. Party mode orchestrator."}
+    meta = detect_agent({}, body)
+    assert meta["framework"] == "bmad"
+    assert meta["agent_name"] is None
+
+
+def test_bmad_on_claude_code_host_wins_framework():
+    """BMAD persona running inside Claude Code: bmad tag beats the host tag."""
+    body = {
+        "system": [{"type": "text", "text": "You are Claude Code, Anthropic's official CLI."},
+                   {"type": "text", "text": "Activation: .bmad-core/agents/sm.md — Bob, the Scrum Master."}],
+        "messages": [{"role": "user", "content": "draft the next story"}],
+        "metadata": {"user_id": _CC_METADATA_USER},
+    }
+    meta = detect_agent({"user-agent": "claude-cli/2.0.14"}, body)
+    assert meta["framework"] == "bmad"
+    assert meta["agent_name"] == "bmad:sm"
+    assert meta["session_id"] == _CC_UUID  # session inference still works

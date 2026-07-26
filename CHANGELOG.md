@@ -73,6 +73,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tool name, arguments, wall-clock latency (the gap between the calls), and
   error status (from Anthropic `is_error`). Served at
   `GET /api/sessions/{session_id}/tools`.
+- **OTLP ingest.** `POST /v1/traces` accepts the OTLP/HTTP JSON encoding and
+  maps GenAI-semconv spans into ledger calls (model, tokens, cost, session from
+  `gen_ai.conversation.id`, agent, framework from `service.name`, error status)
+  with deterministic ids so re-exported batches never duplicate. Unlocks Gemini
+  CLI, Codex `[otel]`, AutoGen/AG2, Pydantic AI, and Vercel AI SDK with one env
+  var; `/v1/logs` + `/v1/metrics` are acknowledged. Honors `AGENTLEDGER_INGEST_KEY`.
+- **BMAD-METHOD detection + guide.** BMAD persona prompts are fingerprinted:
+  calls tagged `framework=bmad` with `agent_name=bmad:sm|dev|qa|architect|analyst|pm|po|ux`
+  (data-driven table in detect.py). New docs/integrations/bmad.md and
+  docs/integrations/openclaw.md recipes.
 - **New web app at `/app` (React SPA).** Loop Lens — runs with status badges,
   a cost-per-iteration chart, and per-iteration breakdowns (calls, tokens,
   cache reads, flags, errors, via new `GET /api/runs/{run_id}/iterations`) —

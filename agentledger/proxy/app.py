@@ -75,6 +75,7 @@ from .normalize import (
     normalize_response,
 )
 from .otel import emit_span
+from .otlp_ingest import extract_calls as extract_otlp_calls
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import Redactor, apply_capture_policy, normalize_capture_level
 from .store import Store
@@ -668,6 +669,73 @@ def create_app(
     async def mcp(request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
         return await handle_mcp(request)
+
+    # ── OTLP ingest (OTel-native frameworks) ─────────────────────────────────
+    # Registered before the catch-all proxy so OTLP paths never forward
+    # upstream. GenAI spans become ledger calls; logs/metrics are acked so
+    # exporters don't buffer and retry forever.
+
+    def _check_ingest_gate(request: Request) -> Optional[JSONResponse]:
+        if _ingest_key:
+            supplied = request.headers.get("x-agentledger-ingest-key")
+            if not supplied or not hmac.compare_digest(supplied, _ingest_key):
+                return JSONResponse(
+                    {"error": {"type": "unauthorized",
+                               "message": "Missing or invalid x-agentledger-ingest-key."}},
+                    status_code=401,
+                )
+        return None
+
+    @app.post("/v1/traces")
+    async def otlp_traces(request: Request) -> JSONResponse:
+        denied = _check_ingest_gate(request)
+        if denied:
+            return denied
+        if "json" not in (request.headers.get("content-type") or ""):
+            return JSONResponse(
+                {"error": "Only the OTLP JSON encoding is supported — set "
+                          "OTEL_EXPORTER_OTLP_PROTOCOL=http/json on the exporter."},
+                status_code=415,
+            )
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+        store = request.app.state.store
+        saved = 0
+        for call in extract_otlp_calls(payload if isinstance(payload, dict) else {}):
+            meta = call["meta"]
+            status_code = meta.pop("status_code", 200)
+            error_detail = meta.pop("error_detail", None)
+            try:
+                await store.save(
+                    call["action_id"], call["req"], call["resp"],
+                    status_code=status_code, error_detail=error_detail, **meta,
+                )
+                saved += 1
+                app.state.capture_persisted += 1
+                with suppress(Exception):
+                    await broadcaster.broadcast({
+                        "type": "call",
+                        "action_id": call["action_id"],
+                        "session_id": meta.get("session_id"),
+                        "status_code": status_code,
+                        "budget_warning": False,
+                    })
+            except Exception:
+                # Duplicate action_id (re-exported batch) or storage hiccup —
+                # OTLP delivery is at-least-once, so duplicates are expected.
+                pass
+        return JSONResponse({"partialSuccess": {}})
+
+    @app.post("/v1/logs")
+    @app.post("/v1/metrics")
+    async def otlp_ack(request: Request) -> JSONResponse:
+        denied = _check_ingest_gate(request)
+        if denied:
+            return denied
+        return JSONResponse({"partialSuccess": {}})
 
     # ── Transparent proxy ────────────────────────────────────────────────────
 

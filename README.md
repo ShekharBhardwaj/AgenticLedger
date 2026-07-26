@@ -183,6 +183,20 @@ opencode, OpenClaw, LiteLLM-based stacks) — set the OpenAI/Anthropic base URL
 to the proxy and traffic is captured; add `x-agentledger-*` headers when you
 want explicit attribution.
 
+**OTel-native tools** (Gemini CLI, Codex `[otel]`, AutoGen/AG2, Pydantic AI,
+Vercel AI SDK) don't need the proxy at all — point their OTLP exporter at the
+ledger and GenAI spans are ingested directly:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+```
+
+**Framework guides:** [BMAD-METHOD](docs/integrations/bmad.md) — persona
+auto-detection (`bmad:sm`, `bmad:dev`, `bmad:qa`, …) and per-story budgets ·
+[OpenClaw](docs/integrations/openclaw.md) — the hard spend cap OpenClaw
+doesn't have, plus per-agent attribution.
+
 ---
 
 ## What gets captured
@@ -241,7 +255,8 @@ Every LLM call is stored with:
 | `GET` | `/explain/{action_id}` | Single call by action ID |
 | `GET` | `/export/{session_id}` | JSON compliance export with SHA-256 integrity hash |
 | `GET` | `/export/{session_id}/report` | Printable HTML audit report |
-| `POST` | `/mcp` | MCP tool server — `list_sessions`, `explain`, `get_session`, `search` |
+| `POST` | `/mcp` | MCP tool server — `list_sessions`, `explain`, `get_session`, `search`, `list_runs`, `get_run_status` |
+| `POST` | `/v1/traces` | OTLP/HTTP JSON ingest — GenAI spans from OTel-native tools become ledger calls (`/v1/logs`, `/v1/metrics` acked) |
 
 **Examples:**
 ```bash
