@@ -263,14 +263,34 @@ def test_fresh_conversation_without_marker_still_forks():
     assert f2["thread_id"] != f1["thread_id"]
 
 
+def _cc_req(model, max_tokens):
+    r = CanonicalRequest(
+        messages=[U1], model_id=model, provider="anthropic", timestamp=0.0,
+    )
+    r.max_tokens = max_tokens
+    return r
+
+
 def test_utility_call_detection():
+    """Shapes observed on the wire from claude-cli/2.1.220 (2026-07)."""
     from agentledger.proxy.loops import is_utility_call
-    small = _req([U1])
-    small.max_tokens = 512
-    big = _req([U1])
-    big.max_tokens = 32000
-    assert is_utility_call(small, {"framework": "claude-code"}) is True
-    assert is_utility_call(big, {"framework": "claude-code"}) is False
+    cc = {"framework": "claude-code"}
+
+    # Startup "quota" probe: max_tokens=1 on the MAIN model — utility.
+    assert is_utility_call(_cc_req("claude-opus-5", 1), cc) is True
+    # Haiku-class title/summary housekeeping — utility.
+    assert is_utility_call(_cc_req("claude-haiku-4-5-20251001", 512), cc) is True
+
+    # Main calls: opus 64k, haiku-as-main 32k — never utility.
+    assert is_utility_call(_cc_req("claude-opus-5", 64000), cc) is False
+    assert is_utility_call(_cc_req("claude-haiku-4-5-20251001", 32000), cc) is False
+    # A `claude -p` main call under CLAUDE_CODE_MAX_OUTPUT_TOKENS=1000 sends
+    # max_tokens=1000 on the main model — small max_tokens alone must NOT
+    # disqualify it from loop inference (the pre-2.x heuristic's regression).
+    assert is_utility_call(_cc_req("claude-opus-5", 1000), cc) is False
+
     # Only claude-code traffic gets this treatment — a small generic call
     # (e.g. a user's own low-max_tokens app) is still inferred normally.
-    assert is_utility_call(small, {"framework": None}) is False
+    assert is_utility_call(_cc_req("claude-haiku-4-5-20251001", 512), {"framework": None}) is False
+    # max_tokens absent → never utility.
+    assert is_utility_call(_cc_req("claude-opus-5", None), cc) is False
