@@ -229,6 +229,7 @@ Every LLM call is stored with:
 | `GET` | `/api/sessions` | List recent sessions with aggregated stats |
 | `GET` | `/api/runs` | List loop runs (explicit or auto-inferred) with iterations, cost, status, and flagged-call counts |
 | `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete`) — poll this from loop scripts |
+| `GET` | `/api/sessions/{session_id}/tools` | Derived tool executions — each tool call paired with its result, latency, and error status |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |

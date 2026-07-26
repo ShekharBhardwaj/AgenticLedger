@@ -275,8 +275,12 @@ def _extract_tool_results(messages: list[dict]) -> Optional[list[dict]]:
             if isinstance(content, list):
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_result":
-                        results.append({
+                        result = {
                             "tool_use_id": block.get("tool_use_id"),
                             "content": block.get("content"),
-                        })
+                        }
+                        # Anthropic marks failed executions explicitly.
+                        if block.get("is_error") is not None:
+                            result["is_error"] = block.get("is_error")
+                        results.append(result)
     return results or None

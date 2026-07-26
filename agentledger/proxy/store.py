@@ -115,6 +115,16 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
+        """Persist derived tool-execution records (paired tool call → result)."""
+        ...
+
+    @abstractmethod
+    async def get_tool_executions(self, session_id: str) -> list[dict[str, Any]]:
+        """Tool executions for a session, in execution order."""
+        ...
+
+    @abstractmethod
     async def get(self, action_id: str) -> Optional[dict[str, Any]]: ...
 
     @abstractmethod
@@ -256,6 +266,24 @@ class _SqliteStore(Store):
                 client       TEXT
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS tool_executions (
+                tool_call_id          TEXT,
+                tool_name             TEXT,
+                arguments             TEXT,
+                issued_by_action_id   TEXT,
+                resolved_by_action_id TEXT,
+                session_id            TEXT,
+                thread_id             TEXT,
+                latency_ms            INTEGER,
+                is_error              INTEGER,
+                timestamp             REAL
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS tool_executions_session_idx
+            ON tool_executions (session_id) WHERE session_id IS NOT NULL
+        """)
         await db.commit()
         return cls(db)
 
@@ -329,6 +357,40 @@ class _SqliteStore(Store):
         ) as cur:
             row = await cur.fetchone()
         return _sqlite_run_row(row) if row else None
+
+    async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
+        if not executions:
+            return
+        await self._db.executemany(
+            """
+            INSERT INTO tool_executions
+                (tool_call_id, tool_name, arguments, issued_by_action_id,
+                 resolved_by_action_id, session_id, thread_id,
+                 latency_ms, is_error, timestamp)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+            """,
+            [
+                (
+                    e.get("tool_call_id"), e.get("tool_name"),
+                    _as_json_text(e.get("arguments")),
+                    e.get("issued_by_action_id"), e.get("resolved_by_action_id"),
+                    e.get("session_id"), e.get("thread_id"),
+                    e.get("latency_ms"),
+                    None if e.get("is_error") is None else int(bool(e.get("is_error"))),
+                    e.get("timestamp"),
+                )
+                for e in executions
+            ],
+        )
+        await self._db.commit()
+
+    async def get_tool_executions(self, session_id: str) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT * FROM tool_executions WHERE session_id = ? ORDER BY timestamp ASC",
+            (session_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:
         async with self._db.execute(
@@ -510,6 +572,17 @@ def _sqlite_session_row(row) -> dict[str, Any]:
     return d
 
 
+def _as_json_text(value) -> Optional[str]:
+    """Tool arguments arrive as a JSON string (OpenAI) or a dict (Anthropic
+    tool_use input) — store one canonical text form."""
+    if value is None or isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value)
+    except Exception:
+        return str(value)
+
+
 def _sqlite_run_row(row) -> dict[str, Any]:
     d = dict(row)
     d["started_at"] = _unix_to_iso(d["started_at"])
@@ -599,6 +672,24 @@ class _PostgresStore(Store):
                     client       TEXT
                 )
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS tool_executions (
+                    tool_call_id          TEXT,
+                    tool_name             TEXT,
+                    arguments             TEXT,
+                    issued_by_action_id   TEXT,
+                    resolved_by_action_id TEXT,
+                    session_id            TEXT,
+                    thread_id             TEXT,
+                    latency_ms            INTEGER,
+                    is_error              INTEGER,
+                    timestamp             DOUBLE PRECISION
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS tool_executions_session_idx
+                ON tool_executions (session_id) WHERE session_id IS NOT NULL
+            """)
         return cls(pool)
 
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
@@ -681,6 +772,40 @@ class _PostgresStore(Store):
                 run_id,
             )
         return _pg_run_row(row) if row else None
+
+    async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
+        if not executions:
+            return
+        async with self._pool.acquire() as conn:
+            await conn.executemany(
+                """
+                INSERT INTO tool_executions
+                    (tool_call_id, tool_name, arguments, issued_by_action_id,
+                     resolved_by_action_id, session_id, thread_id,
+                     latency_ms, is_error, timestamp)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                """,
+                [
+                    (
+                        e.get("tool_call_id"), e.get("tool_name"),
+                        _as_json_text(e.get("arguments")),
+                        e.get("issued_by_action_id"), e.get("resolved_by_action_id"),
+                        e.get("session_id"), e.get("thread_id"),
+                        e.get("latency_ms"),
+                        None if e.get("is_error") is None else int(bool(e.get("is_error"))),
+                        e.get("timestamp"),
+                    )
+                    for e in executions
+                ],
+            )
+
+    async def get_tool_executions(self, session_id: str) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM tool_executions WHERE session_id = $1 ORDER BY timestamp ASC",
+                session_id,
+            )
+        return [dict(r) for r in rows]
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:
         async with self._pool.acquire() as conn:

@@ -109,6 +109,8 @@ class _Thread:
     last_action_id: str
     last_tool_sig: Optional[tuple[str, ...]] = None
     repeat_streak: int = 1
+    # tool_call_id → {tool_name, arguments, issued_by_action_id, issued_ts}
+    pending_tools: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -163,6 +165,7 @@ class LoopTracker:
                 "prev_action_id": None,
                 "run_id": meta.get("run_id"), "iteration": _as_int(meta.get("iteration")),
                 "loop_flags": None,
+                "tool_executions": [],
             }
 
     def _annotate(self, action_id: str, req, resp, meta: dict) -> dict:
@@ -228,6 +231,11 @@ class LoopTracker:
 
         state.flags.update(new_flags)
 
+        # ── Tool-execution pairing: results in THIS request resolve tool
+        # calls issued by the thread's previous response. The proxy never sees
+        # the tool run — the gap between the two calls IS its wall-clock time.
+        executions = self._pair_tools(thread, action_id, session_id, req, resp)
+
         return {
             "thread_id": thread.thread_id,
             "step_index": thread.step_index,
@@ -236,7 +244,45 @@ class LoopTracker:
             "run_id": run_id,
             "iteration": iteration,
             "loop_flags": json.dumps(new_flags) if new_flags else None,
+            "tool_executions": executions,
         }
+
+    def _pair_tools(self, thread: _Thread, action_id: str, session_id: str,
+                    req, resp) -> list[dict]:
+        executions: list[dict] = []
+        for tr in req.tool_results or []:
+            call_id = tr.get("tool_call_id") or tr.get("tool_use_id")
+            pending = thread.pending_tools.pop(call_id, None)
+            if pending is None:
+                continue
+            executions.append({
+                "tool_call_id": call_id,
+                "tool_name": pending["tool_name"],
+                "arguments": pending["arguments"],
+                "issued_by_action_id": pending["issued_by_action_id"],
+                "resolved_by_action_id": action_id,
+                "session_id": session_id,
+                "thread_id": thread.thread_id,
+                "latency_ms": max(round((req.timestamp - pending["issued_ts"]) * 1000), 0),
+                "is_error": bool(tr.get("is_error")) if tr.get("is_error") is not None else None,
+                "timestamp": req.timestamp,
+            })
+        # Register this response's tool calls as pending for the next call.
+        issued_ts = req.timestamp + (resp.latency_ms or 0) / 1000
+        for tc in resp.tool_calls or []:
+            if isinstance(tc, dict) and tc.get("id"):
+                thread.pending_tools[tc["id"]] = {
+                    "tool_name": tc.get("name"),
+                    "arguments": tc.get("arguments"),
+                    "issued_by_action_id": action_id,
+                    "issued_ts": issued_ts,
+                }
+        # Bound memory: abandoned tool calls (never resolved) are dropped
+        # beyond a small cap rather than accumulating forever.
+        if len(thread.pending_tools) > 32:
+            for key in list(thread.pending_tools)[:-32]:
+                del thread.pending_tools[key]
+        return executions
 
     # ── request-time circuit breaker ─────────────────────────────────────────
 

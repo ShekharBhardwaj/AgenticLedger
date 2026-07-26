@@ -266,6 +266,7 @@ def create_app(
             if _loop_action != "off" and job.status_code == 200
             else {}
         )
+        tool_executions = loop_fields.pop("tool_executions", [])
         apply_capture_policy(job.req, job.resp, _capture_level, _redactor)
         store = app.state.store
         await store.save(
@@ -273,6 +274,10 @@ def create_app(
             status_code=job.status_code, error_detail=job.error_detail,
             **{**job.meta, **loop_fields},
         )
+        if tool_executions:
+            # Derived data — its failure must never count as a capture drop.
+            with suppress(Exception):
+                await store.save_tool_executions(tool_executions)
         app.state.capture_persisted += 1
         with suppress(Exception):
             emit_span(job.action_id, job.req, job.resp, status_code=job.status_code, **job.meta)
@@ -479,6 +484,14 @@ def create_app(
         await _require(request, ROLE_VIEWER)
         runs = await request.app.state.store.list_runs()
         return JSONResponse([_with_run_status(r) for r in runs])
+
+    @app.get("/api/sessions/{session_id}/tools")
+    async def api_session_tools(session_id: str, request: Request) -> JSONResponse:
+        """Derived tool executions for a session — the proxy pairs each
+        tool call with the result fed back in the following LLM call."""
+        await _require(request, ROLE_VIEWER)
+        tools = await request.app.state.store.get_tool_executions(session_id)
+        return JSONResponse(tools)
 
     @app.get("/api/runs/{run_id}")
     async def api_run_status(run_id: str, request: Request) -> JSONResponse:

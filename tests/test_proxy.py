@@ -611,3 +611,31 @@ def test_run_status_endpoint_reports_completion_promise(proxy):
     assert "promise_seen" not in status  # folded into status
 
     assert client.get("/api/runs/unknown-run").status_code == 404
+
+
+def test_tool_executions_endpoint(proxy):
+    """Paired tool executions are persisted and served per session."""
+    from .conftest import openai_tool_call
+
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response(
+        tool_calls=[openai_tool_call(name="grep", arguments='{"q":"bug"}')],
+    )))
+
+    client.post("/v1/chat/completions",
+                json={"model": "gpt-4o", "messages": [_U]},
+                headers={"x-agentledger-session-id": "s-tools"})
+    client.post("/v1/chat/completions",
+                json={"model": "gpt-4o", "messages": [
+                    _U,
+                    {"role": "assistant", "content": None,
+                     "tool_calls": [{"id": "call_1", "type": "function",
+                                     "function": {"name": "grep", "arguments": '{"q":"bug"}'}}]},
+                    {"role": "tool", "tool_call_id": "call_1", "content": "found it"},
+                ]},
+                headers={"x-agentledger-session-id": "s-tools"})
+
+    tools = client.get("/api/sessions/s-tools/tools").json()
+    assert len(tools) == 1
+    assert tools[0]["tool_name"] == "grep"
+    assert tools[0]["latency_ms"] >= 0
+    assert tools[0]["issued_by_action_id"] != tools[0]["resolved_by_action_id"]

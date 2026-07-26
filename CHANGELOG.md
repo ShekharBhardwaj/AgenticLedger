@@ -68,6 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   script.
 - **MCP run tools.** `list_runs` and `get_run_status(run_id)` join the MCP
   server, so agents can inspect their own loops and self-terminate.
+- **Derived tool executions.** The proxy pairs every tool call issued by call N
+  with the result fed back in call N+1, yielding a `tool_executions` table with
+  tool name, arguments, wall-clock latency (the gap between the calls), and
+  error status (from Anthropic `is_error`). Served at
+  `GET /api/sessions/{session_id}/tools`.
 
 ### Changed
 - The request body is parsed once per call instead of two-to-three times — a real

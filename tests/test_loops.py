@@ -145,7 +145,7 @@ def test_annotate_never_raises_on_garbage():
     fields = tracker.annotate("a1", weird, _resp(), {"session_id": None})
     assert set(fields) == {
         "thread_id", "step_index", "turn_index", "prev_action_id",
-        "run_id", "iteration", "loop_flags",
+        "run_id", "iteration", "loop_flags", "tool_executions",
     }
 
 
@@ -165,3 +165,61 @@ def test_invalid_promise_regex_disables_detection():
     tracker = LoopTracker(completion_promise="([unclosed")
     f = tracker.annotate("a1", _req([U1]), _resp(), _meta())
     assert f["loop_flags"] is None
+
+
+def test_tool_executions_paired_across_calls():
+    """A tool call issued by call N is resolved by the results in call N+1,
+    with wall-clock latency derived from the gap between the calls."""
+    tracker = LoopTracker()
+    resp1 = CanonicalResponse(
+        content=None,
+        tool_calls=[{"id": "c1", "name": "grep", "arguments": '{"q":"bug"}'}],
+        stop_reason="tool_calls", tokens_in=1, tokens_out=1, latency_ms=500.0,
+    )
+    f1 = tracker.annotate("a1", _req([U1], ts=100.0), resp1, _meta())
+    assert f1["tool_executions"] == []
+
+    req2 = CanonicalRequest(
+        messages=[U1, A1, T1], model_id="gpt-4o", provider="openai",
+        timestamp=103.0,
+        tool_results=[{"tool_call_id": "c1", "content": "match at line 3"}],
+    )
+    f2 = tracker.annotate("a2", req2, _resp(), _meta())
+    assert len(f2["tool_executions"]) == 1
+    ex = f2["tool_executions"][0]
+    assert ex["tool_name"] == "grep"
+    assert ex["issued_by_action_id"] == "a1"
+    assert ex["resolved_by_action_id"] == "a2"
+    # req2 at t=103.0, tool issued at t=100.0 + 0.5s response → ~2500ms
+    assert ex["latency_ms"] == 2500
+    assert ex["is_error"] is None
+
+
+def test_tool_execution_error_flag_from_anthropic_result():
+    tracker = LoopTracker()
+    resp1 = CanonicalResponse(
+        content=None,
+        tool_calls=[{"id": "tu1", "name": "bash", "arguments": {"cmd": "ls"}}],
+        stop_reason="tool_use", tokens_in=1, tokens_out=1, latency_ms=100.0,
+    )
+    tracker.annotate("a1", _req([U1], ts=10.0), resp1, _meta())
+    req2 = CanonicalRequest(
+        messages=[U1, {"role": "assistant", "content": [{"type": "tool_use", "id": "tu1"}]},
+                  {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu1",
+                                                "content": "no such dir", "is_error": True}]}],
+        model_id="claude-sonnet-4", provider="anthropic", timestamp=11.0,
+        tool_results=[{"tool_use_id": "tu1", "content": "no such dir", "is_error": True}],
+    )
+    f2 = tracker.annotate("a2", req2, _resp(), _meta())
+    assert f2["tool_executions"][0]["is_error"] is True
+
+
+def test_unmatched_tool_results_ignored():
+    """Results for calls the tracker never saw (proxy restart) are skipped."""
+    tracker = LoopTracker()
+    req = CanonicalRequest(
+        messages=[U1, A1, T1], model_id="gpt-4o", provider="openai", timestamp=1.0,
+        tool_results=[{"tool_call_id": "unknown", "content": "x"}],
+    )
+    f = tracker.annotate("a1", req, _resp(), _meta())
+    assert f["tool_executions"] == []
