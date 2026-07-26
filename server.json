@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
-  "name": "io.github.shekharbhardwaj/agentic-ledger",
+  "name": "io.github.ShekharBhardwaj/agentic-ledger",
   "description": "Local-first flight recorder for AI agents: sessions, costs, loop runs, and stuck-loop flags.",
   "repository": {
     "url": "https://github.com/ShekharBhardwaj/AgenticLedger",

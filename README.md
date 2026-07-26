@@ -759,4 +759,4 @@ from a source checkout without the web-app build. `cd dashboard-app && npm ci
 MIT
 
 <!-- MCP registry ownership verification -->
-`mcp-name: io.github.shekharbhardwaj/agentic-ledger`
+`mcp-name: io.github.ShekharBhardwaj/agentic-ledger`
