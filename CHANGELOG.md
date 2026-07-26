@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Claude Code session detection now understands the claude-cli 2.x metadata
+  format: `metadata.user_id` is a JSON blob (`{"device_id": …, "account_uuid":
+  …, "session_id": …}`) rather than the 1.x `…_session_<uuid>` string, so real
+  sessions were landing in the shared auto-`<date>` bucket. Both formats are
+  recognized, and the 2.x `x-anthropic-billing-header: cc_version=…` system
+  block is a new body-side fingerprint for `claude -p` (sdk-cli) traffic,
+  whose system prompt no longer opens with "You are Claude Code".
+- Utility-call classification no longer swallows main-loop calls with a
+  user-shrunk `CLAUDE_CODE_MAX_OUTPUT_TOKENS`: small `max_tokens` alone
+  (≤1024) used to exclude a call from loop inference (`step_index` null), but
+  real claude-cli 2.x main calls send 32k–64k by default and as little as the
+  user configures. Utility now means a near-zero probe (`max_tokens` ≤ 8,
+  e.g. the startup "quota" ping) or a haiku-class model at ≤1024 tokens
+  (title/summary housekeeping) — all shapes verified against captured
+  claude-cli 2.1.220 traffic.
+
 ## [0.3.0.post1] - 2026-07-26
 
 Metadata-only post-release: corrects the MCP registry ownership marker's
