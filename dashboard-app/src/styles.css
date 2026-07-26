@@ -91,6 +91,20 @@ body {
 .badge.proto.a2a  { background: rgba(57, 197, 187, 0.16);  color: #4dd8cf; }
 .badge.proto.a2h  { background: rgba(63, 185, 80, 0.16);   color: #56c96a; }
 
+.seg {
+  display: inline-flex; gap: 2px; margin-bottom: 14px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 3px;
+}
+.seg button {
+  padding: 4px 14px; font-size: 13px; cursor: pointer;
+  background: none; border: none; border-radius: 6px; color: var(--text-dim);
+}
+.seg button:hover { color: var(--text); }
+.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.svg-scroll { overflow-x: auto; padding-bottom: 8px; }
+
 .flag-card { cursor: default; }
 .flag-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .flag-title { font-weight: 600; font-size: 13px; }

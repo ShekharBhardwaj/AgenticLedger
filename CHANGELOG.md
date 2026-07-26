@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Flow + Trace in the web app — full parity, and the app is now the default.**
+  The Sessions view gains a Calls / Flow / Trace switcher: Flow renders the
+  agent handoff DAG (per-agent cost, calls, latency; cycles as dashed
+  back-edges with counts), and Trace renders the waterfall with parent
+  connectors from **real thread links** (`prev_action_id`) instead of the
+  classic view's timestamp inference. `/` now serves the web app (falling back
+  to the classic dashboard on source checkouts without a Node build);
+  the classic dashboard moved to `/classic`; `/app` still works.
+
 ## [0.3.0-alpha.3] - 2026-07-26
 
 Alpha-tester feedback release — everything here came out of first-contact

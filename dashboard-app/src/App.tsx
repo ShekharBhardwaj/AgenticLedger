@@ -47,7 +47,7 @@ export default function App() {
           <button className={`tab ${tab === "sessions" ? "active" : ""}`} onClick={() => setTab("sessions")}>
             Sessions
           </button>
-          <a className="tab" href="/" title="Flow DAG + Trace timeline (classic dashboard)">
+          <a className="tab" href="/classic" title="The original single-file dashboard">
             Classic
           </a>
         </div>

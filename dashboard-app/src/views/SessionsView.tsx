@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Call, flagInfo, fmtNum, fmtTime, fmtUsd, get, interactionTags, liveUpdates, Session, toolNames,
 } from "../api";
+import FlowView from "./FlowView";
+import TraceView from "./TraceView";
+
+type Mode = "calls" | "flow" | "trace";
 
 function CallCard({ call }: { call: Call }) {
   const [open, setOpen] = useState(false);
@@ -75,6 +79,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
   const [calls, setCalls] = useState<Call[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);
+  const [mode, setMode] = useState<Mode>("calls");
 
   const refresh = useCallback(() => {
     get<Session[]>("/api/sessions").then(setSessions).catch(() => {});
@@ -134,12 +139,25 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
         {results !== null && (
           <div className="section-title">{results.length} search results</div>
         )}
+        {results === null && selected && shown.length > 0 && (
+          <div className="seg">
+            {(["calls", "flow", "trace"] as Mode[]).map((m) => (
+              <button key={m} className={mode === m ? "active" : ""} onClick={() => setMode(m)}>
+                {m === "calls" ? "Calls" : m === "flow" ? "Flow" : "Trace"}
+              </button>
+            ))}
+          </div>
+        )}
         {shown.length === 0 ? (
           <div className="empty">
             {results !== null ? "No matches." : "Select a session to inspect its calls."}
           </div>
-        ) : (
+        ) : results !== null || mode === "calls" ? (
           shown.map((c) => <CallCard key={c.action_id} call={c} />)
+        ) : mode === "flow" ? (
+          <FlowView calls={calls} />
+        ) : (
+          <TraceView calls={calls} />
         )}
       </div>
     </div>

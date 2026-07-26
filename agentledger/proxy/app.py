@@ -469,7 +469,17 @@ def create_app(
     # ── Dashboard ────────────────────────────────────────────────────────────
 
     @app.get("/", response_class=HTMLResponse)
-    async def dashboard(request: Request) -> HTMLResponse:
+    async def home(request: Request) -> HTMLResponse:
+        """The web app (React SPA) when its build is present; source checkouts
+        without a Node build fall back to the classic embedded dashboard."""
+        await _require(request, ROLE_VIEWER)
+        index = _SPA_DIR / "index.html"
+        if index.is_file():
+            return HTMLResponse(index.read_text(encoding="utf-8"))
+        return HTMLResponse(get_dashboard_html())
+
+    @app.get("/classic", response_class=HTMLResponse)
+    async def classic_dashboard(request: Request) -> HTMLResponse:
         await _require(request, ROLE_VIEWER)
         return HTMLResponse(get_dashboard_html())
 

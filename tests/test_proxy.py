@@ -801,3 +801,18 @@ def test_run_flags_drilldown_endpoint(proxy):
     assert f["session_id"] == "s-flags"
     assert f["iteration"] == 1
     assert f["tool_calls"][0]["name"] == "grep"
+
+
+def test_home_serves_html_and_classic_is_stable(proxy):
+    """/ serves the web app when built (else the classic fallback); /classic
+    always serves the embedded single-file dashboard."""
+    client = proxy(handler=_ok_handler())
+
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "text/html" in home.headers["content-type"]
+
+    classic = client.get("/classic")
+    assert classic.status_code == 200
+    # The classic dashboard inlines its mascot as a data URI — a stable marker.
+    assert "data:image/jpeg" in classic.text

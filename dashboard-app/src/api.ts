@@ -87,6 +87,8 @@ export interface Call {
   framework: string | null;
   handoff_from: string | null;
   handoff_to: string | null;
+  parent_action_id: string | null;
+  prev_action_id: string | null;
   thread_id: string | null;
   step_index: number | null;
   turn_index: number | null;

@@ -121,15 +121,16 @@ client = OpenAI(base_url="http://localhost:8000/v1", ...)
 **Step 3 — Open the dashboard**
 
 ```
-http://localhost:8000/app
+http://localhost:8000
 ```
 
 The web app updates live via WebSocket as calls come in. No refresh needed.
 
-- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, and a per-iteration table (calls, tokens, cache reads, flags, errors)
-- **Sessions** — every session with expandable call cards: response, thinking, tool calls, tool results, cache tokens, cost, loop flags
+- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, per-iteration breakdowns, and plain-English explanations of every flag
+- **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine
+- **Search** — full-text across prompts, outputs, and agents
 
-The classic single-file dashboard still lives at `http://localhost:8000`:
+The classic single-file dashboard remains at `http://localhost:8000/classic`:
 
 - **Calls tab** — every LLM call with full prompt, system prompt, tool calls, tool results, output, tokens, cost, latency, and errors
 - **Flow tab** — visual DAG of your multi-agent system. Each agent is a node with aggregated cost, latency, and call count. Edges represent handoffs. Click a node to highlight its calls.
@@ -742,9 +743,9 @@ Anthropic's answer through unmodified; re-authenticate with `claude` →
 `/login`. Errored calls are still captured, so you'll see the 401 in the
 dashboard.
 
-**`/app` returns 404** — you're running from a source checkout without the
-web-app build. `cd dashboard-app && npm ci && npm run build`, or use the
-classic dashboard at `/`. PyPI and Docker installs always include the app.
+**`/` shows the classic dashboard instead of the web app** — you're running
+from a source checkout without the web-app build. `cd dashboard-app && npm ci
+&& npm run build` and restart. PyPI and Docker installs always include the app.
 
 ---
 
