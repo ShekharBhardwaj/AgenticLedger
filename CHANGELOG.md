@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-26
+
 ### Fixed
 - Claude Code session detection now understands the claude-cli 2.x metadata
   format: `metadata.user_id` is a JSON blob (`{"device_id": …, "account_uuid":
