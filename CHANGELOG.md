@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-26
+
+The agentic-loop release. Consolidates the 0.3.0 pre-release line
+(alpha.1 through beta.1, all detailed below) into the first stable release
+under the Agentic Ledger name. Headlines:
+
+- **Loop engine** — threads, runs, iterations, and stuck-loop detection
+  inferred from raw traffic, with an in-path circuit breaker.
+- **Loop Lens web app** at `/` — runs, cost per iteration, flag explanations,
+  Flow DAG, and a Trace waterfall built from real parent links.
+- **Costs you can bill against** — cache-aware pricing per provider
+  convention, gateway-tolerant model matching, loud warnings for unpriced
+  models.
+- **`agentledger run`** — the observable, budgeted loop runner, with
+  completion promises and a morning-report webhook.
+- **Zero-config Claude Code support** and OTLP ingest for OTel-native tools;
+  fourteen framework guides under docs/integrations/.
+
 ### Added
 - Per-framework integration guides for all fourteen supported tools under
   docs/integrations/ with an index and an OTLP protocol note (JSON encoding;
@@ -285,7 +303,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-beta.1...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...v0.3.0
 [0.3.0-beta.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.4...v0.3.0-beta.1
 [0.3.0-alpha.4]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.3...v0.3.0-alpha.4
 [0.3.0-alpha.3]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.2...v0.3.0-alpha.3
