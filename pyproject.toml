@@ -61,7 +61,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage   = "https://github.com/ShekharBhardwaj/AgenticLedger"
+Homepage   = "https://agentic-ledger.dev"
 Repository = "https://github.com/ShekharBhardwaj/AgenticLedger"
 Issues     = "https://github.com/ShekharBhardwaj/AgenticLedger/issues"
 

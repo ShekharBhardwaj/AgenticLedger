@@ -9,6 +9,8 @@
 
 Runtime observability for AI agents — see exactly what your agent did, why it did it, and what it cost.
 
+**Website:** [agentic-ledger.dev](https://agentic-ledger.dev)
+
 > **Beta** — `v0.3.0-beta.1`. The capture pipeline, loop engine, and cost accounting are feature-complete for 0.3 and the numbers are meant to be checked against your provider console — if they don't match, that's a bug. Interfaces may still shift before 0.3.0 final. [Open an issue](https://github.com/ShekharBhardwaj/AgenticLedger/issues/new/choose) — beta feedback directly shapes the final release.
 
 Works with **any agent framework**, **any LLM provider**, **any model gateway**. Zero code changes required. Point your agent at the proxy and everything is captured automatically.
