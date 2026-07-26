@@ -176,87 +176,94 @@ def _run_status(run: dict) -> dict:
 
 
 async def handle_mcp(request: Request) -> JSONResponse:
+    """HTTP transport: POST /mcp on the proxy."""
     try:
         body = await request.json()
     except Exception:
         return JSONResponse(_err(None, -32700, "Parse error"), status_code=400)
+    response = await dispatch_message(body, request.app.state.store)
+    return JSONResponse(response if response is not None else {})
 
+
+async def dispatch_message(body: dict, store) -> Any:
+    """Transport-neutral JSON-RPC dispatch — shared by the HTTP endpoint and
+    the stdio server (`agentledger mcp`). Returns a response dict, or None
+    for notifications."""
     method = body.get("method")
     id_ = body.get("id")
     params = body.get("params") or {}
 
     if method == "initialize":
-        return JSONResponse(_ok(id_, {
+        return _ok(id_, {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
             "serverInfo": {"name": "agentledger", "version": _VERSION},
-        }))
+        })
 
     if method == "notifications/initialized":
-        return JSONResponse({})  # notification — no response body required
+        return None  # notification — no response
 
     if method == "tools/list":
-        return JSONResponse(_ok(id_, {"tools": _TOOLS}))
+        return _ok(id_, {"tools": _TOOLS})
 
     if method == "tools/call":
-        return await _handle_tool_call(id_, params, request)
+        return await _call_tool(id_, params, store)
 
-    return JSONResponse(_err(id_, -32601, f"Method not found: {method!r}"))
+    return _err(id_, -32601, f"Method not found: {method!r}")
 
 
-async def _handle_tool_call(id_: Any, params: dict, request: Request) -> JSONResponse:
+async def _call_tool(id_: Any, params: dict, store) -> dict:
     name = params.get("name")
     args = params.get("arguments") or {}
-    store = request.app.state.store
 
     if name == "list_sessions":
         limit = max(1, min(int(args.get("limit", 20)), 100))
         sessions = await store.list_sessions(limit=limit)
-        return JSONResponse(_ok(id_, _text_content(json.dumps(sessions, indent=2, default=str))))
+        return (_ok(id_, _text_content(json.dumps(sessions, indent=2, default=str))))
 
     if name == "explain":
         action_id = args.get("action_id", "").strip()
         if not action_id:
-            return JSONResponse(_err(id_, -32602, "action_id is required"))
+            return (_err(id_, -32602, "action_id is required"))
         record = await store.get(action_id)
         if record is None:
-            return JSONResponse(_err(id_, -32602, f"No record found for action_id {action_id!r}"))
-        return JSONResponse(_ok(id_, _text_content(json.dumps(record, indent=2, default=str))))
+            return (_err(id_, -32602, f"No record found for action_id {action_id!r}"))
+        return (_ok(id_, _text_content(json.dumps(record, indent=2, default=str))))
 
     if name == "get_session":
         session_id = args.get("session_id", "").strip()
         if not session_id:
-            return JSONResponse(_err(id_, -32602, "session_id is required"))
+            return (_err(id_, -32602, "session_id is required"))
         records = await store.get_session(session_id)
         if not records:
-            return JSONResponse(_err(id_, -32602, f"No records found for session_id {session_id!r}"))
-        return JSONResponse(_ok(id_, _text_content(json.dumps(records, indent=2, default=str))))
+            return (_err(id_, -32602, f"No records found for session_id {session_id!r}"))
+        return (_ok(id_, _text_content(json.dumps(records, indent=2, default=str))))
 
     if name == "search":
         query = args.get("query", "").strip()
         if not query:
-            return JSONResponse(_err(id_, -32602, "query is required"))
+            return (_err(id_, -32602, "query is required"))
         limit = max(1, min(int(args.get("limit", 20)), 100))
         results = await store.search(query, limit=limit)
         if not results:
-            return JSONResponse(_ok(id_, _text_content(f"No results found for query {query!r}")))
-        return JSONResponse(_ok(id_, _text_content(json.dumps(results, indent=2, default=str))))
+            return (_ok(id_, _text_content(f"No results found for query {query!r}")))
+        return (_ok(id_, _text_content(json.dumps(results, indent=2, default=str))))
 
     if name == "list_runs":
         limit = max(1, min(int(args.get("limit", 20)), 100))
         runs = [_run_status(r) for r in await store.list_runs(limit=limit)]
-        return JSONResponse(_ok(id_, _text_content(json.dumps(runs, indent=2, default=str))))
+        return (_ok(id_, _text_content(json.dumps(runs, indent=2, default=str))))
 
     if name == "get_run_status":
         run_id = args.get("run_id", "").strip()
         if not run_id:
-            return JSONResponse(_err(id_, -32602, "run_id is required"))
+            return (_err(id_, -32602, "run_id is required"))
         run = await store.get_run(run_id)
         if run is None:
-            return JSONResponse(_err(id_, -32602, f"No run found for run_id {run_id!r}"))
-        return JSONResponse(_ok(id_, _text_content(json.dumps(_run_status(run), indent=2, default=str))))
+            return (_err(id_, -32602, f"No run found for run_id {run_id!r}"))
+        return (_ok(id_, _text_content(json.dumps(_run_status(run), indent=2, default=str))))
 
-    return JSONResponse(_err(id_, -32601, f"Unknown tool: {name!r}"))
+    return (_err(id_, -32601, f"Unknown tool: {name!r}"))
 
 
 # ── JSON-RPC helpers ─────────────────────────────────────────────────────────

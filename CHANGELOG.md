@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-26
+
+### Added
+- **Stdio transport for the MCP server** (`agentledger mcp`): newline-delimited
+  JSON-RPC on stdin/stdout, sharing the exact tool dispatch with the HTTP
+  endpoint. For clients that launch MCP servers as subprocesses (Claude
+  Desktop command configs, Glama's inspection harness, Cursor stdio servers).
+  Reads the proxy's database via AGENTLEDGER_DSN; diagnostics go to stderr so
+  stdout stays protocol-clean.
+
 ## [0.3.2] - 2026-07-26
 
 ### Security

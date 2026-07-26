@@ -163,7 +163,16 @@ def main(argv: Optional[list] = None) -> int:
     run_p.add_argument("command", nargs=argparse.REMAINDER,
                        help="Command to loop, after --")
 
+    sub.add_parser(
+        "mcp",
+        help="Serve the MCP server over stdio (for Claude Desktop-style "
+             "subprocess configs; reads the ledger DB via AGENTLEDGER_DSN).",
+    )
+
     args = parser.parse_args(argv)
+    if args.subcommand == "mcp":
+        from agentledger.mcp_stdio import main as mcp_main
+        return mcp_main()
     if args.subcommand != "run":
         parser.print_help()
         return 2

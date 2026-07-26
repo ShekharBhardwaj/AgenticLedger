@@ -297,12 +297,26 @@ Agentic Ledger exposes its captured data as an MCP (Model Context Protocol) tool
 | `list_runs` | Loop runs with iterations, cost, and status |
 | `get_run_status(run_id)` | One run's status — lets an agent inspect its own loop and decide whether to continue |
 
-**Configure in `claude_desktop_config.json`:**
+**Configure in `claude_desktop_config.json`** (HTTP, against a running proxy):
 ```json
 {
   "mcpServers": {
     "agentledger": {
       "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
+
+**Or as a stdio subprocess** — for clients that launch servers as commands
+(no running proxy required; reads the same database):
+```json
+{
+  "mcpServers": {
+    "agentledger": {
+      "command": "agentledger",
+      "args": ["mcp"],
+      "env": { "AGENTLEDGER_DSN": "sqlite:////absolute/path/to/agentledger.db" }
     }
   }
 }
