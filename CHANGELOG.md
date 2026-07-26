@@ -78,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The request body is parsed once per call instead of two-to-three times — a real
   saving on multi-megabyte coding-agent contexts.
 
+## [0.2.0] - 2026-06-19
+
 ### Upgrade notes
 - **Postgres:** on first connect, `session_id` is migrated in place from `UUID` to `TEXT`
   (`ALTER COLUMN`). This is automatic and safe — no action required — but it is a schema change.
