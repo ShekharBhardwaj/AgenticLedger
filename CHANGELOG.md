@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha.1] - 2026-07-25
+
 ### Upgrade notes
 - **Costs for cache-heavy traffic (e.g. Claude Code) are now accurate.** Prompt-cache
   reads/writes were previously ignored, so `tokens_in` could reflect under 1% of the
@@ -210,5 +212,6 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.1...HEAD
+[0.3.0-alpha.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...v0.3.0-alpha.1
 [0.2.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.1.7...v0.2.0

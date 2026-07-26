@@ -1,0 +1,40 @@
+name: Alpha feedback
+description: Tell us how the v0.3 alpha worked (or didn't) with your agent stack
+title: "[alpha] "
+labels: ["alpha-feedback"]
+body:
+  - type: dropdown
+    id: setup
+    attributes:
+      label: How are you running agents?
+      multiple: true
+      options:
+        - Claude Code
+        - Ralph-style loop (agentledger run or a bash loop)
+        - BMAD-METHOD
+        - OpenClaw
+        - Codex CLI / Gemini CLI / opencode
+        - LangGraph / CrewAI / OpenAI Agents SDK / Pydantic AI
+        - OTel/OTLP export (no proxy)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you try, what did you expect, what did you see?
+        Wrong numbers (cost/tokens) are top-priority reports — please include
+        the model id and, if possible, a redacted row from /explain/{action_id}.
+    validations:
+      required: true
+  - type: textarea
+    id: what-worked
+    attributes:
+      label: What worked well / what's missing?
+      description: The one feature you'd want next also goes here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "0.3.0-alpha.1 (pip show agentic-ledger)"
