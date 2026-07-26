@@ -775,3 +775,29 @@ def test_count_tokens_does_not_pollute_loop_inference(proxy):
     real_row = next(r for r in rows if r["stop_reason"] != "count_tokens")
     assert count_row["thread_id"] is None
     assert real_row["step_index"] == 1
+
+
+def test_run_flags_drilldown_endpoint(proxy):
+    """/api/runs/{id}/flags returns the flagged calls with context."""
+    from .conftest import openai_tool_call
+
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response(
+        tool_calls=[openai_tool_call(name="grep", arguments='{"q":"bug"}')],
+    )))
+
+    msgs = [_U]
+    for i in range(3):
+        client.post("/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": list(msgs)},
+                    headers={"x-agentledger-session-id": "s-flags",
+                             "x-agentledger-run-id": "flag-run",
+                             "x-agentledger-iteration": "1"})
+        msgs = msgs + [dict(_A), {**_T, "content": f"result {i}"}]
+
+    flags = client.get("/api/runs/flag-run/flags").json()
+    assert len(flags) == 1
+    f = flags[0]
+    assert f["loop_flags"] == '["repeat_tool_call"]'
+    assert f["session_id"] == "s-flags"
+    assert f["iteration"] == 1
+    assert f["tool_calls"][0]["name"] == "grep"

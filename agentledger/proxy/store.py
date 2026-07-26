@@ -80,6 +80,26 @@ _ITERATION_AGGREGATE_COLUMNS = """
 """
 
 
+# Drill-down projection behind the flagged-calls count — enough context to
+# explain each flag without shipping full message bodies.
+_FLAGGED_CALL_COLUMNS = (
+    "action_id, session_id, thread_id, iteration, step_index, "
+    "loop_flags, tool_calls, model_id, timestamp"
+)
+
+
+def _flagged_row(d: dict) -> dict:
+    ts = d.get("timestamp")
+    if isinstance(ts, (int, float)):
+        d["timestamp"] = _unix_to_iso(ts)
+    elif ts is not None:
+        d["timestamp"] = ts.isoformat()
+    if isinstance(d.get("tool_calls"), str):
+        with contextlib.suppress(Exception):
+            d["tool_calls"] = json.loads(d["tool_calls"])
+    return d
+
+
 def _iteration_row(d: dict) -> dict:
     d["started_at"] = _unix_to_iso(d["started_at"]) if isinstance(d["started_at"], (int, float)) else d["started_at"].isoformat()
     d["last_call_at"] = _unix_to_iso(d["last_call_at"]) if isinstance(d["last_call_at"], (int, float)) else d["last_call_at"].isoformat()
@@ -139,6 +159,12 @@ class Store(ABC):
     @abstractmethod
     async def get_run_iterations(self, run_id: str) -> list[dict[str, Any]]:
         """Per-iteration aggregates for one run, in iteration order."""
+        ...
+
+    @abstractmethod
+    async def get_flagged_calls(self, run_id: str) -> list[dict[str, Any]]:
+        """Calls in a run that carry loop_flags, oldest first — the drill-down
+        behind the Loop Lens flagged-calls count."""
         ...
 
     @abstractmethod
@@ -398,6 +424,15 @@ class _SqliteStore(Store):
         ) as cur:
             rows = await cur.fetchall()
         return [_iteration_row(dict(r)) for r in rows]
+
+    async def get_flagged_calls(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            f"SELECT {_FLAGGED_CALL_COLUMNS} FROM llm_calls "
+            "WHERE run_id = ? AND loop_flags IS NOT NULL ORDER BY timestamp ASC",
+            (run_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_flagged_row(dict(r)) for r in rows]
 
     async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
         if not executions:
@@ -827,6 +862,15 @@ class _PostgresStore(Store):
                 run_id,
             )
         return [_iteration_row(dict(r)) for r in rows]
+
+    async def get_flagged_calls(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_FLAGGED_CALL_COLUMNS} FROM llm_calls "
+                "WHERE run_id = $1 AND loop_flags IS NOT NULL ORDER BY timestamp ASC",
+                run_id,
+            )
+        return [_flagged_row(dict(r)) for r in rows]
 
     async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
         if not executions:

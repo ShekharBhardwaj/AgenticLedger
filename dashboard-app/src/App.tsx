@@ -6,6 +6,12 @@ type Tab = "runs" | "sessions";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("runs");
+  const [focusSession, setFocusSession] = useState<string | null>(null);
+
+  const openSession = (sessionId: string) => {
+    setFocusSession(sessionId);
+    setTab("sessions");
+  };
 
   return (
     <>
@@ -27,7 +33,11 @@ export default function App() {
         <span className="spacer" />
         <span className="live-dot" title="live via WebSocket" />
       </div>
-      {tab === "runs" ? <RunsView /> : <SessionsView />}
+      {tab === "runs" ? (
+        <RunsView onOpenSession={openSession} />
+      ) : (
+        <SessionsView focusSession={focusSession} />
+      )}
     </>
   );
 }

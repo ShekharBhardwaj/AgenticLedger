@@ -555,6 +555,14 @@ def create_app(
         iterations = await request.app.state.store.get_run_iterations(run_id)
         return JSONResponse(iterations)
 
+    @app.get("/api/runs/{run_id}/flags")
+    async def api_run_flags(run_id: str, request: Request) -> JSONResponse:
+        """The calls behind a run's flagged count, with enough context to
+        understand each flag (session, iteration, step, tool calls)."""
+        await _require(request, ROLE_VIEWER)
+        flags = await request.app.state.store.get_flagged_calls(run_id)
+        return JSONResponse(flags)
+
     @app.delete("/api/sessions/{session_id}")
     async def delete_session(session_id: str, request: Request) -> JSONResponse:
         principal = await _require(request, ROLE_EDITOR)

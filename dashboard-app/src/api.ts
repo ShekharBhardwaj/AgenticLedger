@@ -131,6 +131,58 @@ export const fmtNum = (v: number | null | undefined) =>
 export const fmtTime = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString() : "—";
 
+export interface FlaggedCall {
+  action_id: string;
+  session_id: string | null;
+  thread_id: string | null;
+  iteration: number | null;
+  step_index: number | null;
+  loop_flags: string;
+  tool_calls: { name?: string; arguments?: unknown }[] | null;
+  model_id: string;
+  timestamp: string;
+}
+
+/** Plain-English explanations for every loop flag the tracker can raise. */
+export const FLAG_INFO: Record<string, { title: string; detail: string; kind: "warn" | "good" }> = {
+  repeat_tool_call: {
+    title: "Stuck loop suspected",
+    detail:
+      "The agent issued the same tool call with identical arguments several times in a row " +
+      "(threshold: AGENTLEDGER_LOOP_REPEAT_THRESHOLD, default 3). Repeating an identical " +
+      "call rarely produces new information — this is the classic signature of a loop " +
+      "burning tokens without making progress. With AGENTLEDGER_LOOP_ACTION=block, the " +
+      "session's next call is stopped with HTTP 429 before it reaches the provider.",
+    kind: "warn",
+  },
+  step_budget_exceeded: {
+    title: "Step budget exceeded",
+    detail:
+      "A single reasoning thread ran past the configured AGENTLEDGER_LOOP_MAX_STEPS. Long " +
+      "threads aren't always wrong, but past the budget each additional step re-sends the " +
+      "whole context — cost grows quadratically while quality tends to degrade.",
+    kind: "warn",
+  },
+  completion_promise: {
+    title: "Completion promise",
+    detail:
+      "The response matched AGENTLEDGER_COMPLETION_PROMISE — the agent declared the loop " +
+      "done. This is the good flag: it flips the run's status to complete so loop runners " +
+      "know to stop. It is not counted as a problem flag.",
+    kind: "good",
+  },
+};
+
+export function flagInfo(name: string) {
+  return (
+    FLAG_INFO[name] ?? {
+      title: name,
+      detail: "Flag raised by the loop tracker.",
+      kind: "warn" as const,
+    }
+  );
+}
+
 export interface InteractionTag {
   tag: "H2A" | "A2T" | "A2A" | "A2H";
   label: string;

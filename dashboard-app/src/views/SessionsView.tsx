@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Call, fmtNum, fmtTime, fmtUsd, get, interactionTags, liveUpdates, Session, toolNames,
+  Call, flagInfo, fmtNum, fmtTime, fmtUsd, get, interactionTags, liveUpdates, Session, toolNames,
 } from "../api";
 
 function CallCard({ call }: { call: Call }) {
@@ -17,7 +17,16 @@ function CallCard({ call }: { call: Call }) {
           </span>
         ))}
         {failed && <span className="badge error">{call.status_code}</span>}
-        {call.loop_flags && <span className="badge flagged">{JSON.parse(call.loop_flags).join(", ")}</span>}
+        {call.loop_flags &&
+          (JSON.parse(call.loop_flags) as string[]).map((n) => (
+            <span
+              key={n}
+              className={`badge ${flagInfo(n).kind === "good" ? "complete" : "flagged"}`}
+              title={`${flagInfo(n).title}: ${flagInfo(n).detail}`}
+            >
+              {n}
+            </span>
+          ))}
         {call.framework && <span className="badge fw">{call.framework}</span>}
         {tools.length > 0 && (
           <span className="tools-chip" title={tools.join(", ")}>
@@ -56,9 +65,13 @@ function CallCard({ call }: { call: Call }) {
   );
 }
 
-export default function SessionsView() {
+export default function SessionsView({ focusSession }: { focusSession?: string | null }) {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(focusSession ?? null);
+
+  useEffect(() => {
+    if (focusSession) setSelected(focusSession);
+  }, [focusSession]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);

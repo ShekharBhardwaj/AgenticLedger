@@ -1,11 +1,56 @@
 import { useCallback, useEffect, useState } from "react";
-import { fmtNum, fmtTime, fmtUsd, get, Iteration, liveUpdates, Run } from "../api";
+import {
+  FlaggedCall, flagInfo, fmtNum, fmtTime, fmtUsd, get, Iteration, liveUpdates, Run,
+} from "../api";
 
-export default function RunsView() {
+function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (s: string) => void }) {
+  const names: string[] = JSON.parse(flag.loop_flags);
+  const tools = (flag.tool_calls ?? [])
+    .map((tc) => tc.name)
+    .filter(Boolean)
+    .join(", ");
+  return (
+    <div className="card flag-card">
+      <div className="flag-head">
+        {names.map((n) => (
+          <span key={n} className={`badge ${flagInfo(n).kind === "good" ? "complete" : "flagged"}`}>
+            {n}
+          </span>
+        ))}
+        <span className="flag-title">{names.map((n) => flagInfo(n).title).join(" · ")}</span>
+        <span className="spacer" />
+        <span className="muted">
+          iteration {flag.iteration ?? "—"} · step {flag.step_index ?? "—"} · {fmtTime(flag.timestamp)}
+        </span>
+      </div>
+      <div className="flag-detail">
+        {names.map((n) => (
+          <p key={n}>{flagInfo(n).detail}</p>
+        ))}
+        {tools && (
+          <p className="muted">
+            Tool call on this step: <code>{tools}</code>
+            {flag.tool_calls?.[0]?.arguments ? (
+              <> — args <code>{JSON.stringify(flag.tool_calls[0].arguments).slice(0, 120)}</code></>
+            ) : null}
+          </p>
+        )}
+      </div>
+      {flag.session_id && (
+        <button className="link-btn" onClick={() => onOpenSession(flag.session_id!)}>
+          Open session {flag.session_id} →
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default function RunsView({ onOpenSession }: { onOpenSession: (s: string) => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<Run | null>(null);
   const [iterations, setIterations] = useState<Iteration[]>([]);
+  const [flags, setFlags] = useState<FlaggedCall[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -23,6 +68,9 @@ export default function RunsView() {
     get<Iteration[]>(`/api/runs/${encodeURIComponent(selected)}/iterations`)
       .then(setIterations)
       .catch(() => setIterations([]));
+    get<FlaggedCall[]>(`/api/runs/${encodeURIComponent(selected)}/flags`)
+      .then(setFlags)
+      .catch(() => setFlags([]));
   }, [selected, runs]);
 
   const maxCost = Math.max(...iterations.map((i) => i.cost_usd || 0), 0.000001);
@@ -105,6 +153,15 @@ export default function RunsView() {
                     <div key={String(it.iteration)}>{it.iteration ?? "?"}</div>
                   ))}
                 </div>
+
+                {flags.length > 0 && (
+                  <>
+                    <div className="section-title">Flags — what happened and why</div>
+                    {flags.map((f) => (
+                      <FlagCard key={f.action_id} flag={f} onOpenSession={onOpenSession} />
+                    ))}
+                  </>
+                )}
 
                 <div className="section-title">Iterations</div>
                 <table className="grid">
