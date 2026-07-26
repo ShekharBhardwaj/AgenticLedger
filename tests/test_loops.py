@@ -223,3 +223,54 @@ def test_unmatched_tool_results_ignored():
     )
     f = tracker.annotate("a1", req, _resp(), _meta())
     assert f["tool_executions"] == []
+
+
+def test_compaction_continuation_relinks_thread():
+    """A rewritten history carrying the continuation marker stays on the same
+    thread with a context_compaction flag, instead of minting a phantom one."""
+    tracker = LoopTracker()
+    f1 = tracker.annotate("a1", _req([U1, A1, T1]), _resp(), _meta())
+    compacted = _req([
+        {"role": "user", "content": "This session is being continued from a previous "
+                                    "conversation that ran out of context. Summary: ..."},
+    ])
+    f2 = tracker.annotate("a2", compacted, _resp(), _meta())
+    assert f2["thread_id"] == f1["thread_id"]
+    assert f2["step_index"] == 2
+    assert f2["prev_action_id"] == "a1"
+    assert "context_compaction" in f2["loop_flags"]
+    # Informational — must not trip the circuit breaker.
+    assert tracker.check_block("s1") is None
+
+
+def test_compaction_marker_in_block_list_content():
+    tracker = LoopTracker()
+    tracker.annotate("a1", _req([U1]), _resp(), _meta())
+    compacted = _req([
+        {"role": "user", "content": [
+            {"type": "text", "text": "This session is being continued from a previous conversation."},
+        ]},
+    ])
+    f2 = tracker.annotate("a2", compacted, _resp(), _meta())
+    assert f2["step_index"] == 2
+
+
+def test_fresh_conversation_without_marker_still_forks():
+    tracker = LoopTracker()
+    f1 = tracker.annotate("a1", _req([U1, A1, T1]), _resp(), _meta())
+    f2 = tracker.annotate("a2", _req([{"role": "user", "content": "brand new task"}]),
+                          _resp(), _meta())
+    assert f2["thread_id"] != f1["thread_id"]
+
+
+def test_utility_call_detection():
+    from agentledger.proxy.loops import is_utility_call
+    small = _req([U1])
+    small.max_tokens = 512
+    big = _req([U1])
+    big.max_tokens = 32000
+    assert is_utility_call(small, {"framework": "claude-code"}) is True
+    assert is_utility_call(big, {"framework": "claude-code"}) is False
+    # Only claude-code traffic gets this treatment — a small generic call
+    # (e.g. a user's own low-max_tokens app) is still inferred normally.
+    assert is_utility_call(small, {"framework": None}) is False

@@ -146,7 +146,7 @@ export interface FlaggedCall {
 }
 
 /** Plain-English explanations for every loop flag the tracker can raise. */
-export const FLAG_INFO: Record<string, { title: string; detail: string; kind: "warn" | "good" }> = {
+export const FLAG_INFO: Record<string, { title: string; detail: string; kind: "warn" | "good" | "info" }> = {
   repeat_tool_call: {
     title: "Stuck loop suspected",
     detail:
@@ -164,6 +164,15 @@ export const FLAG_INFO: Record<string, { title: string; detail: string; kind: "w
       "threads aren't always wrong, but past the budget each additional step re-sends the " +
       "whole context — cost grows quadratically while quality tends to degrade.",
     kind: "warn",
+  },
+  context_compaction: {
+    title: "Context compacted",
+    detail:
+      "The conversation history was rewritten into a summary (e.g. Claude Code's " +
+      "/compact or auto-compaction). The prefix chain broke, but the continuation " +
+      "marker identified it, so the call was re-linked to its thread instead of " +
+      "starting a phantom new one. Informational, not a problem flag.",
+    kind: "info",
   },
   completion_promise: {
     title: "Completion promise",
@@ -183,6 +192,12 @@ export function flagInfo(name: string) {
       kind: "warn" as const,
     }
   );
+}
+
+/** Badge CSS class for a flag, by severity kind. */
+export function flagBadgeClass(name: string): string {
+  const kind = flagInfo(name).kind;
+  return kind === "good" ? "complete" : kind === "info" ? "fw" : "flagged";
 }
 
 export interface InteractionTag {

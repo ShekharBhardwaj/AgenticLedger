@@ -66,7 +66,7 @@ from .auth import (
 from .dashboard import get_dashboard_html
 from .detect import detect_agent
 from .export import build_export, render_html_report
-from .loops import DEFAULT_REPEAT_THRESHOLD, DEFAULT_RUN_GAP_SECONDS, LoopTracker
+from .loops import DEFAULT_REPEAT_THRESHOLD, DEFAULT_RUN_GAP_SECONDS, LoopTracker, is_utility_call
 from .mcp import handle_mcp
 from .normalize import (
     CanonicalRequest,
@@ -270,13 +270,15 @@ def create_app(
         # redacted/leveled copy. In async mode this runs off the request hot path.
         # Loop/run inference must run BEFORE the capture policy — metadata level
         # empties req.messages, and the chain hashes need the raw content.
-        # count_tokens metering calls carry the same message history as the
-        # real call that follows — feeding them to the tracker would inflate
-        # step counts and reset repeat streaks, so they stay out of inference.
+        # count_tokens metering and framework utility calls (Claude Code's
+        # small title/summary requests) carry conversation-shaped histories —
+        # feeding them to the tracker would inflate step counts and reset
+        # repeat streaks, so they stay out of inference.
         loop_fields = (
             _loop_tracker.annotate(job.action_id, job.req, job.resp, job.meta)
             if _loop_action != "off" and job.status_code == 200
             and job.resp.stop_reason != "count_tokens"
+            and not is_utility_call(job.req, job.meta)
             else {}
         )
         tool_executions = loop_fields.pop("tool_executions", [])

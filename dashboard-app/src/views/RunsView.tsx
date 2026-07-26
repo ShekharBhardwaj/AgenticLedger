@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  FlaggedCall, flagInfo, fmtNum, fmtTime, fmtUsd, get, Iteration, liveUpdates, Run,
+  FlaggedCall, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get, Iteration,
+  liveUpdates, Run,
 } from "../api";
 
 function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (s: string) => void }) {
@@ -13,7 +14,7 @@ function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (
     <div className="card flag-card">
       <div className="flag-head">
         {names.map((n) => (
-          <span key={n} className={`badge ${flagInfo(n).kind === "good" ? "complete" : "flagged"}`}>
+          <span key={n} className={`badge ${flagBadgeClass(n)}`}>
             {n}
           </span>
         ))}

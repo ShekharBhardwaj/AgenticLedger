@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classic view's timestamp inference. `/` now serves the web app (falling back
   to the classic dashboard on source checkouts without a Node build);
   the classic dashboard moved to `/classic`; `/app` still works.
+- **Loop-engine robustness.** (1) Claude Code's small housekeeping calls
+  (session titles/summaries, identified by tiny `max_tokens` on detected
+  claude-code traffic) are captured but excluded from loop inference — they
+  were inflating step counts and resetting repeat-streak detection. (2)
+  Context compaction is tolerated: a rewritten history carrying Claude Code's
+  continuation marker re-links to its thread with an informational
+  `context_compaction` flag instead of starting a phantom new thread.
+  Flagged-call counts now include only problem flags (`repeat_tool_call`,
+  `step_budget_exceeded`) — informational flags don't turn things amber.
 
 ## [0.3.0-alpha.3] - 2026-07-26
 

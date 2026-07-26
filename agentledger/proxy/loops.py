@@ -91,6 +91,43 @@ def _system_digest(req) -> Optional[str]:
     return None
 
 
+# Claude Code fires small utility calls (session titles, summaries) at the
+# same endpoint as the main loop. Its real coding calls request tens of
+# thousands of max_tokens; utility calls cap out low — a stable discriminator.
+_UTILITY_MAX_TOKENS = 1024
+
+
+def is_utility_call(req, meta: dict) -> bool:
+    """True for framework housekeeping calls that must stay out of loop
+    inference — chaining them inflates step counts and resets repeat streaks."""
+    return (
+        meta.get("framework") == "claude-code"
+        and req.max_tokens is not None
+        and req.max_tokens <= _UTILITY_MAX_TOKENS
+    )
+
+
+# Claude Code's compaction rewrites history into a summary message with a
+# stable opening phrase — the reliable signal that a shrunken, non-matching
+# prefix is a continuation rather than a brand-new conversation.
+_COMPACTION_MARKER = "this session is being continued"
+
+
+def _is_compaction_continuation(req) -> bool:
+    for m in req.messages[:2]:
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and isinstance(b.get("text"), str)
+            )
+        if isinstance(content, str) and _COMPACTION_MARKER in content[:400].lower():
+            return True
+    return False
+
+
 def _tool_signature(tool_calls: Optional[list]) -> Optional[tuple[str, ...]]:
     if not tool_calls:
         return None
@@ -109,6 +146,7 @@ class _Thread:
     last_action_id: str
     last_tool_sig: Optional[tuple[str, ...]] = None
     repeat_streak: int = 1
+    last_ts: float = 0.0
     # tool_call_id → {tool_name, arguments, issued_by_action_id, issued_ts}
     pending_tools: dict = field(default_factory=dict)
 
@@ -192,6 +230,14 @@ class LoopTracker:
         thread = self._match_thread(state, chain)
         new_flags: list[str] = []
 
+        # Compaction tolerance: a rewritten history breaks the prefix chain,
+        # but Claude Code's continuation marker identifies it — re-link to the
+        # session's most recently active thread instead of minting a phantom
+        # new one, and record the event so the rewrite is visible.
+        if thread is None and state.threads and _is_compaction_continuation(req):
+            thread = max(state.threads, key=lambda t: t.last_ts)
+            new_flags.append("context_compaction")
+
         if thread is None:
             thread = _Thread(
                 thread_id=f"t-{action_id[:13]}", chain=chain,
@@ -205,6 +251,7 @@ class LoopTracker:
             thread.step_index += 1
             thread.chain = chain
             thread.last_action_id = action_id
+        thread.last_ts = now
 
         # ── Stuck-loop detection: identical tool-call signature streaks
         sig = _tool_signature(resp.tool_calls)

@@ -816,3 +816,30 @@ def test_home_serves_html_and_classic_is_stable(proxy):
     assert classic.status_code == 200
     # The classic dashboard inlines its mascot as a data URI — a stable marker.
     assert "data:image/jpeg" in classic.text
+
+
+def test_claude_code_utility_calls_stay_out_of_loop_inference(proxy):
+    """A small-max_tokens Claude Code call (title/summary housekeeping) is
+    captured but not chained into threads."""
+    from .conftest import anthropic_response
+
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()))
+    headers = {"user-agent": "claude-cli/2.0.14 (external, cli)",
+               "x-agentledger-session-id": "s-util"}
+
+    client.post("/v1/messages",
+                json={"model": "claude-3-5-haiku", "max_tokens": 512,
+                      "messages": [{"role": "user", "content": "Summarize this conversation"}]},
+                headers=headers)
+    client.post("/v1/messages",
+                json={"model": "claude-sonnet-4", "max_tokens": 32000,
+                      "messages": [{"role": "user", "content": "fix the bug"}]},
+                headers=headers)
+
+    rows = client.get("/session/s-util").json()
+    utility = next(r for r in rows if r["max_tokens"] == 512)
+    real = next(r for r in rows if r["max_tokens"] == 32000)
+    assert utility["thread_id"] is None
+    assert utility["step_index"] is None
+    assert real["thread_id"] is not None
+    assert real["step_index"] == 1

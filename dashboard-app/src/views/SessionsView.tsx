@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Call, flagInfo, fmtNum, fmtTime, fmtUsd, get, interactionTags, liveUpdates, Session, toolNames,
+  Call, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get, interactionTags,
+  liveUpdates, Session, toolNames,
 } from "../api";
 import FlowView from "./FlowView";
 import TraceView from "./TraceView";
@@ -25,7 +26,7 @@ function CallCard({ call }: { call: Call }) {
           (JSON.parse(call.loop_flags) as string[]).map((n) => (
             <span
               key={n}
-              className={`badge ${flagInfo(n).kind === "good" ? "complete" : "flagged"}`}
+              className={`badge ${flagBadgeClass(n)}`}
               title={`${flagInfo(n).title}: ${flagInfo(n).detail}`}
             >
               {n}
