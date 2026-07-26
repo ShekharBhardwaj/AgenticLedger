@@ -14,13 +14,17 @@ fingerprints drift across releases.
 import re
 from typing import Optional
 
-# Claude Code embeds its session UUID in the Anthropic metadata.user_id field:
-# "user_<hash>_account_<uuid>_session_<uuid>". The session UUID matches the id
-# shown by `claude --resume`, so surfacing it verbatim lets users correlate
-# ledger sessions with their local Claude Code sessions.
-_CC_SESSION_RE = re.compile(
-    r"session_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-)
+# Claude Code embeds its session UUID in the Anthropic metadata.user_id field.
+# Two wire formats exist: claude-cli 1.x sent a flat string
+# "user_<hash>_account_<uuid>_session_<uuid>"; 2.x sends a JSON blob
+# '{"device_id":"<hex>","account_uuid":"<uuid>","session_id":"<uuid>"}'.
+# The session UUID matches the id shown by `claude --resume`, so surfacing it
+# verbatim lets users correlate ledger sessions with their local Claude Code
+# sessions. Regexes over the raw string tolerate both shapes plus key
+# reordering/whitespace drift that a strict JSON parse would not.
+_UUID_PAT = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_CC_SESSION_RE = re.compile(rf"session_({_UUID_PAT})")
+_CC_SESSION_JSON_RE = re.compile(rf'"session_id"\s*:\s*"({_UUID_PAT})"')
 
 # BMAD-METHOD rides on host coding agents and identifies itself only through
 # its persona/skill markdown loaded into the system prompt. Markers are kept
@@ -56,11 +60,18 @@ def detect_agent(headers, body: Optional[dict]) -> dict:
 
     if body:
         meta_user = (body.get("metadata") or {}).get("user_id") or ""
-        m = _CC_SESSION_RE.search(meta_user)
+        m = _CC_SESSION_JSON_RE.search(meta_user) or _CC_SESSION_RE.search(meta_user)
         if m:
             session_id = m.group(1)
             framework = framework or "claude-code"
-        if framework is None and _system_prompt_startswith(body, "you are claude code"):
+        # claude-cli 2.x prepends an "x-anthropic-billing-header: cc_version=…;
+        # cc_entrypoint=…" system block, and in sdk-cli (-p) mode the persona
+        # line is "You are a Claude agent" — the billing header is the stable
+        # body-side fingerprint there.
+        if framework is None and (
+            _system_prompt_startswith(body, "you are claude code")
+            or _has_cc_billing_header(body)
+        ):
             framework = "claude-code"
 
         # BMAD personas ride on top of a host coding agent — a BMAD marker in
@@ -111,6 +122,17 @@ def _system_texts(body: dict) -> list[str]:
 
 def _system_prompt_startswith(body: dict, prefix: str) -> bool:
     return any(t.lower().startswith(prefix) for t in _system_texts(body))
+
+
+def _has_cc_billing_header(body: dict) -> bool:
+    """A system block like "x-anthropic-billing-header: cc_version=2.1.220.04c;
+    cc_entrypoint=cli;" — cc_* fields are Claude Code's own billing tags.
+    Field order is not guaranteed, so require the header prefix plus any cc_
+    field rather than an exact prefix through cc_version."""
+    return any(
+        t.lower().startswith("x-anthropic-billing-header:") and "cc_" in t
+        for t in _system_texts(body)
+    )
 
 
 # Fingerprints are matched against a bounded prefix — BMAD activation blocks
