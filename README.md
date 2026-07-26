@@ -755,3 +755,6 @@ from a source checkout without the web-app build. `cd dashboard-app && npm ci
 ## License
 
 MIT
+
+<!-- MCP registry ownership verification -->
+`mcp-name: io.github.shekharbhardwaj/agentic-ledger`

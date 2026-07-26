@@ -7,10 +7,16 @@
     "source": "github"
   },
   "version": "0.3.0b1",
-  "remotes": [
+  "packages": [
     {
-      "type": "streamable-http",
-      "url": "http://localhost:8000/mcp"
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "agentic-ledger",
+      "version": "0.3.0b1",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:8000/mcp"
+      }
     }
   ]
 }
