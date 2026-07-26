@@ -335,7 +335,7 @@ Once connected, you can ask your assistant things like:
 | `AGENTLEDGER_API_KEY` | No | _(none)_ | Master admin key. When set, the dashboard, read, and management endpoints require authentication; the key grants the `admin` role and bootstraps API tokens (below). Skip for local dev; set when the proxy is on a server — you choose the value. |
 | `AGENTLEDGER_INGEST_KEY` | No | _(none)_ | When set, the proxy forwards a request only if it carries a matching `x-agentledger-ingest-key` header — closing the open relay. Off by default; a loud startup warning fires when unset. |
 | `AGENTLEDGER_EXPORT_HMAC_KEY` | No | _(none)_ | When set, compliance exports carry a tamper-evident keyed `hmac-sha256` integrity tag instead of a plain `sha256` checksum. |
-| `AGENTLEDGER_EXTRA_PATHS` | No | _(none)_ | Comma-separated additional request paths to capture, e.g. `v1/responses,v1/custom`. Built-in paths (`v1/chat/completions`, `v1/messages`, `v1/responses`) are always captured. |
+| `AGENTLEDGER_EXTRA_PATHS` | No | _(none)_ | Comma-separated additional request paths to capture, e.g. `v1/responses,v1/custom`. Built-in paths (`v1/chat/completions`, `v1/messages`, `v1/responses`, plus `v1/messages/count_tokens` recorded as a free call) are always captured. |
 | `AGENTLEDGER_ASYNC_CAPTURE` | No | `off` | Persist captures on a background worker so storage never adds latency to the agent's call. Trade-off: reads become **eventually consistent** (a just-captured call may not be queryable for a brief moment). Recommended for high throughput. |
 | `AGENTLEDGER_CAPTURE_QUEUE_MAX` | No | `10000` | Max captures buffered in async mode before load is shed (drops are counted in `/metrics`). |
 | `AGENTLEDGER_CAPTURE_LEVEL` | No | `full` | `full` stores everything; `metadata` stores only metrics/metadata (model, tokens, cost, latency, agent, status) and drops prompts, responses, and tools. |
@@ -462,7 +462,7 @@ curl -H "x-agentledger-api-key: my-secret" http://localhost:8000/api/tokens
 curl -X DELETE -H "x-agentledger-api-key: my-secret" http://localhost:8000/api/tokens/<token_id>
 ```
 
-> Auth is enforced only when `AGENTLEDGER_API_KEY` is set; the master key is the admin bootstrap for minting tokens. (Dashboard credential propagation over the live `/ws` feed is tracked as follow-up — see `ROADMAP.md`.)
+> Auth is enforced only when `AGENTLEDGER_API_KEY` is set; the master key is the admin bootstrap for minting tokens. The live `/ws` feed accepts the same credentials (`?api_key=`, `?token=`, `Authorization: Bearer`, or `x-agentledger-token`) and rejects unauthenticated connects with close code 1008 — the dashboard forwards its page credential to the socket automatically.
 
 ---
 

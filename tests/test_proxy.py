@@ -681,3 +681,97 @@ def test_spa_asset_unknown_file_404s(proxy):
     upstream proxy; the resolve() guard is defense-in-depth.)"""
     client = proxy(handler=_ok_handler())
     assert client.get("/app/assets/nope.js").status_code == 404
+
+
+# ── count_tokens capture ──────────────────────────────────────────────────────
+
+_COUNT_BODY = {"model": "claude-sonnet-5", "messages": [{"role": "user", "content": "hi"}]}
+
+
+def _count_tokens_handler(r):
+    if r.url.path.endswith("/count_tokens"):
+        return httpx.Response(200, json={"input_tokens": 2095})
+    return httpx.Response(200, json=openai_response())
+
+
+def test_count_tokens_is_captured_and_returned_unmodified(proxy):
+    """POST /v1/messages/count_tokens is forwarded intact and recorded with a
+    stop_reason marker, the count in content, and neither tokens nor cost."""
+    client = proxy(handler=_count_tokens_handler)
+
+    resp = client.post("/v1/messages/count_tokens", json=_COUNT_BODY,
+                       headers={"x-agentledger-session-id": "s-count"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"input_tokens": 2095}
+    action_id = resp.headers["x-agentledger-action-id"]
+
+    record = client.get(f"/explain/{action_id}").json()
+    assert record["stop_reason"] == "count_tokens"
+    assert record["model_id"] == "claude-sonnet-5"
+    assert record["provider"] == "anthropic"
+    assert record["content"] == "input_tokens: 2095"
+    assert record["tokens_in"] is None and record["tokens_out"] is None
+    assert record["cost_usd"] == 0.0
+
+
+def test_count_tokens_does_not_pollute_session_aggregates(proxy):
+    """A count_tokens call adds nothing to a session's token/cost totals."""
+    client = proxy(handler=_count_tokens_handler)
+
+    client.post("/v1/messages/count_tokens", json=_COUNT_BODY,
+                headers={"x-agentledger-session-id": "s-count-agg"})
+
+    row = next(s for s in client.get("/api/sessions").json()
+               if s["session_id"] == "s-count-agg")
+    assert row["call_count"] == 1
+    assert (row["total_tokens_in"] or 0) == 0
+    assert (row["total_tokens_out"] or 0) == 0
+    assert (row["total_cost_usd"] or 0) == 0
+
+
+def test_count_tokens_exempt_from_rate_limit_and_budget(proxy):
+    """count_tokens is free: it must neither consume rate-limit quota nor be
+    blocked once a budget is exhausted."""
+    client = proxy(
+        handler=_count_tokens_handler,
+        rate_limit_config=RateLimitConfig(global_rpm=1),
+        budget_session=0.000001,
+    )
+
+    # Exhaust both the rate limit and the session budget with one paid call.
+    first = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                        headers={"x-agentledger-session-id": "s-count-free"})
+    assert first.status_code == 200
+
+    # count_tokens still passes…
+    counted = client.post("/v1/messages/count_tokens", json=_COUNT_BODY,
+                          headers={"x-agentledger-session-id": "s-count-free"})
+    assert counted.status_code == 200
+
+    # …while a paid call is now rejected.
+    blocked = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                          headers={"x-agentledger-session-id": "s-count-free"})
+    assert blocked.status_code == 429
+
+
+def test_count_tokens_does_not_pollute_loop_inference(proxy):
+    """A count_tokens call with the same message history must not consume a
+    step in the thread the real call belongs to."""
+    def handler(r):
+        if r.url.path.endswith("/count_tokens"):
+            return httpx.Response(200, json={"input_tokens": 512})
+        return httpx.Response(200, json=openai_response())
+
+    client = proxy(handler=handler)
+    body = {"model": "claude-sonnet-4", "messages": [{"role": "user", "content": "hi"}]}
+    client.post("/v1/messages/count_tokens", json=body,
+                headers={"x-agentledger-session-id": "s-ct-loop"})
+    client.post("/v1/messages", json=body,
+                headers={"x-agentledger-session-id": "s-ct-loop"})
+
+    rows = client.get("/session/s-ct-loop").json()
+    count_row = next(r for r in rows if r["stop_reason"] == "count_tokens")
+    real_row = next(r for r in rows if r["stop_reason"] != "count_tokens")
+    assert count_row["thread_id"] is None
+    assert real_row["step_index"] == 1

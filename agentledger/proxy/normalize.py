@@ -132,6 +132,20 @@ def normalize_response(body: dict, latency_ms: float, model_id: str = "") -> Can
     if body.get("object") == "response" and "output" in body:
         return _normalize_responses_response(body, latency_ms, model_id)
 
+    # Anthropic count_tokens format: {"input_tokens": N}. A free metering call —
+    # the count is kept in `content` and marked via stop_reason, with zero cost
+    # and no tokens_in/out so session cost/token aggregates are unaffected.
+    if "input_tokens" in body and "content" not in body and "choices" not in body:
+        return CanonicalResponse(
+            content=f"input_tokens: {body['input_tokens']}",
+            tool_calls=None,
+            stop_reason="count_tokens",
+            tokens_in=None,
+            tokens_out=None,
+            latency_ms=latency_ms,
+            cost_usd=0.0,
+        )
+
     # OpenAI / LiteLLM format
     choices = body.get("choices")
     if choices:
