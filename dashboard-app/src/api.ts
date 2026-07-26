@@ -85,6 +85,8 @@ export interface Call {
   error_detail: string | null;
   agent_name: string | null;
   framework: string | null;
+  handoff_from: string | null;
+  handoff_to: string | null;
   thread_id: string | null;
   step_index: number | null;
   turn_index: number | null;
@@ -128,3 +130,48 @@ export const fmtNum = (v: number | null | undefined) =>
 
 export const fmtTime = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString() : "—";
+
+export interface InteractionTag {
+  tag: "H2A" | "A2T" | "A2A" | "A2H";
+  label: string;
+}
+
+/** Interaction-type indicators, derived from what the call itself shows:
+ *  H2A human→agent (triggered by fresh human input), A2T agent→tool
+ *  (response issues tool calls), A2A agent→agent (handoff metadata),
+ *  A2H agent→human (plain reply ending the turn). Not mutually exclusive. */
+export function interactionTags(call: Call): InteractionTag[] {
+  const tags: InteractionTag[] = [];
+  const msgs = Array.isArray(call.messages) ? (call.messages as any[]) : [];
+  const last = msgs.length ? msgs[msgs.length - 1] : null;
+  const lastIsToolCarrier =
+    last &&
+    (last.role === "tool" ||
+      (last.role === "user" &&
+        Array.isArray(last.content) &&
+        last.content.length > 0 &&
+        last.content.every((b: any) => b && b.type === "tool_result")));
+  if (last && last.role === "user" && !lastIsToolCarrier)
+    tags.push({ tag: "H2A", label: "Human → Agent: triggered by fresh user input" });
+  if (call.tool_calls && call.tool_calls.length)
+    tags.push({ tag: "A2T", label: "Agent → Tool: this response issues tool calls" });
+  if (call.handoff_from || call.handoff_to)
+    tags.push({
+      tag: "A2A",
+      label: `Agent → Agent: handoff ${call.handoff_from ?? "?"} → ${call.handoff_to ?? "?"}`,
+    });
+  if (
+    (!call.tool_calls || call.tool_calls.length === 0) &&
+    (call.stop_reason === "end_turn" || call.stop_reason === "stop")
+  )
+    tags.push({ tag: "A2H", label: "Agent → Human: plain reply ending the turn" });
+  return tags;
+}
+
+/** Unique tool names issued by this call, for the collapsed card. */
+export function toolNames(call: Call): string[] {
+  const names = (call.tool_calls ?? [])
+    .map((tc) => tc.name)
+    .filter((n): n is string => Boolean(n));
+  return [...new Set(names)];
+}

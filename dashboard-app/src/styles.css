@@ -84,6 +84,20 @@ body {
 .badge.error    { background: rgba(248,81,73,.15);  color: var(--red); }
 .badge.fw       { background: var(--bg-hover); color: var(--text-dim); font-family: var(--mono); font-weight: 500; }
 
+/* Interaction-type indicators: who is talking to whom in this call. */
+.badge.proto      { font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; }
+.badge.proto.h2a  { background: rgba(78, 161, 255, 0.16); color: #6cb2ff; }
+.badge.proto.a2t  { background: rgba(163, 113, 247, 0.16); color: #b78af5; }
+.badge.proto.a2a  { background: rgba(57, 197, 187, 0.16);  color: #4dd8cf; }
+.badge.proto.a2h  { background: rgba(63, 185, 80, 0.16);   color: #56c96a; }
+
+.tools-chip {
+  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 8px;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
 .stat {
   background: var(--bg-card); border: 1px solid var(--border);

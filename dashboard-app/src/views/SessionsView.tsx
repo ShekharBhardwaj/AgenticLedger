@@ -1,16 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
-import { Call, fmtNum, fmtTime, fmtUsd, get, liveUpdates, Session } from "../api";
+import {
+  Call, fmtNum, fmtTime, fmtUsd, get, interactionTags, liveUpdates, Session, toolNames,
+} from "../api";
 
 function CallCard({ call }: { call: Call }) {
   const [open, setOpen] = useState(false);
   const failed = (call.status_code ?? 200) !== 200;
+  const tools = toolNames(call);
   return (
     <div className="card call-card">
       <div className="call-head" onClick={() => setOpen(!open)}>
         <span className="model">{call.model_id}</span>
+        {interactionTags(call).map(({ tag, label }) => (
+          <span key={tag} className={`badge proto ${tag.toLowerCase()}`} title={label}>
+            {tag}
+          </span>
+        ))}
         {failed && <span className="badge error">{call.status_code}</span>}
         {call.loop_flags && <span className="badge flagged">{JSON.parse(call.loop_flags).join(", ")}</span>}
         {call.framework && <span className="badge fw">{call.framework}</span>}
+        {tools.length > 0 && (
+          <span className="tools-chip" title={tools.join(", ")}>
+            ⚙ {tools.slice(0, 3).join(" · ")}
+            {tools.length > 3 ? ` +${tools.length - 3}` : ""}
+          </span>
+        )}
         {call.step_index != null && <span className="dim">step {call.step_index}</span>}
         {call.iteration != null && <span className="dim">iter {call.iteration}</span>}
         <span className="dim">{fmtNum(call.tokens_in)} → {fmtNum(call.tokens_out)} tok</span>
