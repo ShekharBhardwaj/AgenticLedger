@@ -198,7 +198,10 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 **Framework guides:** [BMAD-METHOD](docs/integrations/bmad.md) — persona
 auto-detection (`bmad:sm`, `bmad:dev`, `bmad:qa`, …) and per-story budgets ·
 [OpenClaw](docs/integrations/openclaw.md) — the hard spend cap OpenClaw
-doesn't have, plus per-agent attribution.
+doesn't have, plus per-agent attribution ·
+[opencode](docs/integrations/opencode.md) ·
+[LangGraph / LangChain](docs/integrations/langgraph.md) ·
+[OpenAI Agents SDK](docs/integrations/openai-agents.md).
 
 ---
 

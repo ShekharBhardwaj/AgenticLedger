@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.shekharbhardwaj/agentic-ledger",
+  "description": "Local-first flight recorder for AI agents. Query your agents' own ledger: sessions, costs, loop runs, stuck-loop flags, and full call traces captured by the Agentic Ledger proxy.",
+  "repository": {
+    "url": "https://github.com/ShekharBhardwaj/AgenticLedger",
+    "source": "github"
+  },
+  "version": "0.3.0b1",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "http://localhost:8000/mcp"
+    }
+  ]
+}

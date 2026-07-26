@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Integration guides for opencode, LangGraph/LangChain, and the OpenAI Agents
+  SDK (docs/integrations/), plus an MCP registry manifest (server.json).
+
 ## [0.3.0-beta.1] - 2026-07-26
 
 ### Added
