@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Gateway-tolerant pricing + unpriced-model visibility.** Model-id matching
+  now unifies dots and dashes, so OpenRouter (`anthropic/claude-3.5-sonnet`),
+  Bedrock (`us.anthropic.claude-3-5-sonnet-20241022-v2:0`), and dated ids all
+  price at the underlying model's rate. Unknown models log one loud warning
+  (with the exact `AGENTLEDGER_PRICING` override to add) instead of silently
+  recording unknown cost forever. Table refreshed: GPT-5 family, Claude
+  4.5-generation models, Gemini 2.5 Flash, and o3's mid-2025 reprice.
+
 ## [0.3.0-alpha.4] - 2026-07-26
 
 ### Added

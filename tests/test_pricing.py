@@ -352,3 +352,42 @@ def test_four_element_override_sets_explicit_cache_prices(restore_prices, monkey
     finally:
         pricing._CACHE_PRICES.clear()
         pricing._CACHE_PRICES.update(snapshot)
+
+
+# ── Gateway model ids + unpriced-model visibility ─────────────────────────────
+
+def test_bedrock_style_id_matches():
+    """Region/vendor-prefixed Bedrock ids price at the underlying model's rate."""
+    direct = pricing.compute_cost("claude-3-5-sonnet", 1_000_000, 0)
+    bedrock = pricing.compute_cost(
+        "us.anthropic.claude-3-5-sonnet-20241022-v2:0", 1_000_000, 0)
+    assert bedrock == direct == 3.00
+
+
+def test_openrouter_dot_variant_matches():
+    """OpenRouter writes 'claude-3.5-sonnet' — dots and dashes are unified."""
+    assert pricing.compute_cost("anthropic/claude-3.5-sonnet", 1_000_000, 0) == 3.00
+
+
+def test_dotted_pattern_matches_dashed_id():
+    """The reverse direction: table's 'gpt-4.1' matches a dashed wire id."""
+    assert pricing.compute_cost("gpt-4-1-2025-04-14", 1_000_000, 0) == 2.00
+
+
+def test_current_generation_models_priced():
+    assert pricing.compute_cost("gpt-5", 1_000_000, 0) == 1.25
+    assert pricing.compute_cost("gpt-5-mini", 1_000_000, 0) == 0.25
+    assert pricing.compute_cost("claude-sonnet-4-5", 1_000_000, 0) == 3.00
+    assert pricing.compute_cost("claude-haiku-4-5-20251001", 1_000_000, 0) == 1.00
+    assert pricing.compute_cost("o3-2025-04-16", 1_000_000, 0) == 2.00  # repriced
+
+
+def test_unpriced_model_warns_once(caplog):
+    import logging
+    pricing._unpriced_warned.discard("totally-unknown-model-x")
+    with caplog.at_level(logging.WARNING, logger="agentledger.proxy.pricing"):
+        assert pricing.compute_cost("totally-unknown-model-x", 100, 10) is None
+        assert pricing.compute_cost("totally-unknown-model-x", 100, 10) is None
+    warnings = [r for r in caplog.records if "totally-unknown-model-x" in r.message]
+    assert len(warnings) == 1
+    assert "AGENTLEDGER_PRICING" in warnings[0].message

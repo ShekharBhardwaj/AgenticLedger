@@ -42,16 +42,23 @@ _PRICES: dict[str, tuple[float, float]] = {
     "gpt-4-turbo":      (10.00,  30.00),
     "gpt-4":            (30.00,  60.00),
     "gpt-3.5-turbo":     (0.50,   1.50),
-    # OpenAI — reasoning models
-    "o3":               (10.00,  40.00),
+    # OpenAI — GPT-5 family
+    "gpt-5":             (1.25,  10.00),
+    "gpt-5-mini":        (0.25,   2.00),
+    "gpt-5-nano":        (0.05,   0.40),
+    # OpenAI — reasoning models (o3 repriced June 2025)
+    "o3":                (2.00,   8.00),
     "o3-mini":           (1.10,   4.40),
     "o1":               (15.00,  60.00),
     "o1-mini":           (3.00,  12.00),
     "o4-mini":           (1.10,   4.40),
     # Anthropic — Claude 4 family
     "claude-opus-4":    (15.00,  75.00),
+    "claude-opus-4-5":   (5.00,  25.00),
     "claude-sonnet-4":   (3.00,  15.00),
+    "claude-sonnet-4-5": (3.00,  15.00),
     "claude-haiku-4":    (0.80,   4.00),
+    "claude-haiku-4-5":  (1.00,   5.00),
     # Anthropic — Claude 3.7
     "claude-3-7-sonnet": (3.00,  15.00),
     # Anthropic — Claude 3.5
@@ -63,6 +70,8 @@ _PRICES: dict[str, tuple[float, float]] = {
     "claude-3-haiku":    (0.25,   1.25),
     # Google Gemini
     "gemini-2.5-pro":    (1.25,  10.00),
+    "gemini-2.5-flash":  (0.30,   2.50),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.0-flash":  (0.10,   0.40),
     "gemini-1.5-pro":    (1.25,   5.00),
     "gemini-1.5-flash":  (0.075,  0.30),
@@ -110,6 +119,9 @@ def _load_overrides() -> None:
 
 _load_overrides()
 
+# Models already warned about — one loud line per model, not per call.
+_unpriced_warned: set[str] = set()
+
 
 def compute_cost(
     model_id: str,
@@ -134,14 +146,26 @@ def compute_cost(
     """
     if tokens_in is None and tokens_out is None:
         return None
-    model_lower = model_id.lower()
+    # Gateways rewrite model ids ("anthropic/claude-3.5-sonnet" on OpenRouter,
+    # "us.anthropic.claude-3-5-sonnet-20241022-v2:0" on Bedrock). Substring
+    # matching absorbs prefixes/suffixes; unifying dots and dashes absorbs the
+    # punctuation variants ("claude-3.5-sonnet" vs "claude-3-5-sonnet").
+    model_lower = model_id.lower().replace(".", "-")
     best_pattern: Optional[str] = None
     best_len = -1
     for pattern in _PRICES:
-        if pattern in model_lower and len(pattern) > best_len:
+        if pattern.replace(".", "-") in model_lower and len(pattern) > best_len:
             best_pattern = pattern
             best_len = len(pattern)
     if best_pattern is None:
+        if model_id not in _unpriced_warned:
+            _unpriced_warned.add(model_id)
+            logger.warning(
+                "No pricing for model %r — cost recorded as unknown (not $0). "
+                "Budgets and alerts will not see this spend. Add a rate via "
+                "AGENTLEDGER_PRICING='{\"%s\": [in_per_M, out_per_M]}'.",
+                model_id, model_id,
+            )
         return None
     in_price, out_price = _PRICES[best_pattern]
 
