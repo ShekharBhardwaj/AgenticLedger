@@ -56,6 +56,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`AGENTLEDGER_LOOP_MAX_STEPS`) raise `loop_flags` on the call, fire a
     `loop_flag` webhook alert, and — with `AGENTLEDGER_LOOP_ACTION=block` — return
     HTTP 429 (`loop_detected`) before the next call burns more budget.
+  - *Completion promises* — `AGENTLEDGER_COMPLETION_PROMISE` (regex) flags the
+    response that declares a loop done; `GET /api/runs/{run_id}` derives run
+    status (`running` / `flagged` / `complete`) for loop runners to poll.
+  - *Path-segment attribution* — `/r/<run_id>/<iteration>/v1/...` base URLs tag
+    calls for clients that can't send custom headers.
+- **`agentledger run` loop runner (new CLI).** Wraps any agent command in an
+  observable, budgeted Ralph-style loop: per-iteration base-URL attribution,
+  stops on completion promise / `--budget` USD ceiling / `--max-iterations`,
+  prints an end-of-run cost summary. Installed as the `agentledger` console
+  script.
+- **MCP run tools.** `list_runs` and `get_run_status(run_id)` join the MCP
+  server, so agents can inspect their own loops and self-terminate.
 
 ### Changed
 - The request body is parsed once per call instead of two-to-three times — a real

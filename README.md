@@ -152,14 +152,26 @@ each Claude Code session appears under its **real session UUID** (the same id
 correctly — cache traffic is where most of a coding agent's real spend lives.
 
 Running an overnight loop (Ralph-style `while :; do cat PROMPT.md | claude -p; done`)?
-Add budgets so a stuck loop can't burn through your quota, and check the
-dashboard in the morning:
+Use the built-in loop runner — it re-executes your command each iteration,
+attributes every call to the run (via the base URL, no headers needed), and
+stops on a completion promise, a budget ceiling, or the iteration cap:
 
 ```bash
 AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com \
-AGENTLEDGER_BUDGET_DAILY=25.00 \
+AGENTLEDGER_COMPLETION_PROMISE="ALL TASKS COMPLETE" \
 uv run python -m agentledger.proxy
 ```
+
+```bash
+agentledger run --max-iterations 50 --budget 25 -- \
+  claude -p "$(cat PROMPT.md)" --dangerously-skip-permissions
+```
+
+Each iteration shows up as *iteration N of the run* in `/api/runs`; when the
+agent prints the completion promise in a response, run status flips to
+`complete` and the loop exits with a cost/token summary. Any existing loop
+script works too — poll `GET /api/runs/{run_id}` yourself, or let the proxy's
+budgets (`AGENTLEDGER_BUDGET_DAILY=25.00`) hard-stop a runaway loop.
 
 The same recipe works for any client with a base-URL override (Codex CLI,
 opencode, OpenClaw, LiteLLM-based stacks) — set the OpenAI/Anthropic base URL
@@ -215,7 +227,8 @@ Every LLM call is stored with:
 | `GET` | `/` | Live dashboard |
 | `WS` | `/ws` | WebSocket stream — powers live dashboard updates |
 | `GET` | `/api/sessions` | List recent sessions with aggregated stats |
-| `GET` | `/api/runs` | List loop runs (explicit or auto-inferred) with iterations, cost, and flagged-call counts |
+| `GET` | `/api/runs` | List loop runs (explicit or auto-inferred) with iterations, cost, status, and flagged-call counts |
+| `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete`) — poll this from loop scripts |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |
@@ -253,6 +266,8 @@ Agentic Ledger exposes its captured data as an MCP (Model Context Protocol) tool
 | `explain(action_id)` | Full trace for a single LLM call — prompt, tool calls, output, tokens, cost |
 | `get_session(session_id)` | All calls in a session in chronological order |
 | `search(query)` | Full-text search across all captured calls |
+| `list_runs` | Loop runs with iterations, cost, and status |
+| `get_run_status(run_id)` | One run's status — lets an agent inspect its own loop and decide whether to continue |
 
 **Configure in `claude_desktop_config.json`:**
 ```json
@@ -334,6 +349,7 @@ Once connected, you can ask your assistant things like:
 | `AGENTLEDGER_LOOP_REPEAT_THRESHOLD` | `3` | Consecutive identical tool calls (same tool, same arguments) before a thread is flagged stuck. |
 | `AGENTLEDGER_LOOP_MAX_STEPS` | _(none)_ | Flag (and in block mode, stop) threads that exceed this many ReAct steps. |
 | `AGENTLEDGER_LOOP_RUN_GAP_SECONDS` | `900` | Max gap between fresh-context spawns (same system prompt) that still count as iterations of one run. |
+| `AGENTLEDGER_COMPLETION_PROMISE` | _(none)_ | Regex matched against response text. On match the call is flagged `completion_promise` and the run's status becomes `complete` — loop runners poll `GET /api/runs/{run_id}` and stop. |
 
 **Alerts** — POST to your webhook when a threshold is breached (does not block calls — see [Alerts](#alerts)):
 

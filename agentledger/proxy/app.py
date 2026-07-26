@@ -187,6 +187,7 @@ def create_app(
     loop_max_steps: Optional[int] = None,
     loop_repeat_threshold: int = DEFAULT_REPEAT_THRESHOLD,
     loop_run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
+    completion_promise: Optional[str] = None,
 ) -> FastAPI:
 
     broadcaster = _Broadcaster()
@@ -197,6 +198,7 @@ def create_app(
         repeat_threshold=loop_repeat_threshold,
         run_gap_seconds=loop_run_gap_seconds,
         max_steps=loop_max_steps,
+        completion_promise=completion_promise,
     )
     _alert_config = alert_config or AlertConfig(
         webhook_url=None, cost_per_call=None,
@@ -476,7 +478,17 @@ def create_app(
     async def api_runs(request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
         runs = await request.app.state.store.list_runs()
-        return JSONResponse(runs)
+        return JSONResponse([_with_run_status(r) for r in runs])
+
+    @app.get("/api/runs/{run_id}")
+    async def api_run_status(run_id: str, request: Request) -> JSONResponse:
+        """Run status for loop runners: poll this between iterations and stop
+        when status is 'complete' (completion promise seen) or on budget."""
+        await _require(request, ROLE_VIEWER)
+        run = await request.app.state.store.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        return JSONResponse(_with_run_status(run))
 
     @app.delete("/api/sessions/{session_id}")
     async def delete_session(session_id: str, request: Request) -> JSONResponse:
@@ -623,6 +635,16 @@ def create_app(
                     status_code=401,
                 )
 
+        # Path-segment run attribution: /r/<run_id>/<iteration>/<real path>.
+        # For clients that can only set a base URL and no custom headers —
+        # `agentledger run` points ANTHROPIC_BASE_URL/OPENAI_BASE_URL here.
+        path_run_id: Optional[str] = None
+        path_iteration: Optional[str] = None
+        if path.startswith("r/"):
+            seg = path.split("/", 3)
+            if len(seg) == 4 and seg[3]:
+                path_run_id, path_iteration, path = seg[1], seg[2], seg[3]
+
         body_bytes = await request.body()
 
         # Parse the request body exactly once — streaming detection, budget
@@ -641,6 +663,10 @@ def create_app(
 
         action_id = str(uuid.uuid4()) if is_llm_path else None
         meta = _extract_meta(request, body_json)
+        if path_run_id and not meta.get("run_id"):
+            meta["run_id"] = path_run_id
+            if meta.get("iteration") is None:
+                meta["iteration"] = _int_or_none(path_iteration)
 
         # ── Rate limit check ─────────────────────────────────────────────────
         # Fail open: a rate-limiter error must never block the agent's LLM call.
@@ -968,6 +994,17 @@ def _int_or_none(value) -> Optional[int]:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _with_run_status(run: dict) -> dict:
+    """Derive a runner-facing status from the aggregate row."""
+    promise_seen = bool(run.pop("promise_seen", 0))
+    run["status"] = (
+        "complete" if promise_seen
+        else "flagged" if run.get("flagged_calls")
+        else "running"
+    )
+    return run
 
 
 def _response_headers(

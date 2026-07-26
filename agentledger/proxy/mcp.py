@@ -122,7 +122,57 @@ _TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "list_runs",
+        "description": (
+            "List loop runs (explicit x-agentledger-run-id or auto-inferred "
+            "fresh-context loops, e.g. Ralph overnight runs) with iterations, "
+            "sessions, cost, flagged-call counts, and status "
+            "(running / flagged / complete)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of runs to return (default 20, max 100).",
+                    "default": 20,
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_run_status",
+        "description": (
+            "Status of one loop run: iterations so far, total cost and tokens, "
+            "flagged calls, and whether the completion promise was seen "
+            "(status=complete). Loop runners and agents can use this to decide "
+            "whether to continue iterating."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string",
+                    "description": "The run ID (from x-agentledger-run-id or /api/runs).",
+                }
+            },
+            "required": ["run_id"],
+        },
+    },
 ]
+
+
+def _run_status(run: dict) -> dict:
+    """Mirror the /api/runs status derivation for MCP consumers."""
+    promise_seen = bool(run.pop("promise_seen", 0))
+    run["status"] = (
+        "complete" if promise_seen
+        else "flagged" if run.get("flagged_calls")
+        else "running"
+    )
+    return run
 
 
 async def handle_mcp(request: Request) -> JSONResponse:
@@ -191,6 +241,20 @@ async def _handle_tool_call(id_: Any, params: dict, request: Request) -> JSONRes
         if not results:
             return JSONResponse(_ok(id_, _text_content(f"No results found for query {query!r}")))
         return JSONResponse(_ok(id_, _text_content(json.dumps(results, indent=2, default=str))))
+
+    if name == "list_runs":
+        limit = max(1, min(int(args.get("limit", 20)), 100))
+        runs = [_run_status(r) for r in await store.list_runs(limit=limit)]
+        return JSONResponse(_ok(id_, _text_content(json.dumps(runs, indent=2, default=str))))
+
+    if name == "get_run_status":
+        run_id = args.get("run_id", "").strip()
+        if not run_id:
+            return JSONResponse(_err(id_, -32602, "run_id is required"))
+        run = await store.get_run(run_id)
+        if run is None:
+            return JSONResponse(_err(id_, -32602, f"No run found for run_id {run_id!r}"))
+        return JSONResponse(_ok(id_, _text_content(json.dumps(_run_status(run), indent=2, default=str))))
 
     return JSONResponse(_err(id_, -32601, f"Unknown tool: {name!r}"))
 

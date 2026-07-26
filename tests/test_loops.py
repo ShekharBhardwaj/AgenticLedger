@@ -147,3 +147,21 @@ def test_annotate_never_raises_on_garbage():
         "thread_id", "step_index", "turn_index", "prev_action_id",
         "run_id", "iteration", "loop_flags",
     }
+
+
+def test_completion_promise_flagged():
+    tracker = LoopTracker(completion_promise=r"ALL TASKS COMPLETE")
+    resp = CanonicalResponse(
+        content="Everything passes. ALL TASKS COMPLETE", tool_calls=None,
+        stop_reason="stop", tokens_in=1, tokens_out=1, latency_ms=1.0,
+    )
+    f = tracker.annotate("a1", _req([U1]), resp, _meta())
+    assert "completion_promise" in f["loop_flags"]
+    # The promise is a good outcome — it must never trip the circuit breaker.
+    assert tracker.check_block("s1") is None
+
+
+def test_invalid_promise_regex_disables_detection():
+    tracker = LoopTracker(completion_promise="([unclosed")
+    f = tracker.annotate("a1", _req([U1]), _resp(), _meta())
+    assert f["loop_flags"] is None

@@ -573,3 +573,41 @@ def test_loop_warn_mode_never_blocks(proxy):
     rows = client.get("/session/s-warn").json()
     flagged = [r for r in rows if r["loop_flags"]]
     assert flagged, "repeat flag should be recorded in warn mode"
+
+
+# ── Path-segment run attribution + run status ─────────────────────────────────
+
+def test_path_segment_run_attribution(proxy):
+    """/r/<run>/<iter>/v1/... tags the call and forwards to the real path."""
+    client = proxy(handler=_ok_handler())
+
+    resp = client.post("/r/night-1/3/v1/chat/completions", json=_CHAT_BODY)
+    assert resp.status_code == 200
+    # Upstream saw the untagged path.
+    assert client.upstream.last_request.url.path == "/v1/chat/completions"
+
+    action_id = resp.headers["x-agentledger-action-id"]
+    row = client.get(f"/explain/{action_id}").json()
+    assert row["run_id"] == "night-1"
+    assert row["iteration"] == 3
+
+
+def test_run_status_endpoint_reports_completion_promise(proxy):
+    """A response matching the completion promise flips run status to complete."""
+    client = proxy(
+        handler=lambda r: httpx.Response(200, json=openai_response(
+            content="done. ALL TASKS COMPLETE",
+        )),
+        completion_promise=r"ALL TASKS COMPLETE",
+    )
+
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agentledger-run-id": "night-2",
+                         "x-agentledger-iteration": "1"})
+
+    status = client.get("/api/runs/night-2").json()
+    assert status["status"] == "complete"
+    assert status["iterations"] == 1
+    assert "promise_seen" not in status  # folded into status
+
+    assert client.get("/api/runs/unknown-run").status_code == 404

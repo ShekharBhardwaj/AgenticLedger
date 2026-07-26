@@ -47,6 +47,24 @@ _MIGRATION_COLUMNS = [
     ("loop_flags",         "TEXT"),   # JSON list of flags raised by THIS call
 ]
 
+# Shared run-aggregation projection — identical SQL in both dialects, so the
+# backends can't drift apart. promise_seen = a completion-promise flag was
+# observed on any call in the run (the runner-visible "loop is done" signal).
+_RUN_AGGREGATE_COLUMNS = """
+                run_id,
+                MAX(iteration)                AS iterations,
+                COUNT(*)                      AS call_count,
+                COUNT(DISTINCT session_id)    AS session_count,
+                MIN(timestamp)                AS started_at,
+                MAX(timestamp)                AS last_call_at,
+                SUM(COALESCE(cost_usd, 0))    AS total_cost_usd,
+                SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
+                SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
+                MAX(framework)                AS framework,
+                SUM(CASE WHEN loop_flags IS NOT NULL THEN 1 ELSE 0 END) AS flagged_calls,
+                MAX(CASE WHEN loop_flags LIKE '%completion_promise%' THEN 1 ELSE 0 END) AS promise_seen
+"""
+
 
 class Store(ABC):
     """Common interface — use Store.connect(), not the subclasses directly."""
@@ -88,6 +106,12 @@ class Store(ABC):
     async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
         """Aggregate calls by run_id, newest first. Inferred one-iteration
         runs (auto-run-*) are hidden until a second iteration confirms a loop."""
+        ...
+
+    @abstractmethod
+    async def get_run(self, run_id: str) -> Optional[dict[str, Any]]:
+        """Aggregate one run, including promise_seen (completion-promise flag
+        observed on any call). None when the run has no calls."""
         ...
 
     @abstractmethod
@@ -279,19 +303,8 @@ class _SqliteStore(Store):
 
     async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
         async with self._db.execute(
-            """
-            SELECT
-                run_id,
-                MAX(iteration)                AS iterations,
-                COUNT(*)                      AS call_count,
-                COUNT(DISTINCT session_id)    AS session_count,
-                MIN(timestamp)                AS started_at,
-                MAX(timestamp)                AS last_call_at,
-                SUM(COALESCE(cost_usd, 0))    AS total_cost_usd,
-                SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
-                SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
-                MAX(framework)                AS framework,
-                SUM(CASE WHEN loop_flags IS NOT NULL THEN 1 ELSE 0 END) AS flagged_calls
+            f"""
+            SELECT {_RUN_AGGREGATE_COLUMNS}
             FROM llm_calls
             WHERE run_id IS NOT NULL
             GROUP BY run_id
@@ -303,6 +316,19 @@ class _SqliteStore(Store):
         ) as cur:
             rows = await cur.fetchall()
         return [_sqlite_run_row(r) for r in rows]
+
+    async def get_run(self, run_id: str) -> Optional[dict[str, Any]]:
+        async with self._db.execute(
+            f"""
+            SELECT {_RUN_AGGREGATE_COLUMNS}
+            FROM llm_calls
+            WHERE run_id = ?
+            GROUP BY run_id
+            """,
+            (run_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        return _sqlite_run_row(row) if row else None
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:
         async with self._db.execute(
@@ -630,19 +656,8 @@ class _PostgresStore(Store):
     async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                """
-                SELECT
-                    run_id,
-                    MAX(iteration)                AS iterations,
-                    COUNT(*)                      AS call_count,
-                    COUNT(DISTINCT session_id)    AS session_count,
-                    MIN(timestamp)                AS started_at,
-                    MAX(timestamp)                AS last_call_at,
-                    SUM(COALESCE(cost_usd, 0))    AS total_cost_usd,
-                    SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
-                    SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
-                    MAX(framework)                AS framework,
-                    SUM(CASE WHEN loop_flags IS NOT NULL THEN 1 ELSE 0 END) AS flagged_calls
+                f"""
+                SELECT {_RUN_AGGREGATE_COLUMNS}
                 FROM llm_calls
                 WHERE run_id IS NOT NULL
                 GROUP BY run_id
@@ -653,6 +668,19 @@ class _PostgresStore(Store):
                 limit,
             )
         return [_pg_run_row(r) for r in rows]
+
+    async def get_run(self, run_id: str) -> Optional[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"""
+                SELECT {_RUN_AGGREGATE_COLUMNS}
+                FROM llm_calls
+                WHERE run_id = $1
+                GROUP BY run_id
+                """,
+                run_id,
+            )
+        return _pg_run_row(row) if row else None
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:
         async with self._pool.acquire() as conn:

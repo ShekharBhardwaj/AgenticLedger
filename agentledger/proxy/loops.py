@@ -28,8 +28,10 @@ routing for coherent inference. Inference metadata is never a security
 boundary.
 """
 
+import contextlib
 import hashlib
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -131,11 +133,17 @@ class LoopTracker:
         repeat_threshold: int = DEFAULT_REPEAT_THRESHOLD,
         run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
         max_steps: Optional[int] = None,
+        completion_promise: Optional[str] = None,
         clock=time.time,
     ) -> None:
         self._repeat_threshold = repeat_threshold
         self._run_gap = run_gap_seconds
         self._max_steps = max_steps
+        self._promise_re = None
+        if completion_promise:
+            # An invalid pattern leaves promise detection off.
+            with contextlib.suppress(re.error):
+                self._promise_re = re.compile(completion_promise)
         self._clock = clock
         self._sessions: dict[str, _SessionState] = {}
         # (app-or-framework, system-prompt hash) → run grouping state
@@ -207,6 +215,16 @@ class LoopTracker:
 
         if self._max_steps is not None and thread.step_index >= self._max_steps:
             new_flags.append("step_budget_exceeded")
+
+        # Completion promise: a runner-visible "the loop is done" signal in the
+        # response text (e.g. an exact COMPLETE marker). Recorded as a flag so
+        # run status survives proxy restarts via the loop_flags column.
+        if (
+            self._promise_re is not None
+            and resp.content
+            and self._promise_re.search(resp.content)
+        ):
+            new_flags.append("completion_promise")
 
         state.flags.update(new_flags)
 

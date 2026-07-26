@@ -141,6 +141,7 @@ app = create_app(
     loop_max_steps=int(os.environ["AGENTLEDGER_LOOP_MAX_STEPS"]) if os.environ.get("AGENTLEDGER_LOOP_MAX_STEPS") else None,
     loop_repeat_threshold=int(os.environ.get("AGENTLEDGER_LOOP_REPEAT_THRESHOLD", "3")),
     loop_run_gap_seconds=float(os.environ.get("AGENTLEDGER_LOOP_RUN_GAP_SECONDS", "900")),
+    completion_promise=os.environ.get("AGENTLEDGER_COMPLETION_PROMISE") or None,
 )
 
 _logger = logging.getLogger("agentledger")

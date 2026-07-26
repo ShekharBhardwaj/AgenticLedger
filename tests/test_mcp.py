@@ -79,15 +79,16 @@ def test_initialize_returns_protocol_and_server_info(proxy):
     assert "tools" in result["capabilities"]
 
 
-def test_tools_list_returns_exactly_the_four_tools(proxy):
-    """tools/list -> exactly the 4 tools: list_sessions, explain, get_session, search."""
+def test_tools_list_returns_exactly_the_six_tools(proxy):
+    """tools/list -> exactly the 6 tools, including the loop-run pair."""
     client = proxy()
     status, body = _rpc(client, "tools/list")
     assert status == 200
     tools = body["result"]["tools"]
     names = {t["name"] for t in tools}
-    assert names == {"list_sessions", "explain", "get_session", "search"}
-    assert len(tools) == 4
+    assert names == {"list_sessions", "explain", "get_session", "search",
+                     "list_runs", "get_run_status"}
+    assert len(tools) == 6
     # Each tool advertises a JSON-schema for its inputs.
     for t in tools:
         assert t["inputSchema"]["type"] == "object"
@@ -323,3 +324,34 @@ def test_search_clamps_limit(proxy, requested, expected):
     status, body = _call_tool(client, "search", {"query": "x", "limit": requested})
     assert status == 200
     assert spy.search_limit == expected
+
+
+def test_mcp_run_tools(proxy):
+    """list_runs and get_run_status expose loop runs with derived status."""
+    import httpx as _httpx
+
+    from .conftest import openai_response as _openai_response
+
+    client = proxy(handler=lambda r: _httpx.Response(200, json=_openai_response()))
+    for i in (1, 2):
+        client.post("/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+                    headers={"x-agentledger-session-id": f"it-{i}",
+                             "x-agentledger-run-id": "mcp-run",
+                             "x-agentledger-iteration": str(i)})
+
+    status, body = _rpc(client, "tools/call",
+                        {"name": "list_runs", "arguments": {}})
+    assert status == 200
+    text = body["result"]["content"][0]["text"]
+    assert "mcp-run" in text and '"status": "running"' in text
+
+    status, body = _rpc(client, "tools/call",
+                        {"name": "get_run_status", "arguments": {"run_id": "mcp-run"}})
+    assert status == 200
+    text = body["result"]["content"][0]["text"]
+    assert '"iterations": 2' in text
+
+    status, body = _rpc(client, "tools/call",
+                        {"name": "get_run_status", "arguments": {"run_id": "nope"}})
+    assert "error" in body
