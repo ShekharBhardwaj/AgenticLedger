@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Loop Lens iterations click through to their session.** Iteration table
+  rows and cost-chart bars open the underlying session in the Sessions view
+  (new `session_id` on the per-iteration aggregates), matching the flag
+  cards' drill-down.
+
 ## [0.3.1] - 2026-07-26
 
 ### Fixed

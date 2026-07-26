@@ -145,7 +145,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                       key={String(it.iteration)}
                       className={`bar ${it.error_calls ? "errored" : it.flagged_calls ? "flagged" : ""}`}
                       style={{ height: `${Math.max((100 * (it.cost_usd || 0)) / maxCost, 3)}%` }}
-                      title={`iteration ${it.iteration}: ${fmtUsd(it.cost_usd)}, ${it.call_count} calls`}
+                      title={`iteration ${it.iteration}: ${fmtUsd(it.cost_usd)}, ${it.call_count} calls — click to open its session`}
+                      onClick={() => it.session_id && onOpenSession(it.session_id)}
                     />
                   ))}
                 </div>
@@ -169,12 +170,17 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                   <thead>
                     <tr>
                       <th>#</th><th>calls</th><th>cost</th><th>tokens in/out</th>
-                      <th>cache reads</th><th>flags</th><th>errors</th><th>started</th>
+                      <th>cache reads</th><th>flags</th><th>errors</th><th>started</th><th>session</th>
                     </tr>
                   </thead>
                   <tbody>
                     {iterations.map((it) => (
-                      <tr key={String(it.iteration)}>
+                      <tr
+                        key={String(it.iteration)}
+                        className={it.session_id ? "row-link" : ""}
+                        title={it.session_id ? "Open this iteration's session" : undefined}
+                        onClick={() => it.session_id && onOpenSession(it.session_id)}
+                      >
                         <td>{it.iteration ?? "—"}</td>
                         <td>{it.call_count}</td>
                         <td>{fmtUsd(it.cost_usd)}</td>
@@ -183,6 +189,11 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                         <td>{it.flagged_calls ? <span className="badge flagged">{it.flagged_calls}</span> : "—"}</td>
                         <td>{it.error_calls ? <span className="badge error">{it.error_calls}</span> : "—"}</td>
                         <td>{fmtTime(it.started_at)}</td>
+                        <td className="session-link">
+                          {it.session_id
+                            ? (it.session_id.length > 14 ? it.session_id.slice(0, 13) + "…" : it.session_id) + " →"
+                            : "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

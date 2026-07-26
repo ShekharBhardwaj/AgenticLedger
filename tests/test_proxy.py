@@ -657,6 +657,9 @@ def test_run_iterations_endpoint(proxy):
     assert its[0]["call_count"] == 2
     assert its[1]["call_count"] == 1
     assert its[0]["cost_usd"] > 0
+    # Each iteration carries a session id for the Loop Lens click-through.
+    assert its[0]["session_id"] == "ri-1"
+    assert its[1]["session_id"] == "ri-2"
 
 
 def test_spa_served_or_explains_absence(proxy):

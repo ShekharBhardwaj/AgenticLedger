@@ -76,7 +76,8 @@ _ITERATION_AGGREGATE_COLUMNS = """
                 SUM(COALESCE(tokens_out, 0))  AS tokens_out,
                 SUM(COALESCE(cache_read_tokens, 0)) AS cache_read_tokens,
                 SUM(CASE WHEN loop_flags LIKE '%repeat_tool_call%' OR loop_flags LIKE '%step_budget_exceeded%' THEN 1 ELSE 0 END) AS flagged_calls,
-                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END)     AS error_calls
+                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END)     AS error_calls,
+                MAX(session_id)               AS session_id
 """
 
 
