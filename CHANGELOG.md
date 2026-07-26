@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Refreshed locked dependencies (uv.lock), clearing all open Dependabot
+  alerts (starlette, urllib3, setuptools, pytest, idna).
+
 ### Added
+- The classic dashboard links back to the new app ("New app →" in its
+  header) — the reverse link already existed.
 - **Loop Lens iterations click through to their session.** Iteration table
   rows and cost-chart bars open the underlying session in the Sessions view
   (new `session_id` on the per-iteration aggregates), matching the flag

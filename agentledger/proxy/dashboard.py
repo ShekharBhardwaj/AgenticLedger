@@ -473,6 +473,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div class="live-dot" id="live-dot"></div>
   {mascot_img}
   <h1>Agentic Ledger</h1>
+  <a href="/" style="color:#4ea1ff;text-decoration:none;font-size:13px;margin-left:10px;padding:4px 10px;border:1px solid #2b3644;border-radius:6px;white-space:nowrap;">New app →</a>
   <div class="search-wrap">
     <span class="search-icon">⌕</span>
     <input class="search-input" id="search-input" type="text"
