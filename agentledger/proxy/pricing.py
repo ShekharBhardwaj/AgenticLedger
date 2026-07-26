@@ -52,9 +52,18 @@ _PRICES: dict[str, tuple[float, float]] = {
     "o1":               (15.00,  60.00),
     "o1-mini":           (3.00,  12.00),
     "o4-mini":           (1.10,   4.40),
-    # Anthropic — Claude 4 family
+    # Anthropic — Claude 5 family
+    "claude-fable-5":   (10.00,  50.00),
+    "claude-mythos-5":  (10.00,  50.00),
+    "claude-opus-5":     (5.00,  25.00),
+    # Introductory rate through 2026-08-31; becomes (3.00, 15.00) on Sept 1.
+    "claude-sonnet-5":   (2.00,  10.00),
+    # Anthropic — Claude 4 family (4.5+ repriced to 5/25; 4 and 4.1 stay 15/75)
     "claude-opus-4":    (15.00,  75.00),
     "claude-opus-4-5":   (5.00,  25.00),
+    "claude-opus-4-6":   (5.00,  25.00),
+    "claude-opus-4-7":   (5.00,  25.00),
+    "claude-opus-4-8":   (5.00,  25.00),
     "claude-sonnet-4":   (3.00,  15.00),
     "claude-sonnet-4-5": (3.00,  15.00),
     "claude-haiku-4":    (0.80,   4.00),

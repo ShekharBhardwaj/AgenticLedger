@@ -391,3 +391,12 @@ def test_unpriced_model_warns_once(caplog):
     warnings = [r for r in caplog.records if "totally-unknown-model-x" in r.message]
     assert len(warnings) == 1
     assert "AGENTLEDGER_PRICING" in warnings[0].message
+
+
+def test_claude_5_family_priced():
+    assert pricing.compute_cost("claude-opus-5", 1_000_000, 0) == 5.00
+    assert pricing.compute_cost("claude-fable-5", 1_000_000, 0) == 10.00
+    assert pricing.compute_cost("claude-sonnet-5", 1_000_000, 0) == 2.00
+    # 4.6-4.8 take the repriced rate, not the claude-opus-4 legacy rate
+    assert pricing.compute_cost("claude-opus-4-8", 1_000_000, 0) == 5.00
+    assert pricing.compute_cost("claude-opus-4-1", 1_000_000, 0) == 15.00
