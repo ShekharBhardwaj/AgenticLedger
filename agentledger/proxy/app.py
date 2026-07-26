@@ -76,6 +76,7 @@ from .normalize import (
 )
 from .otel import emit_span
 from .otlp_ingest import extract_calls as extract_otlp_calls
+from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import Redactor, apply_capture_policy, normalize_capture_level
 from .store import Store
@@ -312,16 +313,43 @@ def create_app(
         if loop_fields.get("loop_flags") and _alert_config.webhook_url:
             with suppress(Exception):
                 from .alerts import _fire
+                flags = json.loads(loop_fields["loop_flags"])
                 await _fire(_alert_config.webhook_url, {
                     "type": "loop_flag",
                     "message": f"Loop health flags raised: {loop_fields['loop_flags']}",
-                    "flags": json.loads(loop_fields["loop_flags"]),
+                    "flags": flags,
                     "action_id": job.action_id,
                     "session_id": job.meta.get("session_id"),
                     "agent_name": job.meta.get("agent_name"),
                     "thread_id": loop_fields.get("thread_id"),
                     "step_index": loop_fields.get("step_index"),
                 })
+                # The morning report: the completion promise ends a run, so
+                # send the whole run's story in one webhook — iterations,
+                # spend, tokens, and how many calls got flagged on the way.
+                run_id = loop_fields.get("run_id")
+                if "completion_promise" in flags and run_id:
+                    run = await store.get_run(run_id)
+                    if run is not None:
+                        await _fire(_alert_config.webhook_url, {
+                            "type": "run_complete",
+                            "message": (
+                                f"Run {run_id} complete: "
+                                f"{run.get('iterations') or '?'} iterations, "
+                                f"{run['call_count']} calls, "
+                                f"${(run.get('total_cost_usd') or 0):.2f}, "
+                                f"{run['flagged_calls']} flagged calls."
+                            ),
+                            "run_id": run_id,
+                            "iterations": run.get("iterations"),
+                            "call_count": run["call_count"],
+                            "session_count": run.get("session_count"),
+                            "total_cost_usd": run.get("total_cost_usd"),
+                            "total_tokens_in": run.get("total_tokens_in"),
+                            "total_tokens_out": run.get("total_tokens_out"),
+                            "flagged_calls": run["flagged_calls"],
+                            "started_at": run.get("started_at"),
+                        })
 
     async def _capture_worker(app: FastAPI) -> None:
         """Drain the capture queue, persisting each job off the request hot path."""
@@ -764,8 +792,24 @@ def create_app(
         return JSONResponse({"partialSuccess": {}})
 
     @app.post("/v1/logs")
+    async def otlp_logs(request: Request) -> JSONResponse:
+        """Tool-result events (e.g. Claude Code's on-machine audit trail)
+        become tool_executions rows; everything else is acknowledged."""
+        denied = _check_ingest_gate(request)
+        if denied:
+            return denied
+        if "json" in (request.headers.get("content-type") or ""):
+            with suppress(Exception):
+                payload = await request.json()
+                events = extract_otlp_tool_events(
+                    payload if isinstance(payload, dict) else {})
+                if events:
+                    with suppress(Exception):
+                        await request.app.state.store.save_tool_executions(events)
+        return JSONResponse({"partialSuccess": {}})
+
     @app.post("/v1/metrics")
-    async def otlp_ack(request: Request) -> JSONResponse:
+    async def otlp_metrics_ack(request: Request) -> JSONResponse:
         denied = _check_ingest_gate(request)
         if denied:
             return denied

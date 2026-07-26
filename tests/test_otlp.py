@@ -119,3 +119,42 @@ def test_ingest_key_gates_otlp(proxy, monkeypatch):
                      headers={"content-type": "application/json",
                               "x-agentledger-ingest-key": "sekrit"})
     assert ok.status_code == 200
+
+
+def test_tool_result_log_events_become_tool_executions(proxy):
+    """claude_code.tool_result log records land in the tool_executions table —
+    the on-machine audit trail the proxy can't see."""
+    payload = {
+        "resourceLogs": [{
+            "scopeLogs": [{
+                "logRecords": [
+                    {
+                        "timeUnixNano": "1753500001000000000",
+                        "attributes": [
+                            {"key": "event.name", "value": {"stringValue": "claude_code.tool_result"}},
+                            {"key": "tool_name", "value": {"stringValue": "Bash"}},
+                            {"key": "duration_ms", "value": {"intValue": "742"}},
+                            {"key": "success", "value": {"stringValue": "false"}},
+                            {"key": "session.id", "value": {"stringValue": "cc-otel-sess"}},
+                        ],
+                    },
+                    {  # a non-tool event — ignored
+                        "timeUnixNano": "1753500002000000000",
+                        "attributes": [
+                            {"key": "event.name", "value": {"stringValue": "claude_code.user_prompt"}},
+                        ],
+                    },
+                ],
+            }],
+        }]
+    }
+    client = proxy()
+    resp = client.post("/v1/logs", json=payload,
+                       headers={"content-type": "application/json"})
+    assert resp.status_code == 200
+
+    tools = client.get("/api/sessions/cc-otel-sess/tools").json()
+    assert len(tools) == 1
+    assert tools[0]["tool_name"] == "Bash"
+    assert tools[0]["latency_ms"] == 742
+    assert tools[0]["is_error"] == 1

@@ -843,3 +843,42 @@ def test_claude_code_utility_calls_stay_out_of_loop_inference(proxy):
     assert utility["step_index"] is None
     assert real["thread_id"] is not None
     assert real["step_index"] == 1
+
+
+def test_run_complete_webhook_fires_morning_report(proxy, monkeypatch):
+    """The completion promise triggers a run_complete webhook with the run's
+    full summary — the morning report for overnight loops."""
+    import agentledger.proxy.alerts as alerts_mod
+    from agentledger.proxy.alerts import AlertConfig
+
+    fired = []
+
+    async def _collect(url, payload):
+        fired.append(payload)
+
+    monkeypatch.setattr(alerts_mod, "_fire", _collect)
+
+    client = proxy(
+        handler=lambda r: httpx.Response(200, json=openai_response(
+            content="done. ALL TASKS COMPLETE",
+        )),
+        completion_promise=r"ALL TASKS COMPLETE",
+        alert_config=AlertConfig(
+            webhook_url="https://hooks.example.test/alert",
+            cost_per_call=None, latency_ms=None, error_rate=None, daily_spend=None,
+        ),
+    )
+
+    for i in (1, 2):
+        client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
+            "x-agentledger-session-id": f"mr-{i}",
+            "x-agentledger-run-id": "night-run",
+            "x-agentledger-iteration": str(i),
+        })
+
+    reports = [p for p in fired if p.get("type") == "run_complete"]
+    assert reports, f"no run_complete among {[p.get('type') for p in fired]}"
+    report = reports[-1]
+    assert report["run_id"] == "night-run"
+    assert report["call_count"] >= 1
+    assert "complete" in report["message"]

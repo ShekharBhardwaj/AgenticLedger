@@ -168,3 +168,56 @@ def _as_int(value) -> Optional[int]:
 
 def _opt_str(value) -> Optional[str]:
     return str(value) if value is not None and value != "" else None
+
+
+def _as_bool(value) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no")
+    return None
+
+
+def extract_tool_events(payload: dict) -> list[dict]:
+    """Map OTLP log records for tool executions into tool_executions rows.
+
+    Claude Code (OTEL_LOGS_EXPORTER=otlp) emits `claude_code.tool_result`
+    events with the tool name, duration, and success — the on-machine audit
+    trail the proxy can't see. api_request events are deliberately NOT mapped:
+    users running both the proxy and OTel would double-count their calls, and
+    the proxy's capture is strictly richer.
+    """
+    events: list[dict] = []
+    for rl in payload.get("resourceLogs") or []:
+        for sl in rl.get("scopeLogs") or []:
+            for rec in sl.get("logRecords") or []:
+                attrs = _attr_map(rec.get("attributes"))
+                name = str(
+                    attrs.get("event.name")
+                    or rec.get("eventName")
+                    or (rec.get("body") or {}).get("stringValue", "")
+                )
+                if "tool_result" not in name:
+                    continue
+                try:
+                    ts = int(rec.get("timeUnixNano") or 0) / 1e9 or None
+                except (TypeError, ValueError):
+                    ts = None
+                success = _as_bool(attrs.get("success"))
+                events.append({
+                    "tool_call_id": _opt_str(
+                        attrs.get("tool_use_id") or attrs.get("gen_ai.tool.call.id")),
+                    "tool_name": _opt_str(
+                        attrs.get("tool_name") or attrs.get("name")),
+                    "arguments": None,
+                    "issued_by_action_id": None,
+                    "resolved_by_action_id": None,
+                    "session_id": _opt_str(
+                        attrs.get("session.id") or attrs.get("session_id")),
+                    "thread_id": None,
+                    "latency_ms": _as_int(
+                        attrs.get("duration_ms") or attrs.get("duration")),
+                    "is_error": (not success) if success is not None else None,
+                    "timestamp": ts,
+                })
+    return events
