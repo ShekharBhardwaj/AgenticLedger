@@ -41,7 +41,7 @@ requires-dist = [
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "hatch-vcs", marker = "extra == 'dev'" },
-    { name = "httpx", specifier = ">=0.27" },
+    { name = "httpx", specifier = ">=0.27,<1.0.dev0" },
     { name = "openai", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.24" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.24" },

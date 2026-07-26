@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-alpha.2] - 2026-07-26
+
+### Fixed
+- **Fresh `pip install --pre` was broken.** `--pre` applies to dependency
+  resolution too, so the unbounded `httpx>=0.27` requirement pulled httpx's
+  experimental `1.0.dev3` build, which removes `AsyncClient` and crashed the
+  proxy at startup. httpx is now capped below its 1.0 dev builds
+  (`<1.0.dev0` — PEP 440 orders `1.0.devN` before `1.0`, so a plain `<1.0`
+  cap would not have excluded them under `--pre`).
+
 ## [0.3.0-alpha.1] - 2026-07-25
 
 ### Upgrade notes
@@ -212,6 +222,7 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.1...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.2...HEAD
+[0.3.0-alpha.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.1...v0.3.0-alpha.2
 [0.3.0-alpha.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...v0.3.0-alpha.1
 [0.2.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.1.7...v0.2.0
