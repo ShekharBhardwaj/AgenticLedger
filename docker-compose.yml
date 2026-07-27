@@ -1,6 +1,9 @@
 services:
 
   # SQLite — zero setup, good for a single machine
+  # The container runs as non-root (uid 10001). On Linux hosts, give it the
+  # bind-mounted data dir first: mkdir -p data && sudo chown 10001 data
+  # (Docker Desktop on macOS/Windows handles this automatically.)
   agentledger:
     build: .
     ports:

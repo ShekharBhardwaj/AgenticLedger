@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Hardened, multi-arch Docker image.** The container now runs as a
+  dedicated non-root user (uid 10001), is built for linux/amd64 and
+  linux/arm64, and ships a `HEALTHCHECK` probing `/health`. A cold
+  `docker build` from a plain checkout now works: when no wheel is present
+  in `dist/`, the build installs the published release from PyPI (pin with
+  `--build-arg AGENTLEDGER_VERSION=x.y.z`); CI exercises this path on every
+  push.
+- **Signed images with SBOM and provenance.** Release images are signed with
+  Sigstore cosign (keyless — verifiable against the release workflow's
+  GitHub Actions identity) and pushed with BuildKit SBOM + SLSA provenance
+  attestations. Each GitHub release attaches a standalone SPDX SBOM of the
+  image.
+- **Docker Hub mirror.** When the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN`
+  repo secrets are configured, releases also push
+  `docker.io/<username>/agentic-ledger` with the same digest as GHCR.
+- **Deployment hardening guide** ([docs/deployment.md](docs/deployment.md)):
+  enterprise mirrors (Artifactory/Nexus/CodeArtifact), signature and SBOM
+  verification, TLS termination examples, auth keys, redaction/retention,
+  bind-mount permissions for the non-root container, and an honest
+  single-replica scaling stance.
+
 ## [0.3.3] - 2026-07-26
 
 ### Added

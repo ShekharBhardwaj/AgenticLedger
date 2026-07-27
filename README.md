@@ -44,6 +44,11 @@ docker run -p 8000:8000 \
   ghcr.io/shekharbhardwaj/agentledger:latest
 ```
 
+> The image is multi-arch (amd64/arm64), runs as a non-root user, and every
+> release is signed with Sigstore and ships an SBOM. Hardening a shared
+> deployment (TLS, auth keys, redaction, verification)? See the
+> [deployment guide](docs/deployment.md).
+
 Or with docker compose (SQLite by default — see `docker-compose.yml`):
 ```bash
 AGENTLEDGER_UPSTREAM_URL=https://api.openai.com docker compose up
@@ -203,6 +208,10 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 opencode, OpenClaw, BMAD-METHOD, LangGraph/LangChain, CrewAI, OpenAI Agents
 SDK, Gemini CLI, AutoGen/AG2, Pydantic AI, Vercel AI SDK, LiteLLM, and
 OpenRouter.
+
+**Production deployment** — TLS termination, auth keys, redaction, image
+signature/SBOM verification, enterprise mirrors, and scaling guidance in
+[docs/deployment.md](docs/deployment.md).
 
 ---
 
@@ -724,9 +733,9 @@ git push origin v0.2.0
 ```
 
 This runs three jobs:
-1. **Docker** — builds and pushes `ghcr.io/shekharbhardwaj/agentledger:{version}` and `:latest` to GHCR
-2. **PyPI** — builds and publishes `agentic-ledger=={version}` to PyPI using trusted publishing (no API token needed)
-3. **GitHub Release** — creates a release with auto-generated changelog from commit messages
+1. **Docker** — builds `ghcr.io/shekharbhardwaj/agentledger:{version}` and `:latest` for linux/amd64 + linux/arm64, pushes with SBOM + provenance attestations, signs the digest with Sigstore cosign (keyless), and mirrors to Docker Hub when the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` secrets are configured
+2. **PyPI** — builds and publishes `agentic-ledger=={version}` to PyPI using trusted publishing (no API token needed), with PEP 740 attestations
+3. **GitHub Release** — creates a release with auto-generated changelog and attaches the image SBOM (SPDX)
 
 **First-time PyPI setup** (one time only):
 1. Go to [pypi.org/manage/account/publishing](https://pypi.org/manage/account/publishing/)

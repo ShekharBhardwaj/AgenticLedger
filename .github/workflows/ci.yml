@@ -91,7 +91,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
@@ -116,3 +116,19 @@ jobs:
           curl -sf http://localhost:8000/health
           curl -sf -o /dev/null http://localhost:8000/app
           echo "fresh install boots, /health and /app respond"
+
+  # The Dockerfile must build from a plain checkout with nothing in dist/ —
+  # the PyPI-fallback path that Glama and anyone running a cold `docker build`
+  # exercises. The release pipeline covers the wheel-in-dist/ path.
+  docker-cold-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image (PyPI fallback, no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false

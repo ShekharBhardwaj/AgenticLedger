@@ -13,9 +13,11 @@ venv/
 env/
 ENV/
 
-# Packaging/build artifacts
+# Packaging/build artifacts (dist/.gitkeep stays tracked so a cold
+# `docker build` always has a dist/ directory to COPY)
 build/
-dist/
+dist/*
+!dist/.gitkeep
 *.egg-info/
 .eggs/
 pip-wheel-metadata/
