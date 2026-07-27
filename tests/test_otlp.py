@@ -2,6 +2,8 @@
 
 import uuid
 
+import pytest
+
 from agenticledger.proxy.otlp_ingest import _NS
 
 TRACE = "0af7651916cd43dd8448eb211c80319c"
@@ -94,12 +96,108 @@ def test_non_genai_spans_skipped(proxy):
     assert client.get("/session/otlp-unknown").status_code == 404
 
 
-def test_protobuf_payload_rejected_with_hint(proxy):
+def _genai_span_pb() -> bytes:
+    """The same GenAI span as _genai_span(), but as a serialized protobuf
+    ExportTraceServiceRequest (session id differs so tests don't collide)."""
+    pytest.importorskip("opentelemetry.proto")
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+        ExportTraceServiceRequest,
+    )
+    from opentelemetry.proto.common.v1.common_pb2 import AnyValue, ArrayValue
+
+    req = ExportTraceServiceRequest()
+    rs = req.resource_spans.add()
+    rs.resource.attributes.add(key="service.name", value=AnyValue(string_value="gemini-cli"))
+    span = rs.scope_spans.add().spans.add()
+    span.trace_id = bytes.fromhex(TRACE)
+    span.span_id = bytes.fromhex(SPAN)
+    span.name = "chat gpt-4o"
+    span.start_time_unix_nano = 1753500000000000000
+    span.end_time_unix_nano = 1753500002500000000
+    span.attributes.add(key="gen_ai.system", value=AnyValue(string_value="openai"))
+    span.attributes.add(key="gen_ai.request.model", value=AnyValue(string_value="gpt-4o"))
+    span.attributes.add(key="gen_ai.usage.input_tokens", value=AnyValue(int_value=1200))
+    span.attributes.add(key="gen_ai.usage.output_tokens", value=AnyValue(int_value=300))
+    span.attributes.add(key="gen_ai.conversation.id", value=AnyValue(string_value="otlp-conv-pb"))
+    span.attributes.add(key="gen_ai.agent.name", value=AnyValue(string_value="researcher"))
+    span.attributes.add(
+        key="gen_ai.response.finish_reasons",
+        value=AnyValue(array_value=ArrayValue(values=[AnyValue(string_value="stop")])),
+    )
+    return req.SerializeToString()
+
+
+def test_protobuf_span_ingested_with_same_action_id(proxy):
+    """http/protobuf batches land identically to their http/json twins —
+    including the deterministic action_id, which requires normalizing the
+    proto3-JSON base64 trace/span ids back to OTLP/JSON hex."""
     client = proxy()
-    resp = client.post("/v1/traces", content=b"\x0a\x00",
+    resp = client.post("/v1/traces", content=_genai_span_pb(),
                        headers={"content-type": "application/x-protobuf"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/x-protobuf"
+
+    rows = client.get("/session/otlp-conv-pb").json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["model_id"] == "gpt-4o"
+    assert row["tokens_in"] == 1200
+    assert row["tokens_out"] == 300
+    assert row["framework"] == "gemini-cli"
+    assert row["action_id"] == str(uuid.uuid5(_NS, f"otlp:{TRACE}:{SPAN}"))
+
+
+def test_protobuf_malformed_payload_rejected(proxy):
+    pytest.importorskip("opentelemetry.proto")
+    client = proxy()
+    resp = client.post("/v1/traces", content=b"\xff\xff\xff",
+                       headers={"content-type": "application/x-protobuf"})
+    assert resp.status_code == 400
+
+
+def test_unsupported_content_type_rejected(proxy):
+    client = proxy()
+    resp = client.post("/v1/traces", content=b"whatever",
+                       headers={"content-type": "text/plain"})
     assert resp.status_code == 415
-    assert "http/json" in resp.json()["error"]
+    assert "protobuf" in resp.json()["error"]
+
+
+def test_protobuf_tool_result_logs_become_tool_executions(proxy):
+    pytest.importorskip("opentelemetry.proto")
+    from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
+        ExportLogsServiceRequest,
+    )
+    from opentelemetry.proto.common.v1.common_pb2 import AnyValue
+
+    req = ExportLogsServiceRequest()
+    rec = req.resource_logs.add().scope_logs.add().log_records.add()
+    rec.time_unix_nano = 1753500001000000000
+    rec.attributes.add(key="event.name", value=AnyValue(string_value="claude_code.tool_result"))
+    rec.attributes.add(key="tool_name", value=AnyValue(string_value="Bash"))
+    rec.attributes.add(key="duration_ms", value=AnyValue(int_value=742))
+    rec.attributes.add(key="success", value=AnyValue(string_value="false"))
+    rec.attributes.add(key="session.id", value=AnyValue(string_value="cc-otel-pb"))
+
+    client = proxy()
+    resp = client.post("/v1/logs", content=req.SerializeToString(),
+                       headers={"content-type": "application/x-protobuf"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/x-protobuf"
+
+    tools = client.get("/api/sessions/cc-otel-pb/tools").json()
+    assert len(tools) == 1
+    assert tools[0]["tool_name"] == "Bash"
+    assert tools[0]["latency_ms"] == 742
+    assert tools[0]["is_error"] == 1
+
+
+def test_protobuf_metrics_acked_in_kind(proxy):
+    client = proxy()
+    resp = client.post("/v1/metrics", content=b"",
+                       headers={"content-type": "application/x-protobuf"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/x-protobuf"
 
 
 def test_logs_and_metrics_acked(proxy):

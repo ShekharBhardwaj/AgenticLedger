@@ -58,6 +58,8 @@ dev = [
     "aiosqlite>=0.19",
     "asyncpg>=0.29",
     "hatch-vcs",
+    # exercises the http/protobuf OTLP ingest path in tests
+    "opentelemetry-proto>=1.24",
 ]
 
 [project.urls]

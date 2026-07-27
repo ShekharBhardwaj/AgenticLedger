@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **OTLP `http/protobuf` ingest.** `/v1/traces` and `/v1/logs` now accept
+  the protobuf encoding alongside JSON (needs `opentelemetry-proto`,
+  shipped by the `[otel]` extra; the Docker image includes it). Protobuf
+  batches produce the same deterministic action_ids as their JSON twins
+  (trace/span ids are normalized from proto3-JSON base64 back to OTLP/JSON
+  hex), and success responses are returned in the caller's encoding. Python
+  OTel SDKs now work with a bare
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000` — no Collector
+  bridge, no `http/json` override.
+- **Session delete in the web app.** Session cards grew a hover-reveal ×
+  that deletes the session's captured calls (confirmation required; audit-
+  logged; editor role when auth is enabled) — matching what the API always
+  allowed via `DELETE /api/sessions/{id}`.
+
 ### Changed — BREAKING
 - **Full naming cleanup: every technical name is now `agenticledger`.**
   The pre-rebrand `agentledger` slug is gone from the entire surface — one

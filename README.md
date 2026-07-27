@@ -206,8 +206,11 @@ ledger and GenAI spans are ingested directly:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000
-export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 ```
+
+Both OTLP/HTTP encodings are accepted: JSON always, protobuf when the
+`[otel]` extra is installed (the Docker image includes it). gRPC exporters
+should switch to HTTP: `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
 
 **Framework guides** — one per integration in
 [docs/integrations](docs/integrations/README.md): Claude Code, Codex CLI,

@@ -20,6 +20,11 @@ export async function get<T>(path: string): Promise<T> {
   return resp.json();
 }
 
+export async function del(path: string): Promise<void> {
+  const resp = await fetch(path, { method: "DELETE", headers: headers() });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+}
+
 export interface Run {
   run_id: string;
   iterations: number | null;

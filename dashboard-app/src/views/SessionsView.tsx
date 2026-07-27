@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Call, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get, interactionTags,
-  liveUpdates, Session, toolNames,
+  Call, del, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get,
+  interactionTags, liveUpdates, Session, toolNames,
 } from "../api";
 import FlowView from "./FlowView";
 import TraceView from "./TraceView";
@@ -127,6 +127,24 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             className={`card ${selected === s.session_id ? "selected" : ""}`}
             onClick={() => { setQuery(""); setSelected(s.session_id); }}
           >
+            <button
+              className="card-del"
+              title="Delete this session's captured calls"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!window.confirm(
+                  `Delete session ${s.session_id} (${s.call_count} calls)? This cannot be undone.`,
+                )) return;
+                del(`/api/sessions/${encodeURIComponent(s.session_id)}`)
+                  .then(() => {
+                    setSelected((cur) => (cur === s.session_id ? null : cur));
+                    refresh();
+                  })
+                  .catch((err) => window.alert(`Delete failed: ${err.message}`));
+              }}
+            >
+              ×
+            </button>
             <div className="card-title">{s.session_id}</div>
             <div className="card-sub">
               <span>{s.call_count} calls</span>

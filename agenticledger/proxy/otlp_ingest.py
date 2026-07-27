@@ -6,13 +6,16 @@ Many runtimes can't route through a base-URL proxy but speak OTel natively
 Mastra). Pointing OTEL_EXPORTER_OTLP_ENDPOINT at the ledger captures their
 LLM calls with zero framework-side work.
 
-Scope (v1):
-- POST /v1/traces  (application/json — the OTLP JSON encoding): spans that
-  carry GenAI semantic-convention attributes become llm_calls rows.
-- POST /v1/logs and /v1/metrics: acknowledged (2xx) so exporters don't
-  buffer/retry, but not yet mapped.
-- Protobuf payloads are rejected with a hint to switch the exporter to
-  http/json (OTEL_EXPORTER_OTLP_PROTOCOL=http/json).
+Scope:
+- POST /v1/traces  (OTLP JSON or protobuf encoding): spans that carry
+  GenAI semantic-convention attributes become llm_calls rows.
+- POST /v1/logs: tool_result events become tool_executions rows; other
+  records acknowledged. /v1/metrics: acknowledged (2xx) so exporters
+  don't buffer/retry, but not yet mapped.
+- http/protobuf needs opentelemetry-proto, shipped by the [otel] extra
+  (the Docker image includes it). Without it, protobuf payloads get a
+  415 with an install hint (or switch the exporter to
+  OTEL_EXPORTER_OTLP_PROTOCOL=http/json).
 
 Idempotency: the action_id is derived deterministically from traceId+spanId,
 so re-exported batches never duplicate rows. Token counts arrive as span
@@ -20,6 +23,7 @@ attributes; message bodies usually don't — OTLP-ingested calls are
 metadata-level records (model, tokens, cost, latency, session, agent).
 """
 
+import base64
 import contextlib
 import logging
 import uuid
@@ -39,6 +43,50 @@ _SYSTEM_TO_PROVIDER = {
     "az.ai.openai": "openai",
     "azure.ai.openai": "openai",
 }
+
+
+def decode_protobuf(body: bytes, kind: str) -> Optional[dict]:
+    """Decode an OTLP protobuf export request into the OTLP/JSON dict shape
+    the extractors consume. Returns None when opentelemetry-proto is not
+    installed (the [otel] extra provides it). Raises on malformed payloads.
+
+    use_integers_for_enums matches OTLP/JSON, which encodes enums as numbers
+    (a deliberate deviation from proto3 JSON) — the extractors compare
+    status.code against the integer.
+    """
+    try:
+        from google.protobuf.json_format import MessageToDict
+        if kind == "traces":
+            from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+                ExportTraceServiceRequest as _Request,
+            )
+        else:
+            from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
+                ExportLogsServiceRequest as _Request,
+            )
+    except ImportError:
+        return None
+    msg = _Request()
+    msg.ParseFromString(body)
+    payload = MessageToDict(msg, use_integers_for_enums=True)
+    if kind == "traces":
+        _hexlify_span_ids(payload)
+    return payload
+
+
+def _hexlify_span_ids(payload: dict) -> None:
+    """OTLP/JSON carries traceId/spanId as hex; the proto3 JSON mapping of
+    bytes fields gives base64. Convert in place so a batch exported over
+    protobuf produces the same deterministic action_ids as the identical
+    batch over JSON."""
+    for rs in payload.get("resourceSpans") or []:
+        for ss in rs.get("scopeSpans") or []:
+            for span in ss.get("spans") or []:
+                for key in ("traceId", "spanId", "parentSpanId"):
+                    val = span.get(key)
+                    if isinstance(val, str) and val:
+                        with contextlib.suppress(Exception):
+                            span[key] = base64.b64decode(val).hex()
 
 
 def _attr_map(attributes: Optional[list]) -> dict[str, Any]:

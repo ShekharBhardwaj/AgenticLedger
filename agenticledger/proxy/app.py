@@ -75,6 +75,7 @@ from .normalize import (
     normalize_response,
 )
 from .otel import emit_span
+from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
 from .ratelimit import RateLimitConfig, RateLimiter
@@ -748,25 +749,54 @@ def create_app(
                 )
         return None
 
+    def _otlp_ack(request: Request) -> Response:
+        """Success response in the caller's encoding. An empty protobuf body
+        is a valid Export*ServiceResponse meaning full success."""
+        if "protobuf" in (request.headers.get("content-type") or ""):
+            return Response(content=b"", media_type="application/x-protobuf")
+        return JSONResponse({"partialSuccess": {}})
+
+    async def _otlp_payload(request: Request, kind: str):
+        """Decode an OTLP request body (JSON or protobuf) to the JSON dict
+        shape, or return an error Response."""
+        content_type = request.headers.get("content-type") or ""
+        if "protobuf" in content_type:
+            try:
+                payload = decode_otlp_protobuf(await request.body(), kind)
+            except Exception:
+                return JSONResponse({"error": "invalid protobuf payload"}, status_code=400)
+            if payload is None:
+                return JSONResponse(
+                    {"error": "http/protobuf ingest needs opentelemetry-proto — "
+                              "install agentic-ledger[otel], or set "
+                              "OTEL_EXPORTER_OTLP_PROTOCOL=http/json on the exporter."},
+                    status_code=415,
+                )
+            return payload
+        if "json" in content_type:
+            try:
+                payload = await request.json()
+            except Exception:
+                return JSONResponse({"error": "invalid JSON"}, status_code=400)
+            return payload if isinstance(payload, dict) else {}
+        return JSONResponse(
+            {"error": "Unsupported content-type — the OTLP JSON and protobuf "
+                      "encodings are accepted."},
+            status_code=415,
+        )
+
     @app.post("/v1/traces")
-    async def otlp_traces(request: Request) -> JSONResponse:
+    async def otlp_traces(request: Request) -> Response:
         denied = _check_ingest_gate(request)
         if denied:
             return denied
-        if "json" not in (request.headers.get("content-type") or ""):
-            return JSONResponse(
-                {"error": "Only the OTLP JSON encoding is supported — set "
-                          "OTEL_EXPORTER_OTLP_PROTOCOL=http/json on the exporter."},
-                status_code=415,
-            )
-        try:
-            payload = await request.json()
-        except Exception:
-            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        payload = await _otlp_payload(request, "traces")
+        if isinstance(payload, Response):
+            return payload
 
         store = request.app.state.store
         saved = 0
-        for call in extract_otlp_calls(payload if isinstance(payload, dict) else {}):
+        for call in extract_otlp_calls(payload):
             meta = call["meta"]
             status_code = meta.pop("status_code", 200)
             error_detail = meta.pop("error_detail", None)
@@ -789,31 +819,30 @@ def create_app(
                 # Duplicate action_id (re-exported batch) or storage hiccup —
                 # OTLP delivery is at-least-once, so duplicates are expected.
                 pass
-        return JSONResponse({"partialSuccess": {}})
+        return _otlp_ack(request)
 
     @app.post("/v1/logs")
-    async def otlp_logs(request: Request) -> JSONResponse:
+    async def otlp_logs(request: Request) -> Response:
         """Tool-result events (e.g. Claude Code's on-machine audit trail)
         become tool_executions rows; everything else is acknowledged."""
         denied = _check_ingest_gate(request)
         if denied:
             return denied
-        if "json" in (request.headers.get("content-type") or ""):
-            with suppress(Exception):
-                payload = await request.json()
-                events = extract_otlp_tool_events(
-                    payload if isinstance(payload, dict) else {})
+        with suppress(Exception):
+            payload = await _otlp_payload(request, "logs")
+            if isinstance(payload, dict):
+                events = extract_otlp_tool_events(payload)
                 if events:
                     with suppress(Exception):
                         await request.app.state.store.save_tool_executions(events)
-        return JSONResponse({"partialSuccess": {}})
+        return _otlp_ack(request)
 
     @app.post("/v1/metrics")
-    async def otlp_metrics_ack(request: Request) -> JSONResponse:
+    async def otlp_metrics_ack(request: Request) -> Response:
         denied = _check_ingest_gate(request)
         if denied:
             return denied
-        return JSONResponse({"partialSuccess": {}})
+        return _otlp_ack(request)
 
     # ── Transparent proxy ────────────────────────────────────────────────────
 

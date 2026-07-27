@@ -26,9 +26,12 @@ One guide per framework. Two integration styles:
 
 ## OTLP protocol note
 
-The ledger accepts the OTLP **JSON** encoding over HTTP (`/v1/traces`,
-`/v1/logs`). JavaScript-based tools (Claude Code, Vercel AI SDK) emit JSON
-natively. Python SDKs emit protobuf; bridge them with a minimal
+The ledger accepts both OTLP/HTTP encodings on `/v1/traces` and `/v1/logs`:
+**JSON** always, and **protobuf** when installed with the `[otel]` extra
+(`pip install "agentic-ledger[otel]"` — the Docker image includes it).
+That covers JavaScript tools (JSON) and Python SDKs (protobuf) directly.
+Exporters speaking **gRPC** should switch to HTTP
+(`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`), or bridge through a minimal
 OpenTelemetry Collector:
 
 ```yaml
