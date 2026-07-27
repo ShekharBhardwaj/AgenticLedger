@@ -8,7 +8,7 @@ WORKDIR /app
 #     `docker build`; when present, it wins.
 #   - A cold build from a plain checkout has only dist/.gitkeep, so the build
 #     falls back to the published release on PyPI. Pin a version with
-#     `--build-arg AGENTICLEDGER_VERSION=0.3.4`.
+#     `--build-arg AGENTICLEDGER_VERSION=0.4.0`.
 ARG AGENTICLEDGER_VERSION=
 COPY dist/ /tmp/dist/
 RUN set -eu; \

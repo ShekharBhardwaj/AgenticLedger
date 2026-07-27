@@ -53,7 +53,7 @@ docker build -t agenticledger .
 ```
 
 With nothing in `dist/`, the build installs the latest published release
-from PyPI (pin one with `--build-arg AGENTICLEDGER_VERSION=0.3.3`). If you
+from PyPI (pin one with `--build-arg AGENTICLEDGER_VERSION=0.4.0`). If you
 drop a locally built wheel into `dist/`, it takes precedence — that is the
 path the release pipeline uses.
 
