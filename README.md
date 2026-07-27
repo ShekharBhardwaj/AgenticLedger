@@ -4,7 +4,7 @@
 [![CodeQL](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/codeql.yml/badge.svg)](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/codeql.yml)
 [![PyPI](https://img.shields.io/pypi/v/agentic-ledger)](https://pypi.org/project/agentic-ledger/)
 [![Python versions](https://img.shields.io/pypi/pyversions/agentic-ledger)](https://pypi.org/project/agentic-ledger/)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/shekharbhardwaj/agentledger)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/shekharbhardwaj/agentic-ledger)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![MCP server on Glama](https://glama.ai/mcp/servers/ShekharBhardwaj/AgenticLedger/badges/score.svg)](https://glama.ai/mcp/servers/ShekharBhardwaj/AgenticLedger)
 
@@ -41,7 +41,7 @@ With Docker (recommended, no Python required):
 docker run -p 8000:8000 \
   -e AGENTLEDGER_UPSTREAM_URL=https://api.openai.com \
   -v $(pwd)/data:/data \
-  ghcr.io/shekharbhardwaj/agentledger:latest
+  ghcr.io/shekharbhardwaj/agentic-ledger:latest
 ```
 
 > The image is multi-arch (amd64/arm64), runs as a non-root user, and every
@@ -733,7 +733,7 @@ git push origin v0.2.0
 ```
 
 This runs three jobs:
-1. **Docker** — builds `ghcr.io/shekharbhardwaj/agentledger:{version}` and `:latest` for linux/amd64 + linux/arm64, pushes with SBOM + provenance attestations, signs the digest with Sigstore cosign (keyless), and mirrors to Docker Hub when the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` secrets are configured
+1. **Docker** — builds `ghcr.io/shekharbhardwaj/agentic-ledger:{version}` and `:latest` for linux/amd64 + linux/arm64, pushes with SBOM + provenance attestations, signs the digest with Sigstore cosign (keyless), and mirrors to Docker Hub when the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` secrets are configured
 2. **PyPI** — builds and publishes `agentic-ledger=={version}` to PyPI using trusted publishing (no API token needed), with PEP 740 attestations
 3. **GitHub Release** — creates a release with auto-generated changelog and attaches the image SBOM (SPDX)
 

@@ -78,10 +78,10 @@ jobs:
         id: images
         run: |
           OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
-          echo "ghcr=ghcr.io/${OWNER}/agentledger" >> "$GITHUB_OUTPUT"
+          echo "ghcr=ghcr.io/${OWNER}/agentic-ledger" >> "$GITHUB_OUTPUT"
           {
             echo 'list<<IMAGES'
-            echo "ghcr.io/${OWNER}/agentledger"
+            echo "ghcr.io/${OWNER}/agentic-ledger"
             if [ -n "$DOCKERHUB_USERNAME" ]; then
               echo "docker.io/${DOCKERHUB_USERNAME}/agentic-ledger"
             fi

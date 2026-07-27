@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bind-mount permissions for the non-root container, and an honest
   single-replica scaling stance.
 
+### Changed
+- **The Docker image is now `ghcr.io/shekharbhardwaj/agentic-ledger`**,
+  matching the PyPI package name. The old `ghcr.io/shekharbhardwaj/agentledger`
+  path stays frozen at 0.3.3 — update your pulls.
+
 ## [0.3.3] - 2026-07-26
 
 ### Added

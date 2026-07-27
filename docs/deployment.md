@@ -13,7 +13,7 @@ limits are today.
 | Channel | Name | Notes |
 |---|---|---|
 | PyPI | [`agentic-ledger`](https://pypi.org/project/agentic-ledger/) | Published via trusted publishing (OIDC, no long-lived tokens) with PEP 740 attestations. |
-| GHCR | `ghcr.io/shekharbhardwaj/agentledger` | Multi-arch (`linux/amd64`, `linux/arm64`), signed, with SBOM + provenance attestations. |
+| GHCR | `ghcr.io/shekharbhardwaj/agentic-ledger` | Multi-arch (`linux/amd64`, `linux/arm64`), signed, with SBOM + provenance attestations. |
 | Docker Hub | `docker.io` mirror of the same image | Same digest as GHCR — pull from whichever your network prefers. |
 
 **Enterprise mirrors (Artifactory, Nexus, AWS CodeArtifact, Azure
@@ -30,7 +30,7 @@ Release images are signed with [Sigstore cosign](https://docs.sigstore.dev/)
 identity, not a key someone could lose):
 
 ```bash
-cosign verify ghcr.io/shekharbhardwaj/agentledger:latest \
+cosign verify ghcr.io/shekharbhardwaj/agentic-ledger:latest \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp 'https://github\.com/ShekharBhardwaj/AgenticLedger/\.github/workflows/release\.yml@.*'
 ```
@@ -82,7 +82,7 @@ docker run --read-only --tmpfs /tmp \
   --cap-drop ALL --security-opt no-new-privileges \
   -v agentledger-data:/data -p 8000:8000 \
   -e AGENTLEDGER_UPSTREAM_URL=https://api.openai.com \
-  ghcr.io/shekharbhardwaj/agentledger:latest
+  ghcr.io/shekharbhardwaj/agentic-ledger:latest
 ```
 
 ### TLS: terminate in front of the proxy
