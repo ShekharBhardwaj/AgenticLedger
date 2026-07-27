@@ -49,6 +49,12 @@ docker run -p 8000:8000 \
 > deployment (TLS, auth keys, redaction, verification)? See the
 > [deployment guide](docs/deployment.md).
 
+> **Using Anthropic / Claude?** Set the upstream to Anthropic instead:
+> `AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com`. The proxy fronts
+> one provider at a time — run a second instance on another port to cover
+> both. Any OpenAI-compatible gateway URL (LiteLLM, OpenRouter, ...) works
+> the same way.
+
 Or with docker compose (SQLite by default — see `docker-compose.yml`):
 ```bash
 AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com docker compose up
@@ -104,7 +110,7 @@ response = client.chat.completions.create(
 )
 ```
 
-**Anthropic:**
+**Anthropic** (start the proxy with `AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com`):
 ```python
 import anthropic
 
