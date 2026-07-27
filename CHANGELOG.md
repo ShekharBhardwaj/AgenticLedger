@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — BREAKING
+- **Full naming cleanup: every technical name is now `agenticledger`.**
+  The pre-rebrand `agentledger` slug is gone from the entire surface — one
+  hard cut while the install base is small, so the brand and the commands
+  finally say the same thing. What stays the same: the PyPI package
+  (`pip install agentic-ledger`), the Docker image
+  (`ghcr.io/shekharbhardwaj/agentic-ledger`), and your data schema.
+  What renames:
+
+  | 0.3.x | 0.4.0 |
+  |---|---|
+  | `python -m agentledger.proxy` | `python -m agenticledger.proxy` |
+  | `agentledger run` / `agentledger mcp` | `agenticledger run` / `agenticledger mcp` |
+  | `AGENTLEDGER_*` env vars | `AGENTICLEDGER_*` |
+  | `x-agentledger-*` headers | `x-agenticledger-*` |
+  | default DB `agentledger.db` (Docker: `/data/agentledger.db`) | `agenticledger.db` (Docker: `/data/agenticledger.db`) |
+  | OTel service name `agentledger` | `agenticledger` |
+
+  Migration: upgrade with `pip install -U agentic-ledger`, add `IC` to your
+  env vars and headers, switch commands to `agenticledger`, and rename your
+  existing database file (e.g. `mv agentledger.db agenticledger.db`) to keep
+  your capture history. Old names stop working entirely — there are no
+  compatibility aliases.
+
+## [0.3.4] - 2026-07-27
+
 ### Added
 - **Hardened, multi-arch Docker image.** The container now runs as a
   dedicated non-root user (uid 10001), is built for linux/amd64 and

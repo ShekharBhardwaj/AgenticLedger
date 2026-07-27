@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agentledger = "agentledger.cli:main"
+agenticledger = "agenticledger.cli:main"
 
 [project.optional-dependencies]
 postgres = [
@@ -69,24 +69,24 @@ Issues     = "https://github.com/ShekharBhardwaj/AgenticLedger/issues"
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-packages = ["agentledger"]
+packages = ["agenticledger"]
 # artifacts force-includes VCS-ignored files: the mascot and the built SPA
-# (dashboard-app/ -> vite build -> agentledger/proxy/static/). Release CI runs
+# (dashboard-app/ -> vite build -> agenticledger/proxy/static/). Release CI runs
 # the npm build before python -m build; a source install without the assets
 # still works — /app falls back with a clear message.
 artifacts = [
-    "agentledger/proxy/mascot.jpg",
-    "agentledger/proxy/static/",
+    "agenticledger/proxy/mascot.jpg",
+    "agenticledger/proxy/static/",
 ]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/agentledger",
+    "/agenticledger",
     "/README.md",
     "/LICENSE",
 ]
 artifacts = [
-    "agentledger/proxy/static/",
+    "agenticledger/proxy/static/",
 ]
 
 [tool.pytest.ini_options]
@@ -98,8 +98,8 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["agentledger"]
-omit = ["agentledger/proxy/dashboard.py"]
+source = ["agenticledger"]
+omit = ["agenticledger/proxy/dashboard.py"]
 
 [tool.coverage.report]
 show_missing = true

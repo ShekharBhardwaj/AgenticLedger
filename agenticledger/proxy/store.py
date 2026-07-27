@@ -3,7 +3,7 @@ Storage backends for Agentic Ledger.
 
 Store.connect(dsn) returns the right backend based on the DSN prefix:
 
-  sqlite:///agentledger.db   → SQLite  (zero setup, great for development)
+  sqlite:///agenticledger.db   → SQLite  (zero setup, great for development)
   postgresql://...           → Postgres (recommended for production)
 
 Schema is created automatically on first connect. New columns are added

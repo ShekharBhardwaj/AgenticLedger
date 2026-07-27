@@ -2,7 +2,7 @@
 
 import uuid
 
-from agentledger.proxy.otlp_ingest import _NS
+from agenticledger.proxy.otlp_ingest import _NS
 
 TRACE = "0af7651916cd43dd8448eb211c80319c"
 SPAN = "b7ad6b7169203331"
@@ -112,12 +112,12 @@ def test_logs_and_metrics_acked(proxy):
 
 
 def test_ingest_key_gates_otlp(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_INGEST_KEY", "sekrit")
+    monkeypatch.setenv("AGENTICLEDGER_INGEST_KEY", "sekrit")
     client = proxy()
     assert _post(client, _genai_span()).status_code == 401
     ok = client.post("/v1/traces", json=_genai_span(),
                      headers={"content-type": "application/json",
-                              "x-agentledger-ingest-key": "sekrit"})
+                              "x-agenticledger-ingest-key": "sekrit"})
     assert ok.status_code == 200
 
 

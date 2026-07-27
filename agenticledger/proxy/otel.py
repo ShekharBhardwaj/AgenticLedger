@@ -8,13 +8,13 @@ Install the optional dependency group:
     pip install "agentic-ledger[otel]"
 
 Configure via environment variables (see __main__.py):
-    AGENTLEDGER_OTEL_ENDPOINT      OTLP/HTTP base URL, e.g. http://localhost:4318
-    AGENTLEDGER_OTEL_SERVICE_NAME  Reported service.name (default: agentledger)
-    AGENTLEDGER_OTEL_HEADERS       Comma-separated key=value pairs for auth headers
+    AGENTICLEDGER_OTEL_ENDPOINT      OTLP/HTTP base URL, e.g. http://localhost:4318
+    AGENTICLEDGER_OTEL_SERVICE_NAME  Reported service.name (default: agenticledger)
+    AGENTICLEDGER_OTEL_HEADERS       Comma-separated key=value pairs for auth headers
 
 Trace structure:
     All calls that share a session_id are grouped into a single trace.
-    Parent-child relationships follow x-agentledger-parent-action-id.
+    Parent-child relationships follow x-agenticledger-parent-action-id.
     Follows GenAI semantic conventions (gen_ai.*) where applicable.
 """
 
@@ -38,7 +38,7 @@ _span_contexts: dict[str, object] = {}
 
 def init_otel(
     endpoint: str,
-    service_name: str = "agentledger",
+    service_name: str = "agenticledger",
     headers: Optional[dict[str, str]] = None,
 ) -> None:
     """Initialize the OTLP exporter.  Safe to call multiple times (idempotent)."""
@@ -73,7 +73,7 @@ def init_otel(
     # BatchSpanProcessor exports in a background thread — does not block the async event loop
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
-    _tracer = trace.get_tracer("agentledger", schema_url="https://opentelemetry.io/schemas/1.24.0")
+    _tracer = trace.get_tracer("agenticledger", schema_url="https://opentelemetry.io/schemas/1.24.0")
     logger.info("Agentic Ledger OTel export enabled → %s", endpoint)
 
 
@@ -133,9 +133,9 @@ def emit_span(
             "gen_ai.system":          req.provider,
             "gen_ai.operation.name":  "chat",
             "gen_ai.request.model":   req.model_id,
-            "agentledger.action_id":  action_id,
-            "agentledger.environment": environment,
-            "agentledger.latency_ms":  resp.latency_ms,
+            "agenticledger.action_id":  action_id,
+            "agenticledger.environment": environment,
+            "agenticledger.latency_ms":  resp.latency_ms,
             "http.status_code":        status_code,
         }
         if resp.tokens_in is not None:
@@ -145,17 +145,17 @@ def emit_span(
         if resp.stop_reason:
             attrs["gen_ai.response.finish_reasons"] = [resp.stop_reason]
         if resp.cost_usd is not None:
-            attrs["agentledger.cost_usd"] = resp.cost_usd
+            attrs["agenticledger.cost_usd"] = resp.cost_usd
         if session_id:
-            attrs["agentledger.session_id"] = session_id
+            attrs["agenticledger.session_id"] = session_id
         if agent_name:
-            attrs["agentledger.agent_name"] = agent_name
+            attrs["agenticledger.agent_name"] = agent_name
         if user_id:
-            attrs["agentledger.user_id"] = user_id
+            attrs["agenticledger.user_id"] = user_id
         if handoff_from:
-            attrs["agentledger.handoff_from"] = handoff_from
+            attrs["agenticledger.handoff_from"] = handoff_from
         if handoff_to:
-            attrs["agentledger.handoff_to"] = handoff_to
+            attrs["agenticledger.handoff_to"] = handoff_to
         if req.temperature is not None:
             attrs["gen_ai.request.temperature"] = req.temperature
         if req.max_tokens is not None:

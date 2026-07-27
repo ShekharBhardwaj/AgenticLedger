@@ -10,7 +10,7 @@ it with `model_provider`. Every call is captured with prompts, tool calls,
 and cost.
 
 ```bash
-AGENTLEDGER_UPSTREAM_URL=https://api.openai.com python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com python -m agenticledger.proxy
 ```
 
 ## Route 2: OTel
@@ -23,4 +23,4 @@ latency) — no message bodies.
 ## Guardrails
 
 Budgets and loop detection apply on the proxy route:
-`AGENTLEDGER_BUDGET_DAILY=10.00`, `AGENTLEDGER_LOOP_ACTION=block`.
+`AGENTICLEDGER_BUDGET_DAILY=10.00`, `AGENTICLEDGER_LOOP_ACTION=block`.

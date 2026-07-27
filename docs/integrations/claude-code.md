@@ -6,7 +6,7 @@ the ledger understands Claude Code traffic natively.
 ## Setup
 
 ```bash
-AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com python -m agenticledger.proxy
 ```
 
 ```bash
@@ -43,9 +43,9 @@ Tool executions (name, duration, success) land in the same sessions at
 ## Loops and guardrails
 
 ```bash
-agentledger run --max-iterations 50 --budget 25 -- claude -p "$(cat PROMPT.md)"
+agenticledger run --max-iterations 50 --budget 25 -- claude -p "$(cat PROMPT.md)"
 ```
 
-`AGENTLEDGER_BUDGET_DAILY`, `AGENTLEDGER_LOOP_ACTION=block`, and
-`AGENTLEDGER_COMPLETION_PROMISE` turn an overnight loop into something you
+`AGENTICLEDGER_BUDGET_DAILY`, `AGENTICLEDGER_LOOP_ACTION=block`, and
+`AGENTICLEDGER_COMPLETION_PROMISE` turn an overnight loop into something you
 can trust unattended. See the Loop Lens at `http://localhost:8000`.

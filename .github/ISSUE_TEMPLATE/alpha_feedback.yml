@@ -10,7 +10,7 @@ body:
       multiple: true
       options:
         - Claude Code
-        - Ralph-style loop (agentledger run or a bash loop)
+        - Ralph-style loop (agenticledger run or a bash loop)
         - BMAD-METHOD
         - OpenClaw
         - Codex CLI / Gemini CLI / opencode

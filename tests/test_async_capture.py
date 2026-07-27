@@ -37,21 +37,21 @@ def _wait_status(call, status=200, timeout=3.0, interval=0.02):
 
 def test_metrics_endpoint_sync_mode(proxy):
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
-    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agentledger-session-id": "s1"})
+    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agenticledger-session-id": "s1"})
 
     resp = client.get("/metrics")
     assert resp.status_code == 200
     assert "text/plain" in resp.headers["content-type"]
     text = resp.text
-    assert _metric(text, "agentledger_captures_persisted_total") >= 1
-    assert _metric(text, "agentledger_captures_dropped_total") == 0
-    assert _metric(text, "agentledger_capture_async") == 0
-    assert _metric(text, "agentledger_capture_queue_depth") == 0
+    assert _metric(text, "agenticledger_captures_persisted_total") >= 1
+    assert _metric(text, "agenticledger_captures_dropped_total") == 0
+    assert _metric(text, "agenticledger_capture_async") == 0
+    assert _metric(text, "agenticledger_capture_queue_depth") == 0
 
 
 def test_metrics_reports_async_enabled(proxy):
     client = proxy(async_capture=True)
-    assert _metric(client.get("/metrics").text, "agentledger_capture_async") == 1
+    assert _metric(client.get("/metrics").text, "agenticledger_capture_async") == 1
 
 
 # ── Async ingestion behavior ──────────────────────────────────────────────────
@@ -60,7 +60,7 @@ def test_sync_mode_is_read_after_write(proxy):
     """Default (sync) mode: a captured call is immediately queryable."""
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response(content="pong")))
     resp = client.post("/v1/chat/completions", json=_CHAT,
-                       headers={"x-agentledger-session-id": "s-sync"})
+                       headers={"x-agenticledger-session-id": "s-sync"})
     assert resp.status_code == 200
     # No waiting needed.
     assert len(client.get("/session/s-sync").json()) == 1
@@ -71,16 +71,16 @@ def test_async_capture_is_eventually_consistent(proxy):
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response(content="pong")),
                    async_capture=True)
     resp = client.post("/v1/chat/completions", json=_CHAT,
-                       headers={"x-agentledger-session-id": "s-async"})
+                       headers={"x-agenticledger-session-id": "s-async"})
     assert resp.status_code == 200
     assert resp.json()["choices"][0]["message"]["content"] == "pong"
-    action_id = resp.headers["x-agentledger-action-id"]
+    action_id = resp.headers["x-agenticledger-action-id"]
 
     # Persisted by the background worker — eventually, not synchronously.
     persisted = _wait_status(lambda: client.get("/session/s-async"))
     assert len(persisted.json()) == 1
     assert client.get(f"/explain/{action_id}").status_code == 200
-    assert _metric(client.get("/metrics").text, "agentledger_captures_persisted_total") >= 1
+    assert _metric(client.get("/metrics").text, "agenticledger_captures_persisted_total") >= 1
 
 
 def test_async_overflow_sheds_load_without_blocking(proxy):
@@ -96,8 +96,8 @@ def test_async_overflow_sheds_load_without_blocking(proxy):
 
     for i in range(6):
         resp = client.post("/v1/chat/completions", json=_CHAT,
-                           headers={"x-agentledger-session-id": f"s{i}"})
+                           headers={"x-agenticledger-session-id": f"s{i}"})
         assert resp.status_code == 200  # the agent is never blocked by capture
 
-    dropped = _metric(client.get("/metrics").text, "agentledger_captures_dropped_total")
+    dropped = _metric(client.get("/metrics").text, "agenticledger_captures_dropped_total")
     assert dropped >= 1  # load was shed rather than blocking

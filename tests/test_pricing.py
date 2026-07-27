@@ -1,9 +1,9 @@
-"""Tests for agentledger/proxy/pricing.py — cost computation + override loading.
+"""Tests for agenticledger/proxy/pricing.py — cost computation + override loading.
 
 The pricing module exposes:
   * ``_PRICES``          built-in per-million-token (input, output) table.
   * ``compute_cost``     model_id + tokens_in/out -> USD cost (or None).
-  * ``_load_overrides``  merges AGENTLEDGER_PRICING / *_FILE env overrides into _PRICES.
+  * ``_load_overrides``  merges AGENTICLEDGER_PRICING / *_FILE env overrides into _PRICES.
 
 Per the module docstring, prices are quoted *per million tokens*, so feeding
 exactly 1_000_000 input tokens and 0 output tokens of a model must return its
@@ -19,7 +19,7 @@ import json
 
 import pytest
 
-from agentledger.proxy import pricing
+from agenticledger.proxy import pricing
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -182,9 +182,9 @@ def test_gpt_4_turbo_uses_its_own_rate():
 # ── _load_overrides: inline JSON env var ──────────────────────────────────────
 
 def test_override_inline_json_adds_new_model(restore_prices, monkeypatch):
-    """AGENTLEDGER_PRICING inline JSON registers a brand-new model price."""
-    monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
-    monkeypatch.setenv("AGENTLEDGER_PRICING", json.dumps({"my-model": [1.00, 2.00]}))
+    """AGENTICLEDGER_PRICING inline JSON registers a brand-new model price."""
+    monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_PRICING", json.dumps({"my-model": [1.00, 2.00]}))
 
     assert pricing.compute_cost("my-model", 1_000_000, 0) is None  # not yet loaded
     pricing._load_overrides()
@@ -195,8 +195,8 @@ def test_override_inline_json_adds_new_model(restore_prices, monkeypatch):
 
 def test_override_inline_json_overrides_existing_model(restore_prices, monkeypatch):
     """An override for an existing model replaces its built-in price."""
-    monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
-    monkeypatch.setenv("AGENTLEDGER_PRICING", json.dumps({"gpt-4o": [99.0, 100.0]}))
+    monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_PRICING", json.dumps({"gpt-4o": [99.0, 100.0]}))
     pricing._load_overrides()
 
     assert pricing.compute_cost("gpt-4o", 1_000_000, 0) == 99.0
@@ -205,8 +205,8 @@ def test_override_inline_json_overrides_existing_model(restore_prices, monkeypat
 
 def test_override_model_key_is_lowercased(restore_prices, monkeypatch):
     """Override keys are normalised to lowercase so case-insensitive lookup works."""
-    monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
-    monkeypatch.setenv("AGENTLEDGER_PRICING", json.dumps({"My-Custom-MODEL": [5.0, 6.0]}))
+    monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_PRICING", json.dumps({"My-Custom-MODEL": [5.0, 6.0]}))
     pricing._load_overrides()
 
     assert "my-custom-model" in pricing._PRICES
@@ -214,9 +214,9 @@ def test_override_model_key_is_lowercased(restore_prices, monkeypatch):
 
 
 def test_invalid_inline_json_is_ignored(restore_prices, monkeypatch):
-    """Malformed AGENTLEDGER_PRICING JSON is logged and ignored, not fatal."""
-    monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
-    monkeypatch.setenv("AGENTLEDGER_PRICING", "{not valid json")
+    """Malformed AGENTICLEDGER_PRICING JSON is logged and ignored, not fatal."""
+    monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_PRICING", "{not valid json")
     pricing._load_overrides()  # must not raise
 
     # Built-in table is untouched.
@@ -225,9 +225,9 @@ def test_invalid_inline_json_is_ignored(restore_prices, monkeypatch):
 
 def test_malformed_entry_is_skipped_others_applied(restore_prices, monkeypatch):
     """A single bad entry is skipped; valid sibling entries still apply."""
-    monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
+    monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
     monkeypatch.setenv(
-        "AGENTLEDGER_PRICING",
+        "AGENTICLEDGER_PRICING",
         json.dumps({"bad-model": ["oops"], "good-model": [1.0, 2.0]}),
     )
     pricing._load_overrides()  # must not raise
@@ -237,9 +237,9 @@ def test_malformed_entry_is_skipped_others_applied(restore_prices, monkeypatch):
 
 
 def test_empty_pricing_env_is_noop(restore_prices, monkeypatch):
-    """An empty/whitespace AGENTLEDGER_PRICING leaves the table unchanged."""
-    monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
-    monkeypatch.setenv("AGENTLEDGER_PRICING", "   ")
+    """An empty/whitespace AGENTICLEDGER_PRICING leaves the table unchanged."""
+    monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_PRICING", "   ")
     before = copy.deepcopy(pricing._PRICES)
     pricing._load_overrides()
     assert before == pricing._PRICES
@@ -248,12 +248,12 @@ def test_empty_pricing_env_is_noop(restore_prices, monkeypatch):
 # ── _load_overrides: file-based override ──────────────────────────────────────
 
 def test_override_from_file(restore_prices, monkeypatch, tmp_path):
-    """AGENTLEDGER_PRICING_FILE loads a JSON file and applies its prices."""
+    """AGENTICLEDGER_PRICING_FILE loads a JSON file and applies its prices."""
     pf = tmp_path / "pricing.json"
     pf.write_text(json.dumps({"file-model": [3.0, 4.0], "gpt-4o": [50.0, 60.0]}))
 
-    monkeypatch.delenv("AGENTLEDGER_PRICING", raising=False)
-    monkeypatch.setenv("AGENTLEDGER_PRICING_FILE", str(pf))
+    monkeypatch.delenv("AGENTICLEDGER_PRICING", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_PRICING_FILE", str(pf))
     pricing._load_overrides()
 
     assert pricing.compute_cost("file-model", 1_000_000, 0) == 3.0
@@ -261,9 +261,9 @@ def test_override_from_file(restore_prices, monkeypatch, tmp_path):
 
 
 def test_missing_file_is_ignored(restore_prices, monkeypatch, tmp_path):
-    """A non-existent AGENTLEDGER_PRICING_FILE is logged and ignored, not fatal."""
-    monkeypatch.delenv("AGENTLEDGER_PRICING", raising=False)
-    monkeypatch.setenv("AGENTLEDGER_PRICING_FILE", str(tmp_path / "does-not-exist.json"))
+    """A non-existent AGENTICLEDGER_PRICING_FILE is logged and ignored, not fatal."""
+    monkeypatch.delenv("AGENTICLEDGER_PRICING", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_PRICING_FILE", str(tmp_path / "does-not-exist.json"))
     pricing._load_overrides()  # must not raise
 
     assert pricing.compute_cost("gpt-4o", 1_000_000, 0) == 2.50
@@ -274,8 +274,8 @@ def test_inline_and_file_both_applied(restore_prices, monkeypatch, tmp_path):
     pf = tmp_path / "pricing.json"
     pf.write_text(json.dumps({"from-file": [7.0, 8.0]}))
 
-    monkeypatch.setenv("AGENTLEDGER_PRICING", json.dumps({"from-inline": [1.5, 2.5]}))
-    monkeypatch.setenv("AGENTLEDGER_PRICING_FILE", str(pf))
+    monkeypatch.setenv("AGENTICLEDGER_PRICING", json.dumps({"from-inline": [1.5, 2.5]}))
+    monkeypatch.setenv("AGENTICLEDGER_PRICING_FILE", str(pf))
     pricing._load_overrides()
 
     assert pricing.compute_cost("from-inline", 1_000_000, 0) == 1.5
@@ -287,8 +287,8 @@ def test_file_overrides_win_over_inline_for_same_key(restore_prices, monkeypatch
     pf = tmp_path / "pricing.json"
     pf.write_text(json.dumps({"dup-model": [9.0, 9.0]}))
 
-    monkeypatch.setenv("AGENTLEDGER_PRICING", json.dumps({"dup-model": [1.0, 1.0]}))
-    monkeypatch.setenv("AGENTLEDGER_PRICING_FILE", str(pf))
+    monkeypatch.setenv("AGENTICLEDGER_PRICING", json.dumps({"dup-model": [1.0, 1.0]}))
+    monkeypatch.setenv("AGENTICLEDGER_PRICING_FILE", str(pf))
     pricing._load_overrides()
 
     # overrides.update(file) runs after overrides.update(inline), so file wins.
@@ -339,9 +339,9 @@ def test_four_element_override_sets_explicit_cache_prices(restore_prices, monkey
     snapshot = dict(pricing._CACHE_PRICES)
     try:
         monkeypatch.setenv(
-            "AGENTLEDGER_PRICING", json.dumps({"my-model": [1.0, 2.0, 0.25, 1.5]})
+            "AGENTICLEDGER_PRICING", json.dumps({"my-model": [1.0, 2.0, 0.25, 1.5]})
         )
-        monkeypatch.delenv("AGENTLEDGER_PRICING_FILE", raising=False)
+        monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
         pricing._load_overrides()
         cost = pricing.compute_cost(
             "my-model", 100, 0,
@@ -385,12 +385,12 @@ def test_current_generation_models_priced():
 def test_unpriced_model_warns_once(caplog):
     import logging
     pricing._unpriced_warned.discard("totally-unknown-model-x")
-    with caplog.at_level(logging.WARNING, logger="agentledger.proxy.pricing"):
+    with caplog.at_level(logging.WARNING, logger="agenticledger.proxy.pricing"):
         assert pricing.compute_cost("totally-unknown-model-x", 100, 10) is None
         assert pricing.compute_cost("totally-unknown-model-x", 100, 10) is None
     warnings = [r for r in caplog.records if "totally-unknown-model-x" in r.message]
     assert len(warnings) == 1
-    assert "AGENTLEDGER_PRICING" in warnings[0].message
+    assert "AGENTICLEDGER_PRICING" in warnings[0].message
 
 
 def test_claude_5_family_priced():

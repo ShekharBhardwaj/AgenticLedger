@@ -1,7 +1,7 @@
-"""Tests for the optional proxy-ingest key (AGENTLEDGER_INGEST_KEY).
+"""Tests for the optional proxy-ingest key (AGENTICLEDGER_INGEST_KEY).
 
 When unset, the proxy forwards anything (zero-config dev UX). When set, only
-requests carrying a matching x-agentledger-ingest-key are forwarded — closing the
+requests carrying a matching x-agenticledger-ingest-key are forwarded — closing the
 open relay. The key itself is never forwarded upstream.
 """
 
@@ -18,7 +18,7 @@ def test_no_ingest_key_forwards_everything(proxy):
 
 
 def test_missing_ingest_key_is_rejected_and_not_forwarded(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_INGEST_KEY", "ingest-secret")
+    monkeypatch.setenv("AGENTICLEDGER_INGEST_KEY", "ingest-secret")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
 
     resp = client.post("/v1/chat/completions", json=_CHAT)
@@ -28,37 +28,37 @@ def test_missing_ingest_key_is_rejected_and_not_forwarded(proxy, monkeypatch):
 
 
 def test_wrong_ingest_key_is_rejected(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_INGEST_KEY", "ingest-secret")
+    monkeypatch.setenv("AGENTICLEDGER_INGEST_KEY", "ingest-secret")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
 
     resp = client.post(
         "/v1/chat/completions", json=_CHAT,
-        headers={"x-agentledger-ingest-key": "nope"},
+        headers={"x-agenticledger-ingest-key": "nope"},
     )
     assert resp.status_code == 401
     assert client.upstream.requests == []
 
 
 def test_correct_ingest_key_forwards_and_strips_auth_headers(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_INGEST_KEY", "ingest-secret")
+    monkeypatch.setenv("AGENTICLEDGER_INGEST_KEY", "ingest-secret")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response(content="pong")))
 
     resp = client.post(
         "/v1/chat/completions", json=_CHAT,
-        headers={"x-agentledger-ingest-key": "ingest-secret", "x-agentledger-api-key": "k"},
+        headers={"x-agenticledger-ingest-key": "ingest-secret", "x-agenticledger-api-key": "k"},
     )
     assert resp.status_code == 200
     assert resp.json()["choices"][0]["message"]["content"] == "pong"
 
     # The ingest key and api key must never leak to the upstream provider.
     fwd = client.upstream.last_request.headers
-    assert "x-agentledger-ingest-key" not in fwd
-    assert "x-agentledger-api-key" not in fwd
+    assert "x-agenticledger-ingest-key" not in fwd
+    assert "x-agenticledger-api-key" not in fwd
 
 
 def test_ingest_key_gates_all_proxied_paths(proxy, monkeypatch):
     """Not just LLM paths — any proxied request is gated (closes the relay)."""
-    monkeypatch.setenv("AGENTLEDGER_INGEST_KEY", "ingest-secret")
+    monkeypatch.setenv("AGENTICLEDGER_INGEST_KEY", "ingest-secret")
     client = proxy(handler=lambda r: httpx.Response(200, json={"data": []}))
 
     assert client.get("/v1/models").status_code == 401

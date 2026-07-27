@@ -44,6 +44,6 @@ coverage.xml
 # Jupyter
 .ipynb_checkpoints/
 
-# Web app (dashboard-app builds into agentledger/proxy/static/)
+# Web app (dashboard-app builds into agenticledger/proxy/static/)
 dashboard-app/node_modules/
-agentledger/proxy/static/
+agenticledger/proxy/static/

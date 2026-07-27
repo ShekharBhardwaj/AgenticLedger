@@ -1,4 +1,4 @@
-"""Tests for agentledger/proxy/mcp.py — the MCP JSON-RPC tool server.
+"""Tests for agenticledger/proxy/mcp.py — the MCP JSON-RPC tool server.
 
 Exercised end-to-end through the ``proxy`` fixture by POSTing JSON-RPC envelopes
 to ``/mcp``. ``handle_mcp`` reads ``app.state.store``, so for the data-bearing
@@ -48,25 +48,25 @@ def _text(result):
 def _capture(client, *, content="captured output", session="s-1", agent=None, model="gpt-4o"):
     """Push one real LLM call through the proxy so the store has a record.
 
-    Returns the x-agentledger-action-id of the captured call.
+    Returns the x-agenticledger-action-id of the captured call.
     """
     client.upstream.set(lambda r: httpx.Response(200, json=openai_response(content=content, model=model)))
-    headers = {"x-agentledger-session-id": session}
+    headers = {"x-agenticledger-session-id": session}
     if agent:
-        headers["x-agentledger-agent-name"] = agent
+        headers["x-agenticledger-agent-name"] = agent
     resp = client.post(
         "/v1/chat/completions",
         json={"model": model, "messages": [{"role": "user", "content": "hello world"}]},
         headers=headers,
     )
     assert resp.status_code == 200
-    return resp.headers["x-agentledger-action-id"]
+    return resp.headers["x-agenticledger-action-id"]
 
 
 # ── lifecycle / protocol methods ──────────────────────────────────────────────
 
 def test_initialize_returns_protocol_and_server_info(proxy):
-    """initialize -> protocolVersion 2024-11-05 and serverInfo.name 'agentledger'."""
+    """initialize -> protocolVersion 2024-11-05 and serverInfo.name 'agenticledger'."""
     client = proxy()
     status, body = _rpc(client, "initialize")
     assert status == 200
@@ -74,7 +74,7 @@ def test_initialize_returns_protocol_and_server_info(proxy):
     assert body["id"] == 1
     result = body["result"]
     assert result["protocolVersion"] == "2024-11-05"
-    assert result["serverInfo"]["name"] == "agentledger"
+    assert result["serverInfo"]["name"] == "agenticledger"
     assert "version" in result["serverInfo"]
     assert "tools" in result["capabilities"]
 
@@ -336,9 +336,9 @@ def test_mcp_run_tools(proxy):
     for i in (1, 2):
         client.post("/v1/chat/completions",
                     json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-                    headers={"x-agentledger-session-id": f"it-{i}",
-                             "x-agentledger-run-id": "mcp-run",
-                             "x-agentledger-iteration": str(i)})
+                    headers={"x-agenticledger-session-id": f"it-{i}",
+                             "x-agenticledger-run-id": "mcp-run",
+                             "x-agenticledger-iteration": str(i)})
 
     status, body = _rpc(client, "tools/call",
                         {"name": "list_runs", "arguments": {}})

@@ -15,13 +15,13 @@ def test_non_streaming_capture_and_retrieval(proxy):
     resp = client.post(
         "/v1/chat/completions",
         json={"model": "gpt-4o", "messages": [{"role": "user", "content": "ping"}]},
-        headers={"x-agentledger-session-id": "s-smoke", "x-agentledger-agent-name": "Tester"},
+        headers={"x-agenticledger-session-id": "s-smoke", "x-agenticledger-agent-name": "Tester"},
     )
 
     # Upstream response is returned unmodified, plus an action-id header is added.
     assert resp.status_code == 200
     assert resp.json()["choices"][0]["message"]["content"] == "pong"
-    action_id = resp.headers["x-agentledger-action-id"]
+    action_id = resp.headers["x-agenticledger-action-id"]
     assert action_id
 
     # The forwarded request reached the mock upstream with the body intact.
@@ -44,7 +44,7 @@ def test_streaming_capture(proxy):
         "POST",
         "/v1/chat/completions",
         json={"model": "gpt-4o", "stream": True, "messages": [{"role": "user", "content": "hi"}]},
-        headers={"x-agentledger-session-id": "s-stream"},
+        headers={"x-agenticledger-session-id": "s-stream"},
     ) as resp:
         body = b"".join(resp.iter_bytes())
 

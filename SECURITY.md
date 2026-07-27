@@ -28,7 +28,7 @@ Recommendations for any non-local deployment:
 
 - **Restrict network access.** Run the proxy on a private network; do not expose the
   dashboard or API to the public internet.
-- **Set `AGENTLEDGER_API_KEY`.** This gates the dashboard, `/api/*`, `/session/*`,
+- **Set `AGENTICLEDGER_API_KEY`.** This gates the dashboard, `/api/*`, `/session/*`,
   `/export/*`, `/ws`, and `/mcp` endpoints. The proxy path itself fails open so that
   observability never blocks your agent — so the proxy port must be network-restricted.
 - **Secure the database.** Captured traffic is stored in SQLite or Postgres. Apply

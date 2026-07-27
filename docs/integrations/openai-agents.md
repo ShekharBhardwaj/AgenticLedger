@@ -6,7 +6,7 @@ and hand it to your agents.
 ## Setup
 
 ```bash
-AGENTLEDGER_UPSTREAM_URL=https://api.openai.com python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com python -m agenticledger.proxy
 ```
 
 Simplest, one global client:
@@ -17,13 +17,13 @@ from openai import AsyncOpenAI
 
 set_default_openai_client(AsyncOpenAI(
     base_url="http://localhost:8000/v1",
-    default_headers={"x-agentledger-session-id": "run-1"},
+    default_headers={"x-agenticledger-session-id": "run-1"},
 ))
 ```
 
 Per-agent attribution (recommended for multi-agent apps): create one
-`AsyncOpenAI` client per agent with its own `x-agentledger-agent-name` and
-`x-agentledger-handoff-from`/`-to` headers, and pass it via
+`AsyncOpenAI` client per agent with its own `x-agenticledger-agent-name` and
+`x-agenticledger-handoff-from`/`-to` headers, and pass it via
 `OpenAIResponsesModel(model=..., openai_client=client)` as the agent's model.
 The Flow view renders the handoff DAG from those headers.
 

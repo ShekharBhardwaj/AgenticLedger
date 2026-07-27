@@ -19,7 +19,7 @@ Research across the 2026 landscape shows the category is genuinely open:
 
 Agentic Ledger already has the hardest part — a transparent zero-code proxy with an unusually rich per-call data model. What's missing is (1) loop semantics, (2) framework awareness, (3) OTel ingestion, (4) a UI worthy of the story, and (5) distribution.
 
-Naming (decided 2026-07-25): the public name is **Agentic Ledger**, matching the PyPI package **agentic-ledger**. Technical slugs stay as-is for compatibility — `agentledger` Python module, `AGENTLEDGER_*` env vars, `x-agentledger-*` headers, `ghcr.io/…/agentledger` image. The GitHub repo was renamed to `ShekharBhardwaj/AgenticLedger` on 2026-07-25 (old URLs auto-redirect; badge/clone/advisory URLs in the docs were updated to match). Remaining follow-up: update the PyPI trusted-publisher entry for `agentic-ledger` to `Repository: AgenticLedger` before the next release.
+Naming (updated 2026-07-27): the public name is **Agentic Ledger**, matching the PyPI package **agentic-ledger** and the Docker image `ghcr.io/…/agentic-ledger`. As of 0.4.0 the technical slugs match too: `agenticledger` Python module and CLI, `AGENTICLEDGER_*` env vars, `x-agenticledger-*` headers (a hard rename — the original `agentledger` slugs from before the 2026-07-25 rebrand were retired in one breaking cut while the install base was still small). The GitHub repo is `ShekharBhardwaj/AgenticLedger` (renamed 2026-07-25; old URLs auto-redirect).
 
 ---
 
@@ -53,7 +53,7 @@ Two new tables (following the `api_tokens`/`audit_log` idempotent-DDL precedent,
 - **`runs`** — id, session_id, name, framework, kind (`ralph` | `react` | `bmad-story` | …), status (`running`/`complete`/`stuck`/`killed`), started/ended, budget, outcome metadata, state-file snapshots. Define its relationship to `session_id` explicitly (a run *groups* sessions/iterations; today "run" semantics informally squat on `session_id` — `app.py:841`).
 - **`tool_executions`** — derived: `tool_call_id`, tool name, args hash, `issued_by_action_id`, `resolved_by_action_id`, latency (gap between response N and request N+1), `is_error`, result preview. Unresolved after timeout = "abandoned tool call" (itself a failure signal).
 
-### Inference engine (`agentledger/proxy/loops.py`)
+### Inference engine (`agenticledger/proxy/loops.py`)
 
 Runs at save-time — before `apply_capture_policy` empties messages (`app.py:240`), pre-redaction so hashes are stable; in async-capture mode the cost is fully off the hot path, and its single-worker FIFO preserves ordering:
 
@@ -77,15 +77,15 @@ Detectors writing queryable `loop_flags`, wired into the existing `alerts.py` + 
 
 ### Run lifecycle for loop runners
 
-- New headers: `x-agentledger-run-id`, `x-agentledger-loop-id`, `x-agentledger-iteration`, `x-agentledger-step-index` (strip-list `app.py:82-93` updated in lockstep).
-- **Completion-promise detection** — configurable regex over responses (e.g. `COMPLETE`, `EXIT_SIGNAL: true`) sets run status; runners consume it via `GET /v1/runs/{id}/status` or `agentledger wait <run-id>` instead of fragile output-grepping.
+- New headers: `x-agenticledger-run-id`, `x-agenticledger-loop-id`, `x-agenticledger-iteration`, `x-agenticledger-step-index` (strip-list `app.py:82-93` updated in lockstep).
+- **Completion-promise detection** — configurable regex over responses (e.g. `COMPLETE`, `EXIT_SIGNAL: true`) sets run status; runners consume it via `GET /v1/runs/{id}/status` or `agenticledger wait <run-id>` instead of fragile output-grepping.
 - **Per-run budgets** — USD / tokens / max-iterations, enforced at the proxy. A $400 blowout becomes impossible even with a naive bash loop.
 - **MCP additions** (the ledger becomes the loop's memory across fresh contexts): `get_run_status`, `get_iteration_summary(n)`, `get_previous_iteration_learnings`, `get_loop_health` — iteration N asks what iteration N−1 did instead of re-reading logs.
 
-### `agentledger run` — the wrapper CLI
+### `agenticledger run` — the wrapper CLI
 
 ```
-agentledger run --loop my-feature --budget 25 --max-iterations 50 -- bash ralph.sh
+agenticledger run --loop my-feature --budget 25 --max-iterations 50 -- bash ralph.sh
 ```
 
 Exports `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` at the proxy, mints run/iteration headers, snapshots `PROMPT.md`/`fix_plan.md`/`prd.json`/`progress.txt` + `git rev-parse HEAD` at each iteration boundary (POST to the runs API), enabling **iteration diffing** and **plan burn-down**. Plus a Claude Code hooks pack (SessionStart/Stop/PostToolUse) that instruments Anthropic's official ralph-wiggum plugin, whose in-session Stop-hook loop never spawns processes — headers alone can't segment it, hooks can.
@@ -114,7 +114,7 @@ On egress, map reconstructed structure back onto OTel GenAI semconv (synthesized
 ### Flagship integrations
 
 **OpenClaw** (largest audience, loudest pain):
-- Recipe: override the **native** provider's `baseUrl` in `openclaw.json` (preserves prompt-caching hints and native shaping; sidesteps issue #2903) — plus `agentledger init openclaw` to patch it automatically.
+- Recipe: override the **native** provider's `baseUrl` in `openclaw.json` (preserves prompt-caching hints and native shaping; sidesteps issue #2903) — plus `agenticledger init openclaw` to patch it automatically.
 - **Hard spend caps** — the headline: per-day/agent/channel dollar caps with configurable breach behavior (429 → fallback chain rolls to a cheaper model; synthetic "budget reached, resuming at midnight" reply; or model-rewrite downgrade route). Market it as *"the hard spend cap OpenClaw doesn't have."*
 - ClawHub plugin using OpenClaw's typed hooks (`model_call_started`/`model_call_ended`, session lifecycle) → ingest API; maps sessionId/agentId/channel/subagent spawns onto ledger attribution. Opik and PostHog already ship OpenClaw plugins — table stakes to be listed alongside them.
 - **Idle-burn analytics**: heartbeat/cron vs user-initiated spend, context-creep trend, cache ROI; token-spike alert doubles as prompt-injection/exfiltration detection — plus an **egress audit mode** (hash-chained record of every prompt leaving the machine) that monetizes the post-CVE security narrative.
@@ -123,11 +123,11 @@ On egress, map reconstructed structure back onto OTel GenAI semconv (synthesized
 - Persona auto-detection (above) + synthetic SM → Dev → QA handoff edges reusing the existing handoff model.
 - **Story-level cost ledger**: parse slash commands and tool-call file paths (`docs/stories/story-{epic}.{n}.md`, `prd.md`, `architecture.md`, `sprint-status`) to attach story/epic/phase to each call ⇒ cost per story, per persona, per phase; rework detection (QA→Dev bounce count) — a quality signal no tool provides.
 - Budgets tuned for `bmad-loop`/`bmad-dev-auto` unattended runs (max $/calls/wall-clock per story).
-- A **`bmad-agentledger` companion module built with BMB** (installable via BMAD's own module system: wires the proxy at install time, adds a "ledger" skill so any persona can query spend mid-run) + `agentledger bmad annotate` writing actual cost into story frontmatter and sprint-status — the ledger's numbers land in artifacts users already commit.
+- A **`bmad-agenticledger` companion module built with BMB** (installable via BMAD's own module system: wires the proxy at install time, adds a "ledger" skill so any persona can query spend mid-run) + `agenticledger bmad annotate` writing actual cost into story frontmatter and sprint-status — the ledger's numbers land in artifacts users already commit.
 
-**Claude Code / Ralph** (ease 5 × audience 5 — first kit to ship): the one-liner recipe (`ANTHROPIC_BASE_URL` + optional OTel env vars), the hooks plugin on the marketplace, the `agentledger run` wrapper, and upstream PRs adding `AGENTLEDGER_URL` support to snarktank/ralph and frankbria/ralph-claude-code (ingest their `.ralph/status.json`/`prd.json` as run metadata).
+**Claude Code / Ralph** (ease 5 × audience 5 — first kit to ship): the one-liner recipe (`ANTHROPIC_BASE_URL` + optional OTel env vars), the hooks plugin on the marketplace, the `agenticledger run` wrapper, and upstream PRs adding `AGENTICLEDGER_URL` support to snarktank/ralph and frankbria/ralph-claude-code (ingest their `.ralph/status.json`/`prd.json` as run metadata).
 
-**The rest, in priority order** (ranked by ease × audience): opencode → OpenAI Agents SDK (base_url + a pip `Agentic LedgerTracingProcessor`) → LangGraph/LangChain (recipe + optional callback handler) → CrewAI → Pydantic AI → Gemini CLI (OTLP) → Codex CLI → AutoGen/AG2 → Vercel AI SDK (`@agentledger/otel` npm SpanProcessor) → Mastra (`Agentic LedgerExporter` class PR'd into their docs — the Braintrust playbook) → Cursor (MCP server only; don't chase base_url).
+**The rest, in priority order** (ranked by ease × audience): opencode → OpenAI Agents SDK (base_url + a pip `Agentic LedgerTracingProcessor`) → LangGraph/LangChain (recipe + optional callback handler) → CrewAI → Pydantic AI → Gemini CLI (OTLP) → Codex CLI → AutoGen/AG2 → Vercel AI SDK (`@agenticledger/otel` npm SpanProcessor) → Mastra (`Agentic LedgerExporter` class PR'd into their docs — the Braintrust playbook) → Cursor (MCP server only; don't chase base_url).
 
 **Non-negotiable across all kits: pass-through fidelity.** Streaming SSE, tool_use blocks, caching headers, and provider errors must transit unmodified — frameworks blaming the proxy for breakage is the fastest way to lose everything. Build a fidelity test suite (golden request/response pairs per provider) before the adoption push.
 
@@ -141,7 +141,7 @@ The current dashboard is one 54KB Python string — 1,380 lines of inline vanill
 
 1. Keep the API stable; the old dashboard keeps working until parity.
 2. `dashboard/` (Vite + React + TypeScript). Serve `index.html` via `importlib.resources` + a StaticFiles mount behind the existing viewer gate (`app.py:410-413`).
-3. Packaging: hatchling `artifacts = ['agentledger/proxy/static/']` force-includes the gitignored `dist/` (the `mascot.jpg` precedent, `pyproject.toml:65-67`); release pipeline runs `npm ci && npm run build` before `python -m build`; sdist gets the same treatment so pip-from-source works without Node.
+3. Packaging: hatchling `artifacts = ['agenticledger/proxy/static/']` force-includes the gitignored `dist/` (the `mascot.jpg` precedent, `pyproject.toml:65-67`); release pipeline runs `npm ci && npm run build` before `python -m build`; sdist gets the same treatment so pip-from-source works without Node.
 4. Fix the auth gaps a SPA inherits: authenticate `/ws`, and give the client a real token-passing story (today the dashboard's own fetches carry no credential and 401 under auth).
 5. Pagination/incremental endpoints — full-session re-fetch is O(session) per event and long loop runs will break it regardless of frontend.
 
@@ -159,9 +159,9 @@ The current dashboard is one 54KB Python string — 1,380 lines of inline vanill
 Every incumbent analysis agrees: adoption is decided by friction, not features. The playbook:
 
 1. **MCP registry first** — the official registry drives ~78% of MCP installs; also mcp.so, Smithery, Glama; PR listings into `punkpeye/awesome-mcp-servers` and `awesome-claude-code`. The MCP server doubles as a distribution channel *and* the self-introspection differentiator.
-2. **One-liners everywhere** — `npx agentledger` / `uvx agentic-ledger` / `brew install agentledger`, alongside Docker/PyPI. Target: **time-to-first-trace under 5 minutes**.
+2. **One-liners everywhere** — `npx agenticledger` / `uvx agentic-ledger` / `brew install agenticledger`, alongside Docker/PyPI. Target: **time-to-first-trace under 5 minutes**.
 3. **One integration kit per week** — each kit = a <10-line snippet + runnable example repo + docs page + **an upstream PR to the framework's own observability docs** (exactly how Langfuse/AgentOps/Braintrust got framework-README presence) + a blog post.
-4. **Claude Code plugin marketplace** (`claude plugin install agentledger`) and the ClawHub plugin for OpenClaw.
+4. **Claude Code plugin marketplace** (`claude plugin install agenticledger`) and the ClawHub plugin for OpenClaw.
 5. **"Observed by Agentic Ledger" badge** offered to Ralph/BMAD/OpenClaw template repos; the BMAD dashboard screenshots are Discord/YouTube-native content (that community loves token-savings screenshots).
 6. **The spec play** — publish the loop-inference mapping (thread → `invoke_agent`, step → `chat`+`execute_tool`) as a documented spec page; reference implementations attract frameworks, not the other way around.
 
@@ -173,7 +173,7 @@ Every incumbent analysis agrees: adoption is decided by friction, not features. 
 Pillar 0 fixes (cache tokens, Responses SSE bug, interrupted streams, parse-once) + ROADMAP quick wins; schema columns + Claude Code auto-detection (session UUID from `metadata.user_id` kills the `auto-<date>` bucket); the Claude Code/Ralph one-liner recipe. *Demo: point a real Ralph loop at the proxy, see correctly-priced per-iteration costs.*
 
 **Phase B — Loop Engine (≈4 weeks).**
-`loops.py` inference + `runs`/`tool_executions` tables; loop-health detectors + circuit breakers + per-run budgets; completion-promise detection + run status API; `agentledger run` wrapper + hooks pack; Loop Lens v1 (in the current dashboard if the SPA isn't ready — the tab switcher at `dashboard.py:906-917` is the seam). *Demo: overnight run with a budget kill-switch and a morning report.*
+`loops.py` inference + `runs`/`tool_executions` tables; loop-health detectors + circuit breakers + per-run budgets; completion-promise detection + run status API; `agenticledger run` wrapper + hooks pack; Loop Lens v1 (in the current dashboard if the SPA isn't ready — the tab switcher at `dashboard.py:906-917` is the seam). *Demo: overnight run with a budget kill-switch and a morning report.*
 
 **Phase C — Shiny app + reach (≈4-6 weeks, overlaps B).**
 React SPA to parity then past it (Loop Lens, step timeline, dual-mode flow graph); OTLP ingest; BMAD mode (detection + story ledger + BMB module); OpenClaw kit (init command, spend caps, ClawHub plugin). *Demo: BMAD story board and OpenClaw budget guardrails.*

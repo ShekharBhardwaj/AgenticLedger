@@ -1,4 +1,4 @@
-"""Unit tests for agentledger/proxy/loops.py — loop & run inference.
+"""Unit tests for agenticledger/proxy/loops.py — loop & run inference.
 
 LoopTracker stitches raw calls into ReAct threads (message-chain prefix
 matching), groups fresh-context sessions into Ralph runs (shared system-prompt
@@ -7,8 +7,8 @@ hash within a time gap), counts user turns, and raises stuck-loop flags.
 
 import json
 
-from agentledger.proxy.loops import LoopTracker
-from agentledger.proxy.normalize import CanonicalRequest, CanonicalResponse
+from agenticledger.proxy.loops import LoopTracker
+from agenticledger.proxy.normalize import CanonicalRequest, CanonicalResponse
 
 
 def _req(messages, system_prompt=None, ts=0.0):
@@ -273,7 +273,7 @@ def _cc_req(model, max_tokens):
 
 def test_utility_call_detection():
     """Shapes observed on the wire from claude-cli/2.1.220 (2026-07)."""
-    from agentledger.proxy.loops import is_utility_call
+    from agenticledger.proxy.loops import is_utility_call
     cc = {"framework": "claude-code"}
 
     # Startup "quota" probe: max_tokens=1 on the MAIN model — utility.

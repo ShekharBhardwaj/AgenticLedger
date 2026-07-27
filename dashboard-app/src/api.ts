@@ -5,13 +5,13 @@
 
 const params = new URLSearchParams(window.location.search);
 const urlKey = params.get("api_key") || params.get("token");
-if (urlKey) localStorage.setItem("agentledger.key", urlKey);
+if (urlKey) localStorage.setItem("agenticledger.key", urlKey);
 
 export const apiKey: string | null =
-  urlKey || localStorage.getItem("agentledger.key");
+  urlKey || localStorage.getItem("agenticledger.key");
 
 function headers(): Record<string, string> {
-  return apiKey ? { "x-agentledger-api-key": apiKey } : {};
+  return apiKey ? { "x-agenticledger-api-key": apiKey } : {};
 }
 
 export async function get<T>(path: string): Promise<T> {
@@ -152,16 +152,16 @@ export const FLAG_INFO: Record<string, { title: string; detail: string; kind: "w
     title: "Stuck loop suspected",
     detail:
       "The agent issued the same tool call with identical arguments several times in a row " +
-      "(threshold: AGENTLEDGER_LOOP_REPEAT_THRESHOLD, default 3). Repeating an identical " +
+      "(threshold: AGENTICLEDGER_LOOP_REPEAT_THRESHOLD, default 3). Repeating an identical " +
       "call rarely produces new information — this is the classic signature of a loop " +
-      "burning tokens without making progress. With AGENTLEDGER_LOOP_ACTION=block, the " +
+      "burning tokens without making progress. With AGENTICLEDGER_LOOP_ACTION=block, the " +
       "session's next call is stopped with HTTP 429 before it reaches the provider.",
     kind: "warn",
   },
   step_budget_exceeded: {
     title: "Step budget exceeded",
     detail:
-      "A single reasoning thread ran past the configured AGENTLEDGER_LOOP_MAX_STEPS. Long " +
+      "A single reasoning thread ran past the configured AGENTICLEDGER_LOOP_MAX_STEPS. Long " +
       "threads aren't always wrong, but past the budget each additional step re-sends the " +
       "whole context — cost grows quadratically while quality tends to degrade.",
     kind: "warn",
@@ -178,7 +178,7 @@ export const FLAG_INFO: Record<string, { title: string; detail: string; kind: "w
   completion_promise: {
     title: "Completion promise",
     detail:
-      "The response matched AGENTLEDGER_COMPLETION_PROMISE — the agent declared the loop " +
+      "The response matched AGENTICLEDGER_COMPLETION_PROMISE — the agent declared the loop " +
       "done. This is the good flag: it flips the run's status to complete so loop runners " +
       "know to stop. It is not counted as a problem flag.",
     kind: "good",

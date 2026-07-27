@@ -1,9 +1,9 @@
-"""Unit tests for agentledger/cli.py — the `agentledger run` loop runner."""
+"""Unit tests for agenticledger/cli.py — the `agenticledger run` loop runner."""
 
 import argparse
 import sys
 
-from agentledger.cli import _decide_stop, _iteration_env, main, run_command
+from agenticledger.cli import _decide_stop, _iteration_env, main, run_command
 
 
 def test_decide_stop_on_completion_promise():
@@ -29,8 +29,8 @@ def test_iteration_env_points_clients_at_tagged_proxy_path():
     env = _iteration_env("http://localhost:8000", "night-1", 4)
     assert env["ANTHROPIC_BASE_URL"] == "http://localhost:8000/r/night-1/4"
     assert env["OPENAI_BASE_URL"] == "http://localhost:8000/r/night-1/4/v1"
-    assert env["AGENTLEDGER_RUN_ID"] == "night-1"
-    assert env["AGENTLEDGER_ITERATION"] == "4"
+    assert env["AGENTICLEDGER_RUN_ID"] == "night-1"
+    assert env["AGENTICLEDGER_ITERATION"] == "4"
 
 
 def test_run_loops_until_max_iterations(tmp_path):

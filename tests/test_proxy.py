@@ -1,4 +1,4 @@
-"""Integration tests for agentledger/proxy/app.py via the `proxy` fixture.
+"""Integration tests for agenticledger/proxy/app.py via the `proxy` fixture.
 
 These exercise the transparent-proxy semantics described in the module docstring:
 capture of LLM POSTs, pass-through of non-LLM traffic, meta-header stripping,
@@ -10,7 +10,7 @@ Each test builds a fresh proxy + mock upstream so cases stay isolated.
 
 import httpx
 
-from agentledger.proxy.ratelimit import RateLimitConfig
+from agenticledger.proxy.ratelimit import RateLimitConfig
 
 from .conftest import openai_response
 
@@ -37,14 +37,14 @@ def test_non_llm_get_is_proxied_but_not_captured(proxy):
     assert client.upstream.last_request.url.path == "/v1/models"
 
     # No capture: no action-id header is attached.
-    assert "x-agentledger-action-id" not in resp.headers
+    assert "x-agenticledger-action-id" not in resp.headers
 
 
 def test_non_llm_get_creates_no_session_record(proxy):
     """A non-LLM request leaves nothing for /session to return (404)."""
     client = proxy(handler=lambda r: httpx.Response(200, json={"data": []}))
 
-    client.get("/v1/models", headers={"x-agentledger-session-id": "s-nonllm"})
+    client.get("/v1/models", headers={"x-agenticledger-session-id": "s-nonllm"})
 
     # Nothing was stored under that session.
     assert client.get("/session/s-nonllm").status_code == 404
@@ -57,7 +57,7 @@ def test_get_to_llm_path_is_not_captured(proxy):
     resp = client.get("/v1/chat/completions")
 
     assert resp.status_code == 200
-    assert "x-agentledger-action-id" not in resp.headers
+    assert "x-agenticledger-action-id" not in resp.headers
 
 
 # ── LLM capture happy path ────────────────────────────────────────────────────
@@ -69,17 +69,17 @@ def test_llm_post_is_captured_and_returned_unmodified(proxy):
     resp = client.post(
         "/v1/chat/completions",
         json=_CHAT_BODY,
-        headers={"x-agentledger-session-id": "s-cap"},
+        headers={"x-agenticledger-session-id": "s-cap"},
     )
 
     assert resp.status_code == 200
     # Body is byte-for-byte the upstream response.
     assert resp.json()["choices"][0]["message"]["content"] == "pong"
 
-    action_id = resp.headers.get("x-agentledger-action-id")
+    action_id = resp.headers.get("x-agenticledger-action-id")
     assert action_id
     # The session id supplied by the caller is echoed back.
-    assert resp.headers.get("x-agentledger-session-id") == "s-cap"
+    assert resp.headers.get("x-agenticledger-session-id") == "s-cap"
 
 
 def test_captured_call_retrievable_by_action_and_session(proxy):
@@ -89,9 +89,9 @@ def test_captured_call_retrievable_by_action_and_session(proxy):
     resp = client.post(
         "/v1/chat/completions",
         json=_CHAT_BODY,
-        headers={"x-agentledger-session-id": "s-ret", "x-agentledger-agent-name": "A1"},
+        headers={"x-agenticledger-session-id": "s-ret", "x-agenticledger-agent-name": "A1"},
     )
-    action_id = resp.headers["x-agentledger-action-id"]
+    action_id = resp.headers["x-agenticledger-action-id"]
 
     explained = client.get(f"/explain/{action_id}")
     assert explained.status_code == 200
@@ -107,25 +107,25 @@ def test_captured_call_retrievable_by_action_and_session(proxy):
 
 # ── Meta-header stripping on the forwarded request ────────────────────────────
 
-def test_agentledger_headers_stripped_before_forwarding(proxy):
-    """All x-agentledger-* meta headers are removed before hitting upstream."""
+def test_agenticledger_headers_stripped_before_forwarding(proxy):
+    """All x-agenticledger-* meta headers are removed before hitting upstream."""
     client = proxy(handler=_ok_handler())
 
     client.post(
         "/v1/chat/completions",
         json=_CHAT_BODY,
         headers={
-            "x-agentledger-session-id": "s-strip",
-            "x-agentledger-user-id": "u1",
-            "x-agentledger-agent-name": "agentX",
-            "x-agentledger-app-id": "app1",
-            "x-agentledger-environment": "prod",
+            "x-agenticledger-session-id": "s-strip",
+            "x-agenticledger-user-id": "u1",
+            "x-agenticledger-agent-name": "agentX",
+            "x-agenticledger-app-id": "app1",
+            "x-agenticledger-environment": "prod",
             "authorization": "Bearer sk-test",
         },
     )
 
     fwd_headers = client.upstream.last_request.headers
-    al_keys = [k for k in fwd_headers if k.lower().startswith("x-agentledger-")]
+    al_keys = [k for k in fwd_headers if k.lower().startswith("x-agenticledger-")]
     assert al_keys == [], f"meta headers leaked upstream: {al_keys}"
 
     # A normal (non-meta) header is still forwarded untouched.
@@ -139,7 +139,7 @@ def test_host_and_content_length_not_forwarded(proxy):
     client.post(
         "/v1/chat/completions",
         json=_CHAT_BODY,
-        headers={"x-agentledger-session-id": "s-hostcl"},
+        headers={"x-agenticledger-session-id": "s-hostcl"},
     )
 
     fwd = client.upstream.last_request.headers
@@ -157,9 +157,9 @@ def test_default_meta_environment_and_auto_session(proxy):
 
     resp = client.post("/v1/chat/completions", json=_CHAT_BODY)
 
-    action_id = resp.headers["x-agentledger-action-id"]
+    action_id = resp.headers["x-agenticledger-action-id"]
     # An auto-generated session id is echoed back.
-    echoed = resp.headers.get("x-agentledger-session-id")
+    echoed = resp.headers.get("x-agenticledger-session-id")
     assert echoed is not None
     assert echoed.startswith("auto-")
 
@@ -178,13 +178,13 @@ def test_upstream_500_passthrough_and_captured_with_error(proxy):
     resp = client.post(
         "/v1/chat/completions",
         json=_CHAT_BODY,
-        headers={"x-agentledger-session-id": "s-err"},
+        headers={"x-agenticledger-session-id": "s-err"},
     )
 
     assert resp.status_code == 500
     assert resp.json() == err_body  # body preserved exactly
 
-    action_id = resp.headers["x-agentledger-action-id"]
+    action_id = resp.headers["x-agenticledger-action-id"]
     record = client.get(f"/explain/{action_id}").json()
     assert record["status_code"] == 500
     assert record["error_detail"]  # non-null
@@ -201,11 +201,11 @@ def test_rate_limit_global_rpm_blocks_second_call(proxy):
     )
 
     first = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                        headers={"x-agentledger-session-id": "s-rl"})
+                        headers={"x-agenticledger-session-id": "s-rl"})
     assert first.status_code == 200
 
     second = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                         headers={"x-agentledger-session-id": "s-rl"})
+                         headers={"x-agenticledger-session-id": "s-rl"})
     assert second.status_code == 429
     assert second.json()["error"]["type"] == "rate_limit_exceeded"
 
@@ -235,15 +235,15 @@ def test_budget_session_block_second_call(proxy):
     )
 
     first = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                        headers={"x-agentledger-session-id": "s-bud"})
+                        headers={"x-agenticledger-session-id": "s-bud"})
     assert first.status_code == 200
-    first_id = first.headers["x-agentledger-action-id"]
+    first_id = first.headers["x-agenticledger-action-id"]
     # First call recorded a positive cost (gpt-4o is in the pricing table).
     rec = client.get(f"/explain/{first_id}").json()
     assert rec["cost_usd"] is not None and rec["cost_usd"] > 0
 
     second = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                         headers={"x-agentledger-session-id": "s-bud"})
+                         headers={"x-agenticledger-session-id": "s-bud"})
     assert second.status_code == 429
     assert second.json()["error"]["type"] == "budget_exceeded"
 
@@ -253,9 +253,9 @@ def test_budget_block_call_is_recorded_as_429(proxy):
     client = proxy(handler=_ok_handler(), budget_session=0.000001)
 
     client.post("/v1/chat/completions", json=_CHAT_BODY,
-               headers={"x-agentledger-session-id": "s-bud2"})
+               headers={"x-agenticledger-session-id": "s-bud2"})
     second = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                        headers={"x-agentledger-session-id": "s-bud2"})
+                        headers={"x-agenticledger-session-id": "s-bud2"})
     assert second.status_code == 429
 
     # The session now holds two records: the successful one and the blocked one.
@@ -277,13 +277,13 @@ def test_budget_warn_lets_call_through_and_tags_it(proxy):
     )
 
     client.post("/v1/chat/completions", json=_CHAT_BODY,
-               headers={"x-agentledger-session-id": "s-warn"})
+               headers={"x-agenticledger-session-id": "s-warn"})
     second = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                        headers={"x-agentledger-session-id": "s-warn"})
+                        headers={"x-agenticledger-session-id": "s-warn"})
 
     # Warn mode never blocks.
     assert second.status_code == 200
-    warn_id = second.headers["x-agentledger-action-id"]
+    warn_id = second.headers["x-agenticledger-action-id"]
 
     rec = client.get(f"/explain/{warn_id}").json()
     assert rec["error_detail"] is not None
@@ -293,21 +293,21 @@ def test_budget_warn_lets_call_through_and_tags_it(proxy):
 # ── API-key authentication ────────────────────────────────────────────────────
 
 def test_api_sessions_requires_key_when_configured(proxy, monkeypatch):
-    """With AGENTLEDGER_API_KEY set, /api/sessions is 401 without the key and 200 with it."""
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "secret")
+    """With AGENTICLEDGER_API_KEY set, /api/sessions is 401 without the key and 200 with it."""
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "secret")
     client = proxy(handler=_ok_handler())
 
     # Missing key → 401.
     assert client.get("/api/sessions").status_code == 401
 
     # Correct key → 200.
-    ok = client.get("/api/sessions", headers={"x-agentledger-api-key": "secret"})
+    ok = client.get("/api/sessions", headers={"x-agenticledger-api-key": "secret"})
     assert ok.status_code == 200
 
 
 def test_health_needs_no_auth(proxy, monkeypatch):
     """/health is always reachable, even with an API key configured."""
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "secret")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "secret")
     client = proxy(handler=_ok_handler())
 
     resp = client.get("/health")
@@ -317,10 +317,10 @@ def test_health_needs_no_auth(proxy, monkeypatch):
 
 def test_wrong_api_key_rejected(proxy, monkeypatch):
     """A wrong key is rejected just like a missing one."""
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "secret")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "secret")
     client = proxy(handler=_ok_handler())
 
-    resp = client.get("/api/sessions", headers={"x-agentledger-api-key": "wrong"})
+    resp = client.get("/api/sessions", headers={"x-agenticledger-api-key": "wrong"})
     assert resp.status_code == 401
 
 
@@ -336,7 +336,7 @@ def test_streaming_upstream_error_is_captured(proxy):
     resp = client.post(
         "/v1/chat/completions",
         json={**_CHAT_BODY, "stream": True},
-        headers={"x-agentledger-session-id": "s-stream-err"},
+        headers={"x-agenticledger-session-id": "s-stream-err"},
     )
     assert resp.status_code == 529
 
@@ -361,7 +361,7 @@ def test_streaming_mid_stream_error_event_recorded(proxy):
         "/v1/messages",
         json={"model": "claude-sonnet-4", "stream": True,
               "messages": [{"role": "user", "content": "hi"}]},
-        headers={"x-agentledger-session-id": "s-mid-err"},
+        headers={"x-agenticledger-session-id": "s-mid-err"},
     )
     assert resp.status_code == 200
 
@@ -394,7 +394,7 @@ def test_streaming_capture_includes_cache_tokens(proxy):
         "/v1/messages",
         json={"model": "claude-sonnet-4", "stream": True,
               "messages": [{"role": "user", "content": "hi"}]},
-        headers={"x-agentledger-session-id": "s-cache"},
+        headers={"x-agenticledger-session-id": "s-cache"},
     )
     assert resp.status_code == 200
 
@@ -431,7 +431,7 @@ def test_claude_code_traffic_auto_tagged_and_sessioned(proxy):
         headers={"user-agent": "claude-cli/2.0.14 (external, cli)"},
     )
     assert resp.status_code == 200
-    assert resp.headers["x-agentledger-session-id"] == _CC_UUID
+    assert resp.headers["x-agenticledger-session-id"] == _CC_UUID
 
     row = client.get(f"/session/{_CC_UUID}").json()[0]
     assert row["framework"] == "claude-code"
@@ -440,7 +440,7 @@ def test_claude_code_traffic_auto_tagged_and_sessioned(proxy):
 
 
 def test_explicit_headers_win_over_detection(proxy):
-    """x-agentledger-* headers always beat fingerprint detection."""
+    """x-agenticledger-* headers always beat fingerprint detection."""
     from .conftest import anthropic_response
 
     client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()))
@@ -449,9 +449,9 @@ def test_explicit_headers_win_over_detection(proxy):
         "/v1/messages", json=_claude_code_body(),
         headers={
             "user-agent": "claude-cli/2.0.14 (external, cli)",
-            "x-agentledger-session-id": "my-run",
-            "x-agentledger-agent-name": "researcher",
-            "x-agentledger-framework": "my-stack",
+            "x-agenticledger-session-id": "my-run",
+            "x-agenticledger-agent-name": "researcher",
+            "x-agenticledger-framework": "my-stack",
         },
     )
 
@@ -462,15 +462,15 @@ def test_explicit_headers_win_over_detection(proxy):
 
 
 def test_framework_header_stripped_before_upstream(proxy):
-    """The new x-agentledger-framework header never leaks upstream."""
+    """The new x-agenticledger-framework header never leaks upstream."""
     client = proxy(handler=_ok_handler())
 
     client.post(
         "/v1/chat/completions", json=_CHAT_BODY,
-        headers={"x-agentledger-framework": "my-stack"},
+        headers={"x-agenticledger-framework": "my-stack"},
     )
     fwd = client.upstream.last_request.headers
-    assert "x-agentledger-framework" not in fwd
+    assert "x-agenticledger-framework" not in fwd
 
 
 # ── Loop engine: thread stitching, runs, circuit breaker ──────────────────────
@@ -493,10 +493,10 @@ def test_react_calls_stitched_into_thread(proxy):
 
     client.post("/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [_U]},
-                headers={"x-agentledger-session-id": "s-loop"})
+                headers={"x-agenticledger-session-id": "s-loop"})
     client.post("/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [_U, _A, _T]},
-                headers={"x-agentledger-session-id": "s-loop"})
+                headers={"x-agenticledger-session-id": "s-loop"})
 
     rows = client.get("/session/s-loop").json()
     assert len(rows) == 2
@@ -506,14 +506,14 @@ def test_react_calls_stitched_into_thread(proxy):
 
 
 def test_explicit_run_headers_stored_and_listed(proxy):
-    """x-agentledger-run-id / -iteration are stored and aggregated by /api/runs."""
+    """x-agenticledger-run-id / -iteration are stored and aggregated by /api/runs."""
     client = proxy(handler=_ok_handler())
 
     for i in (1, 2):
         client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
-            "x-agentledger-session-id": f"iter-{i}",
-            "x-agentledger-run-id": "overnight-1",
-            "x-agentledger-iteration": str(i),
+            "x-agenticledger-session-id": f"iter-{i}",
+            "x-agenticledger-run-id": "overnight-1",
+            "x-agenticledger-iteration": str(i),
         })
 
     runs = client.get("/api/runs").json()
@@ -541,14 +541,14 @@ def test_loop_circuit_breaker_blocks_after_repeat(proxy):
     for i in range(3):
         resp = client.post("/v1/chat/completions",
                            json={"model": "gpt-4o", "messages": list(msgs)},
-                           headers={"x-agentledger-session-id": "s-stuck"})
+                           headers={"x-agenticledger-session-id": "s-stuck"})
         assert resp.status_code == 200
         msgs = msgs + [dict(_A), {**_T, "content": f"result {i}"}]
 
     forwarded_before = len(client.upstream.requests)
     resp = client.post("/v1/chat/completions",
                        json={"model": "gpt-4o", "messages": list(msgs)},
-                       headers={"x-agentledger-session-id": "s-stuck"})
+                       headers={"x-agenticledger-session-id": "s-stuck"})
     assert resp.status_code == 429
     assert resp.json()["error"]["type"] == "loop_detected"
     assert len(client.upstream.requests) == forwarded_before  # never reached upstream
@@ -566,7 +566,7 @@ def test_loop_warn_mode_never_blocks(proxy):
     for i in range(4):
         resp = client.post("/v1/chat/completions",
                            json={"model": "gpt-4o", "messages": list(msgs)},
-                           headers={"x-agentledger-session-id": "s-warn"})
+                           headers={"x-agenticledger-session-id": "s-warn"})
         assert resp.status_code == 200
         msgs = msgs + [dict(_A), {**_T, "content": f"result {i}"}]
 
@@ -586,7 +586,7 @@ def test_path_segment_run_attribution(proxy):
     # Upstream saw the untagged path.
     assert client.upstream.last_request.url.path == "/v1/chat/completions"
 
-    action_id = resp.headers["x-agentledger-action-id"]
+    action_id = resp.headers["x-agenticledger-action-id"]
     row = client.get(f"/explain/{action_id}").json()
     assert row["run_id"] == "night-1"
     assert row["iteration"] == 3
@@ -602,8 +602,8 @@ def test_run_status_endpoint_reports_completion_promise(proxy):
     )
 
     client.post("/v1/chat/completions", json=_CHAT_BODY,
-                headers={"x-agentledger-run-id": "night-2",
-                         "x-agentledger-iteration": "1"})
+                headers={"x-agenticledger-run-id": "night-2",
+                         "x-agenticledger-iteration": "1"})
 
     status = client.get("/api/runs/night-2").json()
     assert status["status"] == "complete"
@@ -623,7 +623,7 @@ def test_tool_executions_endpoint(proxy):
 
     client.post("/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [_U]},
-                headers={"x-agentledger-session-id": "s-tools"})
+                headers={"x-agenticledger-session-id": "s-tools"})
     client.post("/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [
                     _U,
@@ -632,7 +632,7 @@ def test_tool_executions_endpoint(proxy):
                                      "function": {"name": "grep", "arguments": '{"q":"bug"}'}}]},
                     {"role": "tool", "tool_call_id": "call_1", "content": "found it"},
                 ]},
-                headers={"x-agentledger-session-id": "s-tools"})
+                headers={"x-agenticledger-session-id": "s-tools"})
 
     tools = client.get("/api/sessions/s-tools/tools").json()
     assert len(tools) == 1
@@ -647,9 +647,9 @@ def test_run_iterations_endpoint(proxy):
     client = proxy(handler=_ok_handler())
     for i in (1, 1, 2):
         client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
-            "x-agentledger-session-id": f"ri-{i}",
-            "x-agentledger-run-id": "iter-run",
-            "x-agentledger-iteration": str(i),
+            "x-agenticledger-session-id": f"ri-{i}",
+            "x-agenticledger-run-id": "iter-run",
+            "x-agenticledger-iteration": str(i),
         })
 
     its = client.get("/api/runs/iter-run/iterations").json()
@@ -667,7 +667,7 @@ def test_spa_served_or_explains_absence(proxy):
     import pathlib
 
     client = proxy(handler=_ok_handler())
-    built = (pathlib.Path("agentledger/proxy/static/index.html")).is_file()
+    built = (pathlib.Path("agenticledger/proxy/static/index.html")).is_file()
     resp = client.get("/app")
     if built:
         assert resp.status_code == 200
@@ -703,11 +703,11 @@ def test_count_tokens_is_captured_and_returned_unmodified(proxy):
     client = proxy(handler=_count_tokens_handler)
 
     resp = client.post("/v1/messages/count_tokens", json=_COUNT_BODY,
-                       headers={"x-agentledger-session-id": "s-count"})
+                       headers={"x-agenticledger-session-id": "s-count"})
 
     assert resp.status_code == 200
     assert resp.json() == {"input_tokens": 2095}
-    action_id = resp.headers["x-agentledger-action-id"]
+    action_id = resp.headers["x-agenticledger-action-id"]
 
     record = client.get(f"/explain/{action_id}").json()
     assert record["stop_reason"] == "count_tokens"
@@ -723,7 +723,7 @@ def test_count_tokens_does_not_pollute_session_aggregates(proxy):
     client = proxy(handler=_count_tokens_handler)
 
     client.post("/v1/messages/count_tokens", json=_COUNT_BODY,
-                headers={"x-agentledger-session-id": "s-count-agg"})
+                headers={"x-agenticledger-session-id": "s-count-agg"})
 
     row = next(s for s in client.get("/api/sessions").json()
                if s["session_id"] == "s-count-agg")
@@ -744,17 +744,17 @@ def test_count_tokens_exempt_from_rate_limit_and_budget(proxy):
 
     # Exhaust both the rate limit and the session budget with one paid call.
     first = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                        headers={"x-agentledger-session-id": "s-count-free"})
+                        headers={"x-agenticledger-session-id": "s-count-free"})
     assert first.status_code == 200
 
     # count_tokens still passes…
     counted = client.post("/v1/messages/count_tokens", json=_COUNT_BODY,
-                          headers={"x-agentledger-session-id": "s-count-free"})
+                          headers={"x-agenticledger-session-id": "s-count-free"})
     assert counted.status_code == 200
 
     # …while a paid call is now rejected.
     blocked = client.post("/v1/chat/completions", json=_CHAT_BODY,
-                          headers={"x-agentledger-session-id": "s-count-free"})
+                          headers={"x-agenticledger-session-id": "s-count-free"})
     assert blocked.status_code == 429
 
 
@@ -769,9 +769,9 @@ def test_count_tokens_does_not_pollute_loop_inference(proxy):
     client = proxy(handler=handler)
     body = {"model": "claude-sonnet-4", "messages": [{"role": "user", "content": "hi"}]}
     client.post("/v1/messages/count_tokens", json=body,
-                headers={"x-agentledger-session-id": "s-ct-loop"})
+                headers={"x-agenticledger-session-id": "s-ct-loop"})
     client.post("/v1/messages", json=body,
-                headers={"x-agentledger-session-id": "s-ct-loop"})
+                headers={"x-agenticledger-session-id": "s-ct-loop"})
 
     rows = client.get("/session/s-ct-loop").json()
     count_row = next(r for r in rows if r["stop_reason"] == "count_tokens")
@@ -792,9 +792,9 @@ def test_run_flags_drilldown_endpoint(proxy):
     for i in range(3):
         client.post("/v1/chat/completions",
                     json={"model": "gpt-4o", "messages": list(msgs)},
-                    headers={"x-agentledger-session-id": "s-flags",
-                             "x-agentledger-run-id": "flag-run",
-                             "x-agentledger-iteration": "1"})
+                    headers={"x-agenticledger-session-id": "s-flags",
+                             "x-agenticledger-run-id": "flag-run",
+                             "x-agenticledger-iteration": "1"})
         msgs = msgs + [dict(_A), {**_T, "content": f"result {i}"}]
 
     flags = client.get("/api/runs/flag-run/flags").json()
@@ -828,7 +828,7 @@ def test_claude_code_utility_calls_stay_out_of_loop_inference(proxy):
 
     client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()))
     headers = {"user-agent": "claude-cli/2.0.14 (external, cli)",
-               "x-agentledger-session-id": "s-util"}
+               "x-agenticledger-session-id": "s-util"}
 
     client.post("/v1/messages",
                 json={"model": "claude-3-5-haiku", "max_tokens": 512,
@@ -851,8 +851,8 @@ def test_claude_code_utility_calls_stay_out_of_loop_inference(proxy):
 def test_run_complete_webhook_fires_morning_report(proxy, monkeypatch):
     """The completion promise triggers a run_complete webhook with the run's
     full summary — the morning report for overnight loops."""
-    import agentledger.proxy.alerts as alerts_mod
-    from agentledger.proxy.alerts import AlertConfig
+    import agenticledger.proxy.alerts as alerts_mod
+    from agenticledger.proxy.alerts import AlertConfig
 
     fired = []
 
@@ -874,9 +874,9 @@ def test_run_complete_webhook_fires_morning_report(proxy, monkeypatch):
 
     for i in (1, 2):
         client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
-            "x-agentledger-session-id": f"mr-{i}",
-            "x-agentledger-run-id": "night-run",
-            "x-agentledger-iteration": str(i),
+            "x-agenticledger-session-id": f"mr-{i}",
+            "x-agenticledger-run-id": "night-run",
+            "x-agenticledger-iteration": str(i),
         })
 
     reports = [p for p in fired if p.get("type") == "run_complete"]

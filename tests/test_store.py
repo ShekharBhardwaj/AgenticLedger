@@ -1,4 +1,4 @@
-"""Unit tests for agentledger/proxy/store.py (SQLite backend).
+"""Unit tests for agenticledger/proxy/store.py (SQLite backend).
 
 Exercises the async ``Store`` via the in-memory ``store`` fixture from
 conftest. CanonicalRequest / CanonicalResponse are built directly so the
@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from agentledger.proxy.normalize import CanonicalRequest, CanonicalResponse
+from agenticledger.proxy.normalize import CanonicalRequest, CanonicalResponse
 
 # ── builders ──────────────────────────────────────────────────────────────────
 

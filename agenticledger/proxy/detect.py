@@ -1,7 +1,7 @@
 """
 Zero-config detection of well-known agent clients from request fingerprints.
 
-Explicit x-agentledger-* headers always take precedence — detection only fills
+Explicit x-agenticledger-* headers always take precedence — detection only fills
 gaps, so untagged traffic (e.g. Claude Code pointed at the proxy via
 ANTHROPIC_BASE_URL alone) lands in coherent, labeled sessions instead of the
 shared auto-<date> bucket.

@@ -127,7 +127,7 @@ jobs:
         with:
           image: ${{ steps.images.outputs.ghcr }}@${{ steps.build.outputs.digest }}
           format: spdx-json
-          output-file: sbom-agentledger-image.spdx.json
+          output-file: sbom-agenticledger-image.spdx.json
           upload-artifact: false
           upload-release-assets: false
 
@@ -135,7 +135,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: sbom
-          path: sbom-agentledger-image.spdx.json
+          path: sbom-agenticledger-image.spdx.json
 
   # ── PyPI ─────────────────────────────────────────────────────────────────────
   pypi:
@@ -196,5 +196,5 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
-          files: sbom-agentledger-image.spdx.json
+          files: sbom-agenticledger-image.spdx.json
 

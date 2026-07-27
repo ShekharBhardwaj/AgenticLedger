@@ -1,4 +1,4 @@
-"""Unit tests for agentledger/proxy/detect.py — zero-config agent detection.
+"""Unit tests for agenticledger/proxy/detect.py — zero-config agent detection.
 
 detect_agent fingerprints well-known clients (Claude Code first) from headers
 and body so untagged traffic still gets a framework tag, an agent identity,
@@ -6,7 +6,7 @@ and a real session id. Explicit headers always win — precedence is enforced
 in _extract_meta and covered by the proxy integration tests.
 """
 
-from agentledger.proxy.detect import detect_agent
+from agenticledger.proxy.detect import detect_agent
 
 _CC_UUID = "3f2a1b0c-4d5e-6f70-8192-a3b4c5d6e7f8"
 # claude-cli 1.x flat format

@@ -1,4 +1,4 @@
-"""Unit tests for agentledger/proxy/normalize.py.
+"""Unit tests for agenticledger/proxy/normalize.py.
 
 Covers provider detection, request normalization (OpenAI chat, Anthropic
 messages, OpenAI Responses API) and response normalization for all three
@@ -10,14 +10,14 @@ fixtures or network.
 
 import time
 
-from agentledger.proxy.normalize import (
+from agenticledger.proxy.normalize import (
     CanonicalRequest,
     CanonicalResponse,
     detect_provider,
     normalize_request,
     normalize_response,
 )
-from agentledger.proxy.pricing import compute_cost
+from agenticledger.proxy.pricing import compute_cost
 
 # ── detect_provider ───────────────────────────────────────────────────────────
 

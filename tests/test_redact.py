@@ -6,7 +6,7 @@ receives the real upstream response.
 
 import httpx
 
-from agentledger.proxy.redact import (
+from agenticledger.proxy.redact import (
     BUILTIN_CATEGORIES,
     CAPTURE_METADATA,
     Redactor,
@@ -101,7 +101,7 @@ def test_proxy_redacts_stored_copy_but_not_agent_response(proxy):
     resp = client.post(
         "/v1/chat/completions",
         json={"model": "gpt-4o", "messages": [{"role": "user", "content": f"reach me at {EMAIL}"}]},
-        headers={"x-agentledger-session-id": "s-redact"},
+        headers={"x-agenticledger-session-id": "s-redact"},
     )
     # The agent still receives the real, unredacted upstream response.
     assert KEY in resp.json()["choices"][0]["message"]["content"]
@@ -122,7 +122,7 @@ def test_proxy_metadata_level_keeps_metrics_drops_content(proxy):
     client.post(
         "/v1/chat/completions",
         json={"model": "gpt-4o", "messages": [{"role": "user", "content": "secret prompt"}]},
-        headers={"x-agentledger-session-id": "s-meta"},
+        headers={"x-agenticledger-session-id": "s-meta"},
     )
     stored = client.get("/session/s-meta").json()[0]
     # Content is gone …

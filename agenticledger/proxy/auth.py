@@ -1,11 +1,11 @@
 """
 Scoped, hashed, revocable API tokens with roles.
 
-Auth is enforced only when AGENTLEDGER_API_KEY is set. When it is:
+Auth is enforced only when AGENTICLEDGER_API_KEY is set. When it is:
 
-* the master key (``x-agentledger-api-key`` header or ``?api_key=``) grants the
+* the master key (``x-agenticledger-api-key`` header or ``?api_key=``) grants the
   ``admin`` role — it is the bootstrap credential used to mint tokens;
-* an API token (``Authorization: Bearer agl_…``, ``x-agentledger-token`` header,
+* an API token (``Authorization: Bearer agl_…``, ``x-agenticledger-token`` header,
   or ``?token=``) grants the role it was created with.
 
 Tokens are random secrets shown once at creation; only their SHA-256 hash is

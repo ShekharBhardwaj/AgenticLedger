@@ -32,7 +32,7 @@ Everything CI runs, you can run locally:
 
 ```bash
 # tests (with coverage, exactly like CI)
-pytest --cov=agentledger --cov-report=term-missing
+pytest --cov=agenticledger --cov-report=term-missing
 
 # a single module while iterating
 pytest tests/test_normalize.py -q
@@ -47,7 +47,7 @@ Please make sure `pytest` and `ruff check` are both green before opening a PR.
 
 ```bash
 # point it at any OpenAI-compatible upstream
-AGENTLEDGER_UPSTREAM_URL=https://api.openai.com python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com python -m agenticledger.proxy
 # dashboard at http://localhost:8000
 ```
 

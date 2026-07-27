@@ -9,10 +9,10 @@ difference is the doorway.
 
 Run it with:
 
-    agentledger mcp
+    agenticledger mcp
 
 It reads the same database the proxy writes. Point it at the proxy's
-database with AGENTLEDGER_DSN (default: sqlite:///agentledger.db in the
+database with AGENTICLEDGER_DSN (default: sqlite:///agenticledger.db in the
 current directory). SQLite handles the concurrent reader alongside a
 running proxy.
 
@@ -31,9 +31,9 @@ from .proxy.store import Store
 
 
 async def serve() -> None:
-    dsn = os.environ.get("AGENTLEDGER_DSN", "sqlite:///agentledger.db")
+    dsn = os.environ.get("AGENTICLEDGER_DSN", "sqlite:///agenticledger.db")
     store = await Store.connect(dsn)
-    print(f"agentledger mcp: serving stdio (store: {dsn})", file=sys.stderr)
+    print(f"agenticledger mcp: serving stdio (store: {dsn})", file=sys.stderr)
     loop = asyncio.get_running_loop()
     try:
         while True:

@@ -1,4 +1,4 @@
-"""Unit tests for agentledger.proxy.ratelimit (RateLimiter + RateLimitConfig).
+"""Unit tests for agenticledger.proxy.ratelimit (RateLimiter + RateLimitConfig).
 
 These are pure unit tests: time.monotonic is monkeypatched so the 60-second
 sliding window can be driven deterministically without sleeping.
@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from agentledger.proxy.ratelimit import RateLimitConfig, RateLimiter
+from agenticledger.proxy.ratelimit import RateLimitConfig, RateLimiter
 
 # ── Time control helper ───────────────────────────────────────────────────────
 

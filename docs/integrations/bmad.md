@@ -11,7 +11,7 @@ the tokens, how many QA→Dev bounces did this epic take?*
 Start the proxy:
 
 ```bash
-AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com python -m agenticledger.proxy
 ```
 
 **Claude Code** — add to `.claude/settings.json` in your BMAD project:
@@ -20,7 +20,7 @@ AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com python -m agentledger.proxy
 {
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:8000",
-    "ANTHROPIC_CUSTOM_HEADERS": "x-agentledger-app-id: my-bmad-project"
+    "ANTHROPIC_CUSTOM_HEADERS": "x-agenticledger-app-id: my-bmad-project"
   }
 }
 ```
@@ -52,11 +52,11 @@ gemini --telemetry --telemetry-otlp-endpoint=http://localhost:8000 \
 - **Unattended `bmad-loop` guardrails.** Budgets stop runaway stories:
 
   ```bash
-  AGENTLEDGER_BUDGET_SESSION=5.00 \
-  AGENTLEDGER_BUDGET_DAILY=25.00 \
-  AGENTLEDGER_LOOP_ACTION=block \
-  AGENTLEDGER_LOOP_MAX_STEPS=60 \
-  python -m agentledger.proxy
+  AGENTICLEDGER_BUDGET_SESSION=5.00 \
+  AGENTICLEDGER_BUDGET_DAILY=25.00 \
+  AGENTICLEDGER_LOOP_ACTION=block \
+  AGENTICLEDGER_LOOP_MAX_STEPS=60 \
+  python -m agenticledger.proxy
   ```
 
 - **Mid-run introspection.** Register the MCP server in the same host tool
@@ -70,11 +70,11 @@ Headers always beat fingerprints. To pin a story or epic explicitly, have
 your wrapper set:
 
 ```
-x-agentledger-run-id:    epic-2
-x-agentledger-iteration: 3          # story number within the epic
-x-agentledger-agent-name: bmad:dev
+x-agenticledger-run-id:    epic-2
+x-agenticledger-iteration: 3          # story number within the epic
+x-agenticledger-agent-name: bmad:dev
 ```
 
 New BMAD versions change persona wording — the fingerprint table lives in
-`agentledger/proxy/detect.py` (`_BMAD_MARKERS` / `_BMAD_PERSONAS`); PRs
+`agenticledger/proxy/detect.py` (`_BMAD_MARKERS` / `_BMAD_PERSONAS`); PRs
 adding signatures are welcome.

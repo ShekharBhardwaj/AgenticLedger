@@ -5,7 +5,7 @@ LiteLLM plays either role:
 ## LiteLLM as your gateway (ledger in front)
 
 ```bash
-AGENTLEDGER_UPSTREAM_URL=http://localhost:4000 python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=http://localhost:4000 python -m agenticledger.proxy
 ```
 
 Point clients at `http://localhost:8000/v1`. Every call through the gateway

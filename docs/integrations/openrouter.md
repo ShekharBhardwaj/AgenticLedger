@@ -4,7 +4,7 @@ Run the ledger in front of OpenRouter and keep one ledger across every model
 it routes:
 
 ```bash
-AGENTLEDGER_UPSTREAM_URL=https://openrouter.ai/api python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=https://openrouter.ai/api python -m agenticledger.proxy
 ```
 
 ```python
@@ -18,4 +18,4 @@ client = OpenAI(
 
 OpenRouter model ids like `anthropic/claude-3.5-sonnet` are normalized and
 priced at the underlying model's rate. Unknown models log a warning with the
-exact `AGENTLEDGER_PRICING` override to add.
+exact `AGENTICLEDGER_PRICING` override to add.

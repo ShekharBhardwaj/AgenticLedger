@@ -7,17 +7,17 @@ normalizes to canonical schema, stores to SQLite or Postgres, then returns the
 upstream response unmodified — including full streaming support.
 
 Caller-supplied headers (all optional):
-    x-agentledger-session-id       Group calls into a run
-    x-agentledger-user-id          End user who triggered this
-    x-agentledger-agent-name       Which agent made this call
-    x-agentledger-app-id           Which application
-    x-agentledger-parent-action-id Parent in the call graph
-    x-agentledger-environment      prod / staging / development (default)
-    x-agentledger-handoff-from     Agent handing off control
-    x-agentledger-handoff-to       Agent receiving control
-    x-agentledger-framework        Framework making the call (else fingerprinted)
-    x-agentledger-run-id           Loop run grouping (else inferred for fresh-context loops)
-    x-agentledger-iteration        Iteration within the run
+    x-agenticledger-session-id       Group calls into a run
+    x-agenticledger-user-id          End user who triggered this
+    x-agenticledger-agent-name       Which agent made this call
+    x-agenticledger-app-id           Which application
+    x-agenticledger-parent-action-id Parent in the call graph
+    x-agenticledger-environment      prod / staging / development (default)
+    x-agenticledger-handoff-from     Agent handing off control
+    x-agenticledger-handoff-to       Agent receiving control
+    x-agenticledger-framework        Framework making the call (else fingerprinted)
+    x-agenticledger-run-id           Loop run grouping (else inferred for fresh-context loops)
+    x-agenticledger-iteration        Iteration within the run
 
 Endpoints:
     GET  /                             Dashboard (live via WebSocket)
@@ -32,7 +32,7 @@ Endpoints:
     POST /mcp                          MCP tool server
 
 Or via CLI:
-    python -m agentledger.proxy
+    python -m agenticledger.proxy
 """
 
 import asyncio
@@ -88,7 +88,7 @@ logger = logging.getLogger(__name__)
 _SPA_DIR = Path(__file__).parent / "static"
 
 _DEFAULT_LLM_PATHS = {"v1/chat/completions", "v1/messages", "v1/responses"}
-_extra = os.getenv("AGENTLEDGER_EXTRA_PATHS", "")
+_extra = os.getenv("AGENTICLEDGER_EXTRA_PATHS", "")
 _LLM_PATHS = _DEFAULT_LLM_PATHS | {p.strip() for p in _extra.split(",") if p.strip()}
 # Free metering endpoints: captured for a complete record, but exempt from
 # rate-limit/budget enforcement (the calls cost nothing) and never streamed.
@@ -96,19 +96,19 @@ _COUNT_TOKENS_PATHS = {"v1/messages/count_tokens"}
 _CAPTURED_PATHS = _LLM_PATHS | _COUNT_TOKENS_PATHS
 
 _AL_HEADERS = {
-    "x-agentledger-session-id",
-    "x-agentledger-user-id",
-    "x-agentledger-agent-name",
-    "x-agentledger-app-id",
-    "x-agentledger-parent-action-id",
-    "x-agentledger-environment",
-    "x-agentledger-handoff-from",
-    "x-agentledger-handoff-to",
-    "x-agentledger-framework",
-    "x-agentledger-run-id",
-    "x-agentledger-iteration",
-    "x-agentledger-ingest-key",
-    "x-agentledger-api-key",
+    "x-agenticledger-session-id",
+    "x-agenticledger-user-id",
+    "x-agenticledger-agent-name",
+    "x-agenticledger-app-id",
+    "x-agenticledger-parent-action-id",
+    "x-agenticledger-environment",
+    "x-agenticledger-handoff-from",
+    "x-agenticledger-handoff-to",
+    "x-agenticledger-framework",
+    "x-agenticledger-run-id",
+    "x-agenticledger-iteration",
+    "x-agenticledger-ingest-key",
+    "x-agenticledger-api-key",
 }
 
 
@@ -126,11 +126,11 @@ class _CaptureJob:
 
 
 def _extract_token(carrier) -> Optional[str]:
-    """Pull an API token from a request/websocket: Bearer header, x-agentledger-token, or ?token."""
+    """Pull an API token from a request/websocket: Bearer header, x-agenticledger-token, or ?token."""
     authz = carrier.headers.get("authorization") or ""
     if authz.lower().startswith("bearer "):
         return authz[7:].strip() or None
-    return carrier.headers.get("x-agentledger-token") or carrier.query_params.get("token")
+    return carrier.headers.get("x-agenticledger-token") or carrier.query_params.get("token")
 
 
 def _token_is_valid(row: dict) -> bool:
@@ -390,11 +390,11 @@ def create_app(
             except Exception:
                 _record_capture_drop(app, job.action_id)
 
-    _api_key = os.environ.get("AGENTLEDGER_API_KEY")
+    _api_key = os.environ.get("AGENTICLEDGER_API_KEY")
     # Optional proxy-ingest key. When set, the proxy refuses to forward a request
-    # unless it carries a matching x-agentledger-ingest-key — closing the open relay.
+    # unless it carries a matching x-agenticledger-ingest-key — closing the open relay.
     # When unset the proxy forwards anything (zero-config dev UX); __main__ warns loudly.
-    _ingest_key = os.environ.get("AGENTLEDGER_INGEST_KEY")
+    _ingest_key = os.environ.get("AGENTICLEDGER_INGEST_KEY")
     # Read/management endpoints enforce auth only when a master key is configured.
     # The master key grants admin (and is the bootstrap for minting tokens); API
     # tokens grant their own role. When unset, access is open (dev UX) and __main__ warns.
@@ -402,7 +402,7 @@ def create_app(
 
     async def _authenticate(carrier) -> Optional[Principal]:
         """Resolve a Principal from a request/websocket, or None if no valid credential."""
-        supplied_key = carrier.headers.get("x-agentledger-api-key") or carrier.query_params.get("api_key")
+        supplied_key = carrier.headers.get("x-agenticledger-api-key") or carrier.query_params.get("api_key")
         if _api_key and supplied_key and hmac.compare_digest(supplied_key, _api_key):
             return Principal(ROLE_ADMIN, "master")
         raw = _extract_token(carrier)
@@ -481,18 +481,18 @@ def create_app(
         dropped = getattr(app.state, "capture_dropped", 0)
         depth = _capture_queue.qsize() if _async_capture else 0
         lines = [
-            "# HELP agentledger_captures_persisted_total Calls successfully recorded to the store.",
-            "# TYPE agentledger_captures_persisted_total counter",
-            f"agentledger_captures_persisted_total {persisted}",
-            "# HELP agentledger_captures_dropped_total Calls served but not recorded (error or queue overflow).",
-            "# TYPE agentledger_captures_dropped_total counter",
-            f"agentledger_captures_dropped_total {dropped}",
-            "# HELP agentledger_capture_queue_depth Capture jobs awaiting persistence (async mode).",
-            "# TYPE agentledger_capture_queue_depth gauge",
-            f"agentledger_capture_queue_depth {depth}",
-            "# HELP agentledger_capture_async Whether async capture is enabled (1) or not (0).",
-            "# TYPE agentledger_capture_async gauge",
-            f"agentledger_capture_async {1 if _async_capture else 0}",
+            "# HELP agenticledger_captures_persisted_total Calls successfully recorded to the store.",
+            "# TYPE agenticledger_captures_persisted_total counter",
+            f"agenticledger_captures_persisted_total {persisted}",
+            "# HELP agenticledger_captures_dropped_total Calls served but not recorded (error or queue overflow).",
+            "# TYPE agenticledger_captures_dropped_total counter",
+            f"agenticledger_captures_dropped_total {dropped}",
+            "# HELP agenticledger_capture_queue_depth Capture jobs awaiting persistence (async mode).",
+            "# TYPE agenticledger_capture_queue_depth gauge",
+            f"agenticledger_capture_queue_depth {depth}",
+            "# HELP agenticledger_capture_async Whether async capture is enabled (1) or not (0).",
+            "# TYPE agenticledger_capture_async gauge",
+            f"agenticledger_capture_async {1 if _async_capture else 0}",
         ]
         return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
@@ -514,7 +514,7 @@ def create_app(
         return HTMLResponse(get_dashboard_html())
 
     # ── Web app (React SPA — Loop Lens) ──────────────────────────────────────
-    # Built from dashboard-app/ into agentledger/proxy/static/ and shipped in
+    # Built from dashboard-app/ into agenticledger/proxy/static/ and shipped in
     # the wheel. When the assets are missing (e.g. a source checkout without a
     # Node build), /app explains itself and the classic dashboard still works.
 
@@ -708,7 +708,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="session_id not found")
         await _audit(principal, request, "export_session", session_id)
         export = build_export(session_id, calls)
-        filename = f"agentledger-{session_id[:16]}.json"
+        filename = f"agenticledger-{session_id[:16]}.json"
         return Response(
             content=json.dumps(export, indent=2, default=str),
             media_type="application/json",
@@ -739,11 +739,11 @@ def create_app(
 
     def _check_ingest_gate(request: Request) -> Optional[JSONResponse]:
         if _ingest_key:
-            supplied = request.headers.get("x-agentledger-ingest-key")
+            supplied = request.headers.get("x-agenticledger-ingest-key")
             if not supplied or not hmac.compare_digest(supplied, _ingest_key):
                 return JSONResponse(
                     {"error": {"type": "unauthorized",
-                               "message": "Missing or invalid x-agentledger-ingest-key."}},
+                               "message": "Missing or invalid x-agenticledger-ingest-key."}},
                     status_code=401,
                 )
         return None
@@ -821,19 +821,19 @@ def create_app(
     async def proxy(request: Request, path: str) -> Response:
         # Proxy-ingest auth: gate forwarding behind a dedicated key when configured.
         if _ingest_key:
-            supplied = request.headers.get("x-agentledger-ingest-key")
+            supplied = request.headers.get("x-agenticledger-ingest-key")
             if not supplied or not hmac.compare_digest(supplied, _ingest_key):
                 return JSONResponse(
                     {"error": {
                         "type": "unauthorized",
-                        "message": "Missing or invalid x-agentledger-ingest-key.",
+                        "message": "Missing or invalid x-agenticledger-ingest-key.",
                     }},
                     status_code=401,
                 )
 
         # Path-segment run attribution: /r/<run_id>/<iteration>/<real path>.
         # For clients that can only set a base URL and no custom headers —
-        # `agentledger run` points ANTHROPIC_BASE_URL/OPENAI_BASE_URL here.
+        # `agenticledger run` points ANTHROPIC_BASE_URL/OPENAI_BASE_URL here.
         path_run_id: Optional[str] = None
         path_iteration: Optional[str] = None
         if path.startswith("r/"):
@@ -1165,25 +1165,25 @@ def _extract_meta(request: Request, body_json: Optional[dict] = None) -> dict:
     h = request.headers
     # Explicit headers always win; fingerprint detection only fills the gaps
     # (framework tag, agent identity, and a real per-run session id for
-    # clients like Claude Code that never send x-agentledger-* headers).
+    # clients like Claude Code that never send x-agenticledger-* headers).
     detected = detect_agent(h, body_json)
     session_id = (
-        h.get("x-agentledger-session-id")
+        h.get("x-agenticledger-session-id")
         or detected["session_id"]
         or f"auto-{datetime.date.today().isoformat()}"
     )
     return {
         "session_id":       session_id,
-        "user_id":          h.get("x-agentledger-user-id"),
-        "agent_name":       h.get("x-agentledger-agent-name") or detected["agent_name"],
-        "app_id":           h.get("x-agentledger-app-id"),
-        "parent_action_id": h.get("x-agentledger-parent-action-id"),
-        "environment":      h.get("x-agentledger-environment", "development"),
-        "handoff_from":     h.get("x-agentledger-handoff-from"),
-        "handoff_to":       h.get("x-agentledger-handoff-to"),
-        "framework":        h.get("x-agentledger-framework") or detected["framework"],
-        "run_id":           h.get("x-agentledger-run-id"),
-        "iteration":        _int_or_none(h.get("x-agentledger-iteration")),
+        "user_id":          h.get("x-agenticledger-user-id"),
+        "agent_name":       h.get("x-agenticledger-agent-name") or detected["agent_name"],
+        "app_id":           h.get("x-agenticledger-app-id"),
+        "parent_action_id": h.get("x-agenticledger-parent-action-id"),
+        "environment":      h.get("x-agenticledger-environment", "development"),
+        "handoff_from":     h.get("x-agenticledger-handoff-from"),
+        "handoff_to":       h.get("x-agenticledger-handoff-to"),
+        "framework":        h.get("x-agenticledger-framework") or detected["framework"],
+        "run_id":           h.get("x-agenticledger-run-id"),
+        "iteration":        _int_or_none(h.get("x-agenticledger-iteration")),
     }
 
 
@@ -1217,9 +1217,9 @@ def _response_headers(
         if k.lower() not in ("content-encoding", "transfer-encoding")
     }
     if action_id:
-        headers["x-agentledger-action-id"] = action_id
+        headers["x-agenticledger-action-id"] = action_id
     if meta.get("session_id"):
-        headers["x-agentledger-session-id"] = meta["session_id"]
+        headers["x-agenticledger-session-id"] = meta["session_id"]
     return headers
 
 

@@ -1,4 +1,4 @@
-"""End-to-end test of the stdio MCP transport (`agentledger mcp`)."""
+"""End-to-end test of the stdio MCP transport (`agenticledger mcp`)."""
 
 import json
 import subprocess
@@ -18,9 +18,9 @@ def test_stdio_transport_answers_initialize_and_tools(tmp_path):
     ]) + "\n"
 
     proc = subprocess.run(
-        [sys.executable, "-m", "agentledger.mcp_stdio"],
+        [sys.executable, "-m", "agenticledger.mcp_stdio"],
         input=messages, capture_output=True, text=True, timeout=30,
-        env={"AGENTLEDGER_DSN": f"sqlite:///{tmp_path}/mcp.db", "PATH": "/usr/bin:/bin"},
+        env={"AGENTICLEDGER_DSN": f"sqlite:///{tmp_path}/mcp.db", "PATH": "/usr/bin:/bin"},
     )
     assert proc.returncode == 0, proc.stderr
 
@@ -29,7 +29,7 @@ def test_stdio_transport_answers_initialize_and_tools(tmp_path):
 
     # stdout carries ONLY JSON-RPC — three responses (the notification is silent)
     assert len(lines) == 3
-    assert by_id[1]["result"]["serverInfo"]["name"] == "agentledger"
+    assert by_id[1]["result"]["serverInfo"]["name"] == "agenticledger"
     tool_names = {t["name"] for t in by_id[2]["result"]["tools"]}
     assert tool_names == {"list_sessions", "explain", "get_session", "search",
                           "list_runs", "get_run_status"}
@@ -41,9 +41,9 @@ def test_stdio_transport_survives_garbage(tmp_path):
     messages = "not json at all\n" + json.dumps(
         {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\n"
     proc = subprocess.run(
-        [sys.executable, "-m", "agentledger.mcp_stdio"],
+        [sys.executable, "-m", "agenticledger.mcp_stdio"],
         input=messages, capture_output=True, text=True, timeout=30,
-        env={"AGENTLEDGER_DSN": f"sqlite:///{tmp_path}/mcp.db", "PATH": "/usr/bin:/bin"},
+        env={"AGENTICLEDGER_DSN": f"sqlite:///{tmp_path}/mcp.db", "PATH": "/usr/bin:/bin"},
     )
     assert proc.returncode == 0
     lines = [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]

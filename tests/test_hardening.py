@@ -3,14 +3,14 @@
 - RateLimiter must bound its memory: idle keys are reclaimed, and a sweep keeps the
   tracked-key set from growing without limit under high session/user cardinality.
 - export integrity must be honest: a plain SHA-256 checksum by default, upgradable to
-  a tamper-evident keyed HMAC-SHA256 via AGENTLEDGER_EXPORT_HMAC_KEY.
+  a tamper-evident keyed HMAC-SHA256 via AGENTICLEDGER_EXPORT_HMAC_KEY.
 """
 
 import hashlib
 import json
 
-from agentledger.proxy.export import build_export
-from agentledger.proxy.ratelimit import RateLimitConfig, RateLimiter
+from agenticledger.proxy.export import build_export
+from agenticledger.proxy.ratelimit import RateLimitConfig, RateLimiter
 
 
 def _calls():
@@ -30,7 +30,7 @@ def _canonical_sha256(calls):
 
 def test_idle_key_is_reclaimed_after_window_ages_out(monkeypatch):
     clock = [1000.0]
-    monkeypatch.setattr("agentledger.proxy.ratelimit.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("agenticledger.proxy.ratelimit.time.monotonic", lambda: clock[0])
 
     rl = RateLimiter(RateLimitConfig(session_rpm=100))
     assert rl.check("s", None, None) is None
@@ -43,7 +43,7 @@ def test_idle_key_is_reclaimed_after_window_ages_out(monkeypatch):
 
 def test_memory_bounded_under_high_cardinality(monkeypatch):
     clock = [1000.0]
-    monkeypatch.setattr("agentledger.proxy.ratelimit.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("agenticledger.proxy.ratelimit.time.monotonic", lambda: clock[0])
 
     rl = RateLimiter(RateLimitConfig(session_rpm=100), max_keys=3)
     for i in range(5):
@@ -59,7 +59,7 @@ def test_memory_bounded_under_high_cardinality(monkeypatch):
 def test_reclaimed_key_still_enforces_after_reuse(monkeypatch):
     """A key reclaimed mid-check is re-created and still limits correctly."""
     clock = [1000.0]
-    monkeypatch.setattr("agentledger.proxy.ratelimit.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("agenticledger.proxy.ratelimit.time.monotonic", lambda: clock[0])
 
     rl = RateLimiter(RateLimitConfig(session_rpm=1))
     assert rl.check("s", None, None) is None       # 1st allowed
@@ -71,13 +71,13 @@ def test_reclaimed_key_still_enforces_after_reuse(monkeypatch):
 # ── Export integrity tag ──────────────────────────────────────────────────────
 
 def test_integrity_is_plain_sha256_by_default(monkeypatch):
-    monkeypatch.delenv("AGENTLEDGER_EXPORT_HMAC_KEY", raising=False)
+    monkeypatch.delenv("AGENTICLEDGER_EXPORT_HMAC_KEY", raising=False)
     tag = build_export("s1", _calls())["export"]["integrity"]
     assert tag == "sha256:" + _canonical_sha256(_calls())
 
 
 def test_integrity_is_keyed_hmac_when_configured(monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_EXPORT_HMAC_KEY", "topsecret")
+    monkeypatch.setenv("AGENTICLEDGER_EXPORT_HMAC_KEY", "topsecret")
     tag = build_export("s1", _calls())["export"]["integrity"]
     assert tag.startswith("hmac-sha256:")
     # An HMAC is not the plain checksum — it cannot be recomputed without the key.
@@ -85,11 +85,11 @@ def test_integrity_is_keyed_hmac_when_configured(monkeypatch):
 
 
 def test_hmac_depends_on_key_and_is_tamper_evident(monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_EXPORT_HMAC_KEY", "key-1")
+    monkeypatch.setenv("AGENTICLEDGER_EXPORT_HMAC_KEY", "key-1")
     tag_k1 = build_export("s1", _calls())["export"]["integrity"]
 
     # Different key → different tag: an attacker can't forge it without the key.
-    monkeypatch.setenv("AGENTLEDGER_EXPORT_HMAC_KEY", "key-2")
+    monkeypatch.setenv("AGENTICLEDGER_EXPORT_HMAC_KEY", "key-2")
     tag_k2 = build_export("s1", _calls())["export"]["integrity"]
     assert tag_k1 != tag_k2
 

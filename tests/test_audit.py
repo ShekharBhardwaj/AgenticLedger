@@ -6,11 +6,11 @@ recorded with the acting principal. Erasure deletes all of a user's captured cal
 
 import httpx
 
-from agentledger.proxy.auth import ROLE_VIEWER
+from agenticledger.proxy.auth import ROLE_VIEWER
 
 from .conftest import openai_response
 
-MASTER = {"x-agentledger-api-key": "master-key"}
+MASTER = {"x-agenticledger-api-key": "master-key"}
 _CHAT = {"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}
 
 
@@ -23,9 +23,9 @@ def _actions(entries):
 
 
 def test_view_export_and_search_are_audited(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
-    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agentledger-session-id": "s1"})
+    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agenticledger-session-id": "s1"})
 
     assert client.get("/session/s1", headers=MASTER).status_code == 200
     assert client.get("/export/s1", headers=MASTER).status_code == 200
@@ -40,9 +40,9 @@ def test_view_export_and_search_are_audited(proxy, monkeypatch):
 
 
 def test_delete_session_is_audited(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
-    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agentledger-session-id": "s-del"})
+    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agenticledger-session-id": "s-del"})
 
     deleted = client.delete("/api/sessions/s-del", headers=MASTER)
     assert deleted.status_code == 200
@@ -51,7 +51,7 @@ def test_delete_session_is_audited(proxy, monkeypatch):
 
 
 def test_token_actions_are_audited(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     created = client.post("/api/tokens", json={"name": "t", "role": "viewer"}, headers=MASTER).json()
     client.delete(f"/api/tokens/{created['token_id']}", headers=MASTER)
@@ -61,9 +61,9 @@ def test_token_actions_are_audited(proxy, monkeypatch):
 
 
 def test_token_principal_is_attributed(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
-    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agentledger-session-id": "s2"})
+    client.post("/v1/chat/completions", json=_CHAT, headers={"x-agenticledger-session-id": "s2"})
     token = client.post("/api/tokens", json={"name": "viewer-bot", "role": "viewer"},
                         headers=MASTER).json()["token"]
 
@@ -77,11 +77,11 @@ def test_token_principal_is_attributed(proxy, monkeypatch):
 
 
 def test_erase_user_deletes_data_and_audits(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
     for i in range(2):
         client.post("/v1/chat/completions", json=_CHAT,
-                    headers={"x-agentledger-session-id": f"u-sess-{i}", "x-agentledger-user-id": "u1"})
+                    headers={"x-agenticledger-session-id": f"u-sess-{i}", "x-agenticledger-user-id": "u1"})
 
     resp = client.delete("/api/users/u1", headers=MASTER)
     assert resp.status_code == 200
@@ -95,7 +95,7 @@ def test_erase_user_deletes_data_and_audits(proxy, monkeypatch):
 
 
 def test_audit_and_erasure_require_admin(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     token = client.post("/api/tokens", json={"name": "v", "role": ROLE_VIEWER},
                         headers=MASTER).json()["token"]
@@ -107,7 +107,7 @@ def test_audit_and_erasure_require_admin(proxy, monkeypatch):
 
 
 def test_audit_can_be_disabled(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(audit_enabled=False)
     client.get("/api/search?q=x", headers=MASTER)
     assert _audit(client) == []

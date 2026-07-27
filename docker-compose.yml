@@ -4,30 +4,30 @@ services:
   # The container runs as non-root (uid 10001). On Linux hosts, give it the
   # bind-mounted data dir first: mkdir -p data && sudo chown 10001 data
   # (Docker Desktop on macOS/Windows handles this automatically.)
-  agentledger:
+  agenticledger:
     build: .
     ports:
       - "8000:8000"
     volumes:
       - ./data:/data
     environment:
-      - AGENTLEDGER_UPSTREAM_URL=${AGENTLEDGER_UPSTREAM_URL:-https://api.openai.com}
-      - AGENTLEDGER_DSN=sqlite:////data/agentledger.db
-      - AGENTLEDGER_API_KEY=${AGENTLEDGER_API_KEY:-}
-      - AGENTLEDGER_BUDGET_SESSION=${AGENTLEDGER_BUDGET_SESSION:-}
-      - AGENTLEDGER_BUDGET_AGENT=${AGENTLEDGER_BUDGET_AGENT:-}
-      - AGENTLEDGER_BUDGET_DAILY=${AGENTLEDGER_BUDGET_DAILY:-}
+      - AGENTICLEDGER_UPSTREAM_URL=${AGENTICLEDGER_UPSTREAM_URL:-https://api.openai.com}
+      - AGENTICLEDGER_DSN=sqlite:////data/agenticledger.db
+      - AGENTICLEDGER_API_KEY=${AGENTICLEDGER_API_KEY:-}
+      - AGENTICLEDGER_BUDGET_SESSION=${AGENTICLEDGER_BUDGET_SESSION:-}
+      - AGENTICLEDGER_BUDGET_AGENT=${AGENTICLEDGER_BUDGET_AGENT:-}
+      - AGENTICLEDGER_BUDGET_DAILY=${AGENTICLEDGER_BUDGET_DAILY:-}
 
   # Uncomment below to run with Postgres instead
   #
-  # agentledger:
+  # agenticledger:
   #   build: .
   #   ports:
   #     - "8000:8000"
   #   environment:
-  #     - AGENTLEDGER_UPSTREAM_URL=${AGENTLEDGER_UPSTREAM_URL:-https://api.openai.com}
-  #     - AGENTLEDGER_DSN=postgresql://agentledger:agentledger@db/agentledger
-  #     - AGENTLEDGER_API_KEY=${AGENTLEDGER_API_KEY:-}
+  #     - AGENTICLEDGER_UPSTREAM_URL=${AGENTICLEDGER_UPSTREAM_URL:-https://api.openai.com}
+  #     - AGENTICLEDGER_DSN=postgresql://agenticledger:agenticledger@db/agenticledger
+  #     - AGENTICLEDGER_API_KEY=${AGENTICLEDGER_API_KEY:-}
   #   depends_on:
   #     db:
   #       condition: service_healthy
@@ -35,13 +35,13 @@ services:
   # db:
   #   image: postgres:16-alpine
   #   environment:
-  #     POSTGRES_DB: agentledger
-  #     POSTGRES_USER: agentledger
-  #     POSTGRES_PASSWORD: agentledger
+  #     POSTGRES_DB: agenticledger
+  #     POSTGRES_USER: agenticledger
+  #     POSTGRES_PASSWORD: agenticledger
   #   volumes:
   #     - pgdata:/var/lib/postgresql/data
   #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U agentledger"]
+  #     test: ["CMD-SHELL", "pg_isready -U agenticledger"]
   #     interval: 5s
   #     timeout: 5s
   #     retries: 5

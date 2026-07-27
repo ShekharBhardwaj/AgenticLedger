@@ -38,7 +38,7 @@ cosign verify ghcr.io/shekharbhardwaj/agentic-ledger:latest \
 Each image also carries BuildKit **SBOM and SLSA provenance attestations**
 (inspect with `docker buildx imagetools inspect <image> --format
 '{{ json .SBOM }}'`), and every GitHub release attaches a standalone SPDX
-SBOM (`sbom-agentledger-image.spdx.json`) for ingestion into dependency
+SBOM (`sbom-agenticledger-image.spdx.json`) for ingestion into dependency
 scanners.
 
 Python packages on PyPI carry PEP 740 publish attestations — PyPI displays
@@ -49,11 +49,11 @@ the verified GitHub repository and workflow on the file details page.
 Cold builds work from a plain checkout — no wheel required:
 
 ```bash
-docker build -t agentledger .
+docker build -t agenticledger .
 ```
 
 With nothing in `dist/`, the build installs the latest published release
-from PyPI (pin one with `--build-arg AGENTLEDGER_VERSION=0.3.3`). If you
+from PyPI (pin one with `--build-arg AGENTICLEDGER_VERSION=0.3.3`). If you
 drop a locally built wheel into `dist/`, it takes precedence — that is the
 path the release pipeline uses.
 
@@ -63,7 +63,7 @@ path the release pipeline uses.
 
 ### The container is non-root by default
 
-The proxy runs as user `agentledger` (uid 10001). Two consequences:
+The proxy runs as user `agenticledger` (uid 10001). Two consequences:
 
 - **Named volumes** work out of the box — `/data` ownership is inherited on
   first mount.
@@ -80,8 +80,8 @@ You can tighten further; the image needs nothing beyond `/data`:
 ```bash
 docker run --read-only --tmpfs /tmp \
   --cap-drop ALL --security-opt no-new-privileges \
-  -v agentledger-data:/data -p 8000:8000 \
-  -e AGENTLEDGER_UPSTREAM_URL=https://api.openai.com \
+  -v agenticledger-data:/data -p 8000:8000 \
+  -e AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com \
   ghcr.io/shekharbhardwaj/agentic-ledger:latest
 ```
 
@@ -127,24 +127,24 @@ Every deployment that leaves localhost should set:
 
 | Variable | What it closes |
 |---|---|
-| `AGENTLEDGER_API_KEY` | Dashboard, read, and management endpoints require the admin key; scoped tokens can then be minted for narrower roles. |
-| `AGENTLEDGER_INGEST_KEY` | The proxy forwards traffic only when the caller presents the matching `x-agentledger-ingest-key` header — closes the open-relay hole where anyone who can reach the proxy can spend your LLM credits. |
-| `AGENTLEDGER_HOST=127.0.0.1` | When the proxy and its TLS terminator share a host, don't listen on all interfaces. |
-| `AGENTLEDGER_EXPORT_HMAC_KEY` | Compliance exports get a keyed tamper-evident integrity tag instead of a plain hash. |
+| `AGENTICLEDGER_API_KEY` | Dashboard, read, and management endpoints require the admin key; scoped tokens can then be minted for narrower roles. |
+| `AGENTICLEDGER_INGEST_KEY` | The proxy forwards traffic only when the caller presents the matching `x-agenticledger-ingest-key` header — closes the open-relay hole where anyone who can reach the proxy can spend your LLM credits. |
+| `AGENTICLEDGER_HOST=127.0.0.1` | When the proxy and its TLS terminator share a host, don't listen on all interfaces. |
+| `AGENTICLEDGER_EXPORT_HMAC_KEY` | Compliance exports get a keyed tamper-evident integrity tag instead of a plain hash. |
 
 ### Protect the data you capture
 
 Captured prompts are the most sensitive thing in this system. The controls,
 in escalating order:
 
-- `AGENTLEDGER_REDACT=all` (or a list: `email,ssn,credit_card,ip,api_key`) —
-  scrub PII/secrets before they are stored; `AGENTLEDGER_REDACT_PATTERNS`
+- `AGENTICLEDGER_REDACT=all` (or a list: `email,ssn,credit_card,ip,api_key`) —
+  scrub PII/secrets before they are stored; `AGENTICLEDGER_REDACT_PATTERNS`
   adds your own regexes.
-- `AGENTLEDGER_CAPTURE_LEVEL=metadata` — store only metrics and metadata
+- `AGENTICLEDGER_CAPTURE_LEVEL=metadata` — store only metrics and metadata
   (model, tokens, cost, latency, agent, status), never prompt/response
   bodies.
-- `AGENTLEDGER_RETENTION_DAYS=30` — a background worker purges older calls.
-- `AGENTLEDGER_AUDIT_LOG` is on by default — who viewed, exported, or
+- `AGENTICLEDGER_RETENTION_DAYS=30` — a background worker purges older calls.
+- `AGENTICLEDGER_AUDIT_LOG` is on by default — who viewed, exported, or
   deleted what.
 
 ### Database
@@ -154,11 +154,11 @@ shared service, use Postgres:
 
 ```bash
 pip install "agentic-ledger[postgres]"
-AGENTLEDGER_DSN=postgresql://user:password@db-host/agentledger
+AGENTICLEDGER_DSN=postgresql://user:password@db-host/agenticledger
 ```
 
 For SQLite backups, snapshot the file with the proxy stopped, or use
-`sqlite3 /data/agentledger.db ".backup /backup/agentledger.db"` while
+`sqlite3 /data/agenticledger.db ".backup /backup/agenticledger.db"` while
 running. Postgres backups are your standard `pg_dump`.
 
 ---
@@ -178,7 +178,7 @@ What you *can* do today:
 
 - Point many machines' agents at one central proxy (that is the intended
   shared-service shape).
-- Use Postgres so dashboards, the MCP server (`agentledger mcp`), and API
+- Use Postgres so dashboards, the MCP server (`agenticledger mcp`), and API
   consumers read the ledger without touching the proxy's write path.
 - Watch `/metrics` (Prometheus format) and probe `/health` and `/readyz` —
   the container image ships a `HEALTHCHECK` that hits `/health`.
@@ -186,7 +186,7 @@ What you *can* do today:
 ## Deployment checklist
 
 - [ ] Image pulled by digest or verified with `cosign verify`
-- [ ] `AGENTLEDGER_API_KEY` and `AGENTLEDGER_INGEST_KEY` set
+- [ ] `AGENTICLEDGER_API_KEY` and `AGENTICLEDGER_INGEST_KEY` set
 - [ ] TLS terminated in front; proxy not reachable directly
 - [ ] Redaction/capture level/retention chosen deliberately
 - [ ] Postgres DSN for shared deployments; backups scheduled

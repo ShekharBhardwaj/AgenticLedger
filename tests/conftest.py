@@ -27,8 +27,8 @@ import pytest
 import pytest_asyncio
 from starlette.testclient import TestClient
 
-from agentledger.proxy.app import create_app
-from agentledger.proxy.store import Store
+from agenticledger.proxy.app import create_app
+from agenticledger.proxy.store import Store
 
 UPSTREAM_URL = "http://upstream.test"
 

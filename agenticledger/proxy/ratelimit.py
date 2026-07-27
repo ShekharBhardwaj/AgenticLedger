@@ -4,10 +4,10 @@ Proxy-level rate limiting for LLM calls.
 Limits are requests-per-minute (RPM), applied independently per dimension.
 All limits are optional — only configured ones are enforced.
 
-    AGENTLEDGER_RATE_LIMIT_RPM          Global limit across all calls
-    AGENTLEDGER_RATE_LIMIT_SESSION_RPM  Per session_id
-    AGENTLEDGER_RATE_LIMIT_AGENT_RPM    Per agent_name
-    AGENTLEDGER_RATE_LIMIT_USER_RPM     Per user_id
+    AGENTICLEDGER_RATE_LIMIT_RPM          Global limit across all calls
+    AGENTICLEDGER_RATE_LIMIT_SESSION_RPM  Per session_id
+    AGENTICLEDGER_RATE_LIMIT_AGENT_RPM    Per agent_name
+    AGENTICLEDGER_RATE_LIMIT_USER_RPM     Per user_id
 
 When a limit is exceeded the proxy returns HTTP 429 with a JSON error body.
 The agent receives it like any other upstream error — no special handling needed.

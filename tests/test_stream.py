@@ -1,4 +1,4 @@
-"""Tests for agentledger/proxy/stream.py — SSE chunk accumulation.
+"""Tests for agenticledger/proxy/stream.py — SSE chunk accumulation.
 
 `reconstruct_from_sse` turns raw SSE bytes (OpenAI-format *or* Anthropic-native)
 into a CanonicalResponse. These tests assert the intended reconstruction
@@ -17,8 +17,8 @@ behavior described in the module docstring and the task spec:
 
 import json
 
-from agentledger.proxy.pricing import compute_cost
-from agentledger.proxy.stream import detect_stream_error, reconstruct_from_sse
+from agenticledger.proxy.pricing import compute_cost
+from agenticledger.proxy.stream import detect_stream_error, reconstruct_from_sse
 
 from .conftest import anthropic_sse, openai_sse, sse
 

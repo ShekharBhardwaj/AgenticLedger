@@ -1,17 +1,17 @@
 """
-agentledger — command-line loop runner for Agentic Ledger.
+agenticledger — command-line loop runner for Agentic Ledger.
 
-`agentledger run` wraps any agent command in an observable, budgeted loop
+`agenticledger run` wraps any agent command in an observable, budgeted loop
 (the Ralph pattern): each iteration re-executes the command with a fresh
 context, every LLM call is attributed to the run via path-segment base URLs
 (no header support needed in the client), and the loop stops on a completion
 promise, a budget ceiling, or the iteration cap — whichever comes first.
 
-    agentledger run --max-iterations 50 --budget 25 -- \
+    agenticledger run --max-iterations 50 --budget 25 -- \
         claude -p "$(cat PROMPT.md)" --dangerously-skip-permissions
 
-The proxy must be running (python -m agentledger.proxy). Set
-AGENTLEDGER_COMPLETION_PROMISE on the proxy (e.g. "COMPLETE") to let the
+The proxy must be running (python -m agenticledger.proxy). Set
+AGENTICLEDGER_COMPLETION_PROMISE on the proxy (e.g. "COMPLETE") to let the
 agent end the loop early by printing the promise in its final response.
 """
 
@@ -27,7 +27,7 @@ import httpx
 
 def _fetch_status(proxy: str, run_id: str, api_key: Optional[str]) -> Optional[dict]:
     """Best-effort run status from the proxy. None when unreachable/unknown."""
-    headers = {"x-agentledger-api-key": api_key} if api_key else {}
+    headers = {"x-agenticledger-api-key": api_key} if api_key else {}
     try:
         resp = httpx.get(f"{proxy}/api/runs/{run_id}", headers=headers, timeout=5.0)
         if resp.status_code == 200:
@@ -62,13 +62,13 @@ def _iteration_env(proxy: str, run_id: str, iteration: int) -> dict:
     tagged = f"{proxy}/r/{run_id}/{iteration}"
     env["ANTHROPIC_BASE_URL"] = tagged
     env["OPENAI_BASE_URL"] = f"{tagged}/v1"
-    env["AGENTLEDGER_RUN_ID"] = run_id
-    env["AGENTLEDGER_ITERATION"] = str(iteration)
+    env["AGENTICLEDGER_RUN_ID"] = run_id
+    env["AGENTICLEDGER_ITERATION"] = str(iteration)
     return env
 
 
 def _print_summary(run_id: str, iterations: int, status: Optional[dict], reason: str) -> None:
-    print("\n─── agentledger run summary ───", file=sys.stderr)
+    print("\n─── agenticledger run summary ───", file=sys.stderr)
     print(f"  run:        {run_id}", file=sys.stderr)
     print(f"  iterations: {iterations}", file=sys.stderr)
     print(f"  stopped:    {reason}", file=sys.stderr)
@@ -88,18 +88,18 @@ def _print_summary(run_id: str, iterations: int, status: Optional[dict], reason:
 
 def run_command(args: argparse.Namespace) -> int:
     if not args.command:
-        print("error: no command given — usage: agentledger run [options] -- <command...>",
+        print("error: no command given — usage: agenticledger run [options] -- <command...>",
               file=sys.stderr)
         return 2
 
     proxy = args.proxy.rstrip("/")
     run_id = args.run_id or f"run-{uuid.uuid4().hex[:8]}"
-    api_key = os.environ.get("AGENTLEDGER_API_KEY")
+    api_key = os.environ.get("AGENTICLEDGER_API_KEY")
     last_exit = 0
     status: Optional[dict] = None
     reason = "loop never started"
 
-    print(f"agentledger: starting run {run_id} "
+    print(f"agenticledger: starting run {run_id} "
           f"(max {args.max_iterations} iterations"
           f"{f', budget ${args.budget:.2f}' if args.budget else ''}) via {proxy}",
           file=sys.stderr)
@@ -107,7 +107,7 @@ def run_command(args: argparse.Namespace) -> int:
     iteration = 0
     while True:
         iteration += 1
-        print(f"agentledger: iteration {iteration}/{args.max_iterations}", file=sys.stderr)
+        print(f"agenticledger: iteration {iteration}/{args.max_iterations}", file=sys.stderr)
         try:
             result = subprocess.run(  # noqa: S603 — running the user's own command is the point
                 args.command, env=_iteration_env(proxy, run_id, iteration),
@@ -127,7 +127,7 @@ def run_command(args: argparse.Namespace) -> int:
         status = _fetch_status(proxy, run_id, api_key)
         if status is None and iteration == 1:
             print(
-                "agentledger: warning — no calls recorded for this run yet; "
+                "agenticledger: warning — no calls recorded for this run yet; "
                 "is the proxy running and the agent using ANTHROPIC_BASE_URL/OPENAI_BASE_URL?",
                 file=sys.stderr,
             )
@@ -143,7 +143,7 @@ def run_command(args: argparse.Namespace) -> int:
 
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="agentledger",
+        prog="agenticledger",
         description="Agentic Ledger CLI — observable, budgeted agent loops.",
     )
     sub = parser.add_subparsers(dest="subcommand")
@@ -157,7 +157,7 @@ def main(argv: Optional[list] = None) -> int:
     run_p.add_argument("--max-iterations", type=int, default=10)
     run_p.add_argument("--budget", type=float, default=None,
                        help="Stop when the run's total cost (USD) reaches this")
-    run_p.add_argument("--proxy", default=os.environ.get("AGENTLEDGER_URL", "http://localhost:8000"))
+    run_p.add_argument("--proxy", default=os.environ.get("AGENTICLEDGER_URL", "http://localhost:8000"))
     run_p.add_argument("--stop-on-error", action="store_true",
                        help="Stop the loop when the command exits non-zero")
     run_p.add_argument("command", nargs=argparse.REMAINDER,
@@ -166,12 +166,12 @@ def main(argv: Optional[list] = None) -> int:
     sub.add_parser(
         "mcp",
         help="Serve the MCP server over stdio (for Claude Desktop-style "
-             "subprocess configs; reads the ledger DB via AGENTLEDGER_DSN).",
+             "subprocess configs; reads the ledger DB via AGENTICLEDGER_DSN).",
     )
 
     args = parser.parse_args(argv)
     if args.subcommand == "mcp":
-        from agentledger.mcp_stdio import main as mcp_main
+        from agenticledger.mcp_stdio import main as mcp_main
         return mcp_main()
     if args.subcommand != "run":
         parser.print_help()

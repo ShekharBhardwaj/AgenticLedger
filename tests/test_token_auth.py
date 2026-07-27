@@ -1,6 +1,6 @@
 """Tests for scoped, role-based API tokens (auth.py + store token CRUD + endpoints).
 
-Auth is enforced only when AGENTLEDGER_API_KEY is set. The master key grants admin
+Auth is enforced only when AGENTICLEDGER_API_KEY is set. The master key grants admin
 and bootstraps token creation; tokens grant their own role (viewer < editor < admin).
 """
 
@@ -10,8 +10,8 @@ import httpx
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from agentledger.proxy.app import _token_is_valid
-from agentledger.proxy.auth import (
+from agenticledger.proxy.app import _token_is_valid
+from agenticledger.proxy.auth import (
     ROLE_ADMIN,
     ROLE_EDITOR,
     ROLE_VIEWER,
@@ -24,7 +24,7 @@ from agentledger.proxy.auth import (
 
 from .conftest import openai_response
 
-MASTER = {"x-agentledger-api-key": "master-key"}
+MASTER = {"x-agenticledger-api-key": "master-key"}
 
 
 def _bearer(token: str) -> dict:
@@ -92,21 +92,21 @@ async def test_store_token_crud(store):
 # ── Endpoint enforcement (auth enabled via master key) ────────────────────────
 
 def test_master_key_grants_admin(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     assert client.get("/api/sessions", headers=MASTER).status_code == 200
     assert client.get("/api/tokens", headers=MASTER).status_code == 200  # admin-only route
 
 
 def test_no_or_invalid_credential_is_401(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     assert client.get("/api/sessions").status_code == 401
     assert client.get("/api/sessions", headers=_bearer("agl_not-a-real-token")).status_code == 401
 
 
 def test_viewer_token_can_read_but_not_delete_or_manage(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
     viewer = _mint(client, "reader", ROLE_VIEWER)
 
@@ -121,21 +121,21 @@ def test_viewer_token_can_read_but_not_delete_or_manage(proxy, monkeypatch):
 
 
 def test_editor_token_can_delete(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
     editor = _mint(client, "ed", ROLE_EDITOR)
 
     # Capture a call so there's a session to delete.
     client.post("/v1/chat/completions",
                 json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-                headers={"x-agentledger-session-id": "s-del"})
+                headers={"x-agenticledger-session-id": "s-del"})
     resp = client.delete("/api/sessions/s-del", headers=_bearer(editor))
     assert resp.status_code == 200
     assert resp.json()["deleted"] == 1
 
 
 def test_token_is_shown_once_and_secrets_never_listed(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     created = client.post("/api/tokens", json={"name": "svc", "role": "viewer"}, headers=MASTER).json()
     assert created["token"].startswith(TOKEN_PREFIX)
@@ -147,7 +147,7 @@ def test_token_is_shown_once_and_secrets_never_listed(proxy, monkeypatch):
 
 
 def test_revoked_token_is_rejected(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     created = client.post("/api/tokens", json={"name": "tmp", "role": "viewer"}, headers=MASTER).json()
     token, token_id = created["token"], created["token_id"]
@@ -159,7 +159,7 @@ def test_revoked_token_is_rejected(proxy, monkeypatch):
 
 
 def test_create_token_validates_input(proxy, monkeypatch):
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     assert client.post("/api/tokens", json={"role": "viewer"}, headers=MASTER).status_code == 400  # no name
     assert client.post("/api/tokens", json={"name": "x", "role": "root"},
@@ -167,12 +167,12 @@ def test_create_token_validates_input(proxy, monkeypatch):
 
 
 def test_token_via_query_param_and_x_header(proxy, monkeypatch):
-    """Tokens can be presented as ?token= or x-agentledger-token, not only Bearer."""
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    """Tokens can be presented as ?token= or x-agenticledger-token, not only Bearer."""
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     viewer = _mint(client, "q", ROLE_VIEWER)
     assert client.get(f"/api/sessions?token={viewer}").status_code == 200
-    assert client.get("/api/sessions", headers={"x-agentledger-token": viewer}).status_code == 200
+    assert client.get("/api/sessions", headers={"x-agenticledger-token": viewer}).status_code == 200
 
 
 def test_endpoints_open_when_auth_disabled(proxy):
@@ -194,7 +194,7 @@ def test_ws_open_when_auth_disabled(proxy):
 
 def test_ws_rejects_missing_or_invalid_credential(proxy, monkeypatch):
     """When auth is enabled, unauthenticated connects are closed with 1008."""
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     for url in ("/ws", "/ws?api_key=wrong", "/ws?token=agl_not-a-real-token"):
         with pytest.raises(WebSocketDisconnect) as exc, client.websocket_connect(url):
@@ -204,7 +204,7 @@ def test_ws_rejects_missing_or_invalid_credential(proxy, monkeypatch):
 
 def test_ws_accepts_master_key_and_viewer_token(proxy, monkeypatch):
     """The same credentials the dashboard uses (?api_key= / ?token= / Bearer) work."""
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     viewer = _mint(client, "ws-viewer", ROLE_VIEWER)
     with client.websocket_connect("/ws?api_key=master-key"):
@@ -217,12 +217,12 @@ def test_ws_accepts_master_key_and_viewer_token(proxy, monkeypatch):
 
 def test_ws_authenticated_client_receives_call_events(proxy, monkeypatch):
     """An authenticated socket still gets the live call broadcast."""
-    monkeypatch.setenv("AGENTLEDGER_API_KEY", "master-key")
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
     with client.websocket_connect("/ws?api_key=master-key") as ws:
         client.post("/v1/chat/completions",
                     json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-                    headers={"x-agentledger-session-id": "s-ws"})
+                    headers={"x-agenticledger-session-id": "s-ws"})
         event = ws.receive_json()
     assert event["type"] == "call"
     assert event["session_id"] == "s-ws"

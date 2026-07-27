@@ -11,9 +11,9 @@ that leaves the machine, and a **hard spend cap**.
 Start the proxy in front of your provider:
 
 ```bash
-AGENTLEDGER_UPSTREAM_URL=https://api.anthropic.com \
-AGENTLEDGER_BUDGET_DAILY=10.00 \
-python -m agentledger.proxy
+AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com \
+AGENTICLEDGER_BUDGET_DAILY=10.00 \
+python -m agenticledger.proxy
 ```
 
 Then override the **native** provider's `baseUrl` in `~/.openclaw/openclaw.json`
@@ -54,8 +54,8 @@ static `1` is fine for an always-on agent.)
 
 Budgets are enforced **before** the call reaches the provider:
 
-- `AGENTLEDGER_BUDGET_DAILY=10.00` — total across all agents per UTC day.
-- `AGENTLEDGER_BUDGET_SESSION=2.00` — per session.
+- `AGENTICLEDGER_BUDGET_DAILY=10.00` — total across all agents per UTC day.
+- `AGENTICLEDGER_BUDGET_SESSION=2.00` — per session.
 - On breach the proxy returns HTTP 429, which OpenClaw's model fallback
   chain treats as a provider failure — configure a cheap local model as the
   last fallback and the assistant degrades instead of going dark.
@@ -63,20 +63,20 @@ Budgets are enforced **before** the call reaches the provider:
 Add loop guards for runaway tool cycles:
 
 ```bash
-AGENTLEDGER_LOOP_ACTION=block AGENTLEDGER_LOOP_REPEAT_THRESHOLD=4
+AGENTICLEDGER_LOOP_ACTION=block AGENTICLEDGER_LOOP_REPEAT_THRESHOLD=4
 ```
 
 ## Watching an always-on agent
 
 - `/app` — Loop Lens and Sessions with live updates; cache-read columns show
   where context-creep is inflating cost.
-- Alerts — `AGENTLEDGER_ALERT_DAILY_SPEND`, `AGENTLEDGER_ALERT_COST_PER_CALL`,
+- Alerts — `AGENTICLEDGER_ALERT_DAILY_SPEND`, `AGENTICLEDGER_ALERT_COST_PER_CALL`,
   and `loop_flag` webhooks POST to Slack/Discord (or back into an OpenClaw
   channel via a webhook skill).
 - Security ledger — every outbound prompt/response is recorded; after the
   2026 exposed-instance wave, "what did my agent send in the last 24h?" is
   answerable from `GET /export/{session_id}`. A token-spike alert
-  (`AGENTLEDGER_ALERT_COST_PER_CALL`) doubles as an exfiltration tripwire.
+  (`AGENTICLEDGER_ALERT_COST_PER_CALL`) doubles as an exfiltration tripwire.
 
 Known OpenClaw caveat: custom-provider `baseUrl` propagation has an open
 issue (openclaw#2903) — the native-provider override above sidesteps it.

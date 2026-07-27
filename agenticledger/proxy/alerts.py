@@ -1,16 +1,16 @@
 """
 Anomaly detection and webhook alerts.
 
-Agentic Ledger fires a POST to AGENTLEDGER_ALERT_WEBHOOK_URL whenever a
+Agentic Ledger fires a POST to AGENTICLEDGER_ALERT_WEBHOOK_URL whenever a
 threshold is breached. The payload is plain JSON — wire it to Slack,
 PagerDuty, Discord, or your own endpoint on your side.
 
 Thresholds (all optional):
-    AGENTLEDGER_ALERT_WEBHOOK_URL    URL to POST alerts to
-    AGENTLEDGER_ALERT_COST_PER_CALL  Alert if a single call costs more than $X
-    AGENTLEDGER_ALERT_LATENCY_MS     Alert if a single call takes longer than Xms
-    AGENTLEDGER_ALERT_ERROR_RATE     Alert if session error rate exceeds X (0.0–1.0)
-    AGENTLEDGER_ALERT_DAILY_SPEND    Alert (not block) when daily spend crosses $X
+    AGENTICLEDGER_ALERT_WEBHOOK_URL    URL to POST alerts to
+    AGENTICLEDGER_ALERT_COST_PER_CALL  Alert if a single call costs more than $X
+    AGENTICLEDGER_ALERT_LATENCY_MS     Alert if a single call takes longer than Xms
+    AGENTICLEDGER_ALERT_ERROR_RATE     Alert if session error rate exceeds X (0.0–1.0)
+    AGENTICLEDGER_ALERT_DAILY_SPEND    Alert (not block) when daily spend crosses $X
 
 Payload sent to the webhook:
     {
@@ -25,7 +25,7 @@ Payload sent to the webhook:
     }
 
 Slack example — create an incoming webhook and set:
-    AGENTLEDGER_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
+    AGENTICLEDGER_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
 The `message` field maps to Slack's `text` field automatically if you use
 a Slack workflow that reads the JSON body.
 """

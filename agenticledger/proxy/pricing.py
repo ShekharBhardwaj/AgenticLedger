@@ -7,13 +7,13 @@ Update this table as providers change pricing.
 
 User overrides (merged over the built-in table at startup):
 
-  AGENTLEDGER_PRICING       Inline JSON — useful for Docker env vars
+  AGENTICLEDGER_PRICING       Inline JSON — useful for Docker env vars
                             e.g. '{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'
                             A 4-element form also sets cache pricing:
                             '{"my-model": [in, out, cache_read, cache_write]}'
 
-  AGENTLEDGER_PRICING_FILE  Path to a JSON file with the same format
-                            e.g. /etc/agentledger/pricing.json
+  AGENTICLEDGER_PRICING_FILE  Path to a JSON file with the same format
+                            e.g. /etc/agenticledger/pricing.json
 
 Prompt-cache pricing: when a model has no explicit cache entry, provider
 conventions apply — Anthropic bills cache reads at 0.1x and cache writes at
@@ -100,20 +100,20 @@ def _load_overrides() -> None:
     """Merge user-supplied pricing overrides into _PRICES at startup."""
     overrides: dict[str, list] = {}
 
-    env_json = os.environ.get("AGENTLEDGER_PRICING", "").strip()
+    env_json = os.environ.get("AGENTICLEDGER_PRICING", "").strip()
     if env_json:
         try:
             overrides.update(json.loads(env_json))
         except Exception as exc:
-            logger.warning("AGENTLEDGER_PRICING is not valid JSON, ignoring: %s", exc)
+            logger.warning("AGENTICLEDGER_PRICING is not valid JSON, ignoring: %s", exc)
 
-    pricing_file = os.environ.get("AGENTLEDGER_PRICING_FILE", "").strip()
+    pricing_file = os.environ.get("AGENTICLEDGER_PRICING_FILE", "").strip()
     if pricing_file:
         try:
             with open(pricing_file) as f:
                 overrides.update(json.load(f))
         except Exception as exc:
-            logger.warning("AGENTLEDGER_PRICING_FILE could not be loaded, ignoring: %s", exc)
+            logger.warning("AGENTICLEDGER_PRICING_FILE could not be loaded, ignoring: %s", exc)
 
     for model, price in overrides.items():
         try:
@@ -172,7 +172,7 @@ def compute_cost(
             logger.warning(
                 "No pricing for model %r — cost recorded as unknown (not $0). "
                 "Budgets and alerts will not see this spend. Add a rate via "
-                "AGENTLEDGER_PRICING='{\"%s\": [in_per_M, out_per_M]}'.",
+                "AGENTICLEDGER_PRICING='{\"%s\": [in_per_M, out_per_M]}'.",
                 model_id, model_id,
             )
         return None

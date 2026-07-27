@@ -6,7 +6,7 @@ GET /export/{session_id}/report      → Printable HTML report
 
 The JSON export carries an integrity tag over the calls array:
 
-  * If AGENTLEDGER_EXPORT_HMAC_KEY is set, a keyed HMAC-SHA256 ("hmac-sha256:…").
+  * If AGENTICLEDGER_EXPORT_HMAC_KEY is set, a keyed HMAC-SHA256 ("hmac-sha256:…").
     This is tamper-EVIDENT — a recipient holding the key can detect any change, and
     an attacker who edits the calls cannot forge a matching tag without the key.
   * Otherwise a plain SHA-256 checksum ("sha256:…"). A checksum catches accidental
@@ -25,7 +25,7 @@ from typing import Any
 def _integrity_tag(payload: str) -> str:
     """Return a keyed HMAC-SHA256 tag if a key is configured, else a SHA-256 checksum."""
     data = payload.encode()
-    key = os.environ.get("AGENTLEDGER_EXPORT_HMAC_KEY", "").encode()
+    key = os.environ.get("AGENTICLEDGER_EXPORT_HMAC_KEY", "").encode()
     if key:
         return "hmac-sha256:" + hmac.new(key, data, hashlib.sha256).hexdigest()
     return "sha256:" + hashlib.sha256(data).hexdigest()

@@ -1,4 +1,4 @@
-"""Tests for agentledger/proxy/export.py.
+"""Tests for agenticledger/proxy/export.py.
 
 Covers the two pure functions:
 - ``build_export``: builds a structured compliance export with a SHA-256
@@ -15,7 +15,7 @@ import json
 
 import pytest
 
-from agentledger.proxy.export import build_export, render_html_report
+from agenticledger.proxy.export import build_export, render_html_report
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

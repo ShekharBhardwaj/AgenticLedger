@@ -19,8 +19,8 @@ structure the calls themselves reveal:
   fire, and (opt-in) the proxy can circuit-break the session with a 429
   before more budget burns.
 
-Explicit headers always win over inference: x-agentledger-run-id and
-x-agentledger-iteration pin run grouping exactly.
+Explicit headers always win over inference: x-agenticledger-run-id and
+x-agenticledger-iteration pin run grouping exactly.
 
 All state is in-memory and best-effort: a proxy restart forgets chains
 (calls then start new threads), and multi-replica deployments need sticky

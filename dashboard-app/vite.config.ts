@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   base: "/app/",
   build: {
-    outDir: "../agentledger/proxy/static",
+    outDir: "../agenticledger/proxy/static",
     emptyOutDir: true,
   },
   server: {

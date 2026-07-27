@@ -14,18 +14,18 @@ Mounted at POST /mcp in the proxy app. Any MCP-compatible client
 Configure in claude_desktop_config.json:
     {
       "mcpServers": {
-        "agentledger": {
+        "agenticledger": {
           "url": "http://localhost:8000/mcp"
         }
       }
     }
 
-If AGENTLEDGER_API_KEY is set, pass it as a request header:
+If AGENTICLEDGER_API_KEY is set, pass it as a request header:
     {
       "mcpServers": {
-        "agentledger": {
+        "agenticledger": {
           "url": "http://localhost:8000/mcp",
-          "headers": { "x-agentledger-api-key": "your-key" }
+          "headers": { "x-agenticledger-api-key": "your-key" }
         }
       }
     }
@@ -75,7 +75,7 @@ _TOOLS = [
             "properties": {
                 "action_id": {
                     "type": "string",
-                    "description": "The action ID from the x-agentledger-action-id response header.",
+                    "description": "The action ID from the x-agenticledger-action-id response header.",
                 }
             },
             "required": ["action_id"],
@@ -93,7 +93,7 @@ _TOOLS = [
             "properties": {
                 "session_id": {
                     "type": "string",
-                    "description": "The session ID passed via x-agentledger-session-id.",
+                    "description": "The session ID passed via x-agenticledger-session-id.",
                 }
             },
             "required": ["session_id"],
@@ -125,7 +125,7 @@ _TOOLS = [
     {
         "name": "list_runs",
         "description": (
-            "List loop runs (explicit x-agentledger-run-id or auto-inferred "
+            "List loop runs (explicit x-agenticledger-run-id or auto-inferred "
             "fresh-context loops, e.g. Ralph overnight runs) with iterations, "
             "sessions, cost, flagged-call counts, and status "
             "(running / flagged / complete)."
@@ -155,7 +155,7 @@ _TOOLS = [
             "properties": {
                 "run_id": {
                     "type": "string",
-                    "description": "The run ID (from x-agentledger-run-id or /api/runs).",
+                    "description": "The run ID (from x-agenticledger-run-id or /api/runs).",
                 }
             },
             "required": ["run_id"],
@@ -187,7 +187,7 @@ async def handle_mcp(request: Request) -> JSONResponse:
 
 async def dispatch_message(body: dict, store) -> Any:
     """Transport-neutral JSON-RPC dispatch — shared by the HTTP endpoint and
-    the stdio server (`agentledger mcp`). Returns a response dict, or None
+    the stdio server (`agenticledger mcp`). Returns a response dict, or None
     for notifications."""
     method = body.get("method")
     id_ = body.get("id")
@@ -197,7 +197,7 @@ async def dispatch_message(body: dict, store) -> Any:
         return _ok(id_, {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "agentledger", "version": _VERSION},
+            "serverInfo": {"name": "agenticledger", "version": _VERSION},
         })
 
     if method == "notifications/initialized":

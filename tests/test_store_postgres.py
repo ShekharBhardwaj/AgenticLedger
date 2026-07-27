@@ -1,9 +1,9 @@
-"""Postgres-backend regression tests for agentledger/proxy/store.py.
+"""Postgres-backend regression tests for agenticledger/proxy/store.py.
 
 These exercise the production backend against a real Postgres server. They are
-skipped unless ``AGENTLEDGER_TEST_PG_DSN`` is set, e.g.::
+skipped unless ``AGENTICLEDGER_TEST_PG_DSN`` is set, e.g.::
 
-    AGENTLEDGER_TEST_PG_DSN=postgresql://postgres:postgres@127.0.0.1:5432/agentledger_test \\
+    AGENTICLEDGER_TEST_PG_DSN=postgresql://postgres:postgres@127.0.0.1:5432/agenticledger_test \\
         pytest tests/test_store_postgres.py
 
 CI provides this via a Postgres service container.
@@ -22,13 +22,13 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from agentledger.proxy.normalize import CanonicalRequest, CanonicalResponse
-from agentledger.proxy.store import Store
+from agenticledger.proxy.normalize import CanonicalRequest, CanonicalResponse
+from agenticledger.proxy.store import Store
 
-PG_DSN = os.environ.get("AGENTLEDGER_TEST_PG_DSN")
+PG_DSN = os.environ.get("AGENTICLEDGER_TEST_PG_DSN")
 
 pytestmark = pytest.mark.skipif(
-    not PG_DSN, reason="set AGENTLEDGER_TEST_PG_DSN to run Postgres backend tests"
+    not PG_DSN, reason="set AGENTICLEDGER_TEST_PG_DSN to run Postgres backend tests"
 )
 
 
@@ -148,7 +148,7 @@ async def test_audit_crud(pg_store):
 
 async def test_token_crud(pg_store):
     """API token create/get/list/revoke round-trips on Postgres."""
-    from agentledger.proxy.auth import generate_token
+    from agenticledger.proxy.auth import generate_token
 
     raw, token_hash = generate_token()
     await pg_store.create_token("pt1", "ci", token_hash, "editor", time.time(), None)

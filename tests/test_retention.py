@@ -4,7 +4,7 @@ import time
 
 import httpx
 
-from agentledger.proxy.normalize import CanonicalRequest, CanonicalResponse
+from agenticledger.proxy.normalize import CanonicalRequest, CanonicalResponse
 
 from .conftest import openai_response
 
@@ -51,7 +51,7 @@ def test_retention_worker_purges_captured_calls(proxy):
     client.post(
         "/v1/chat/completions",
         json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
-        headers={"x-agentledger-session-id": "s-ret"},
+        headers={"x-agenticledger-session-id": "s-ret"},
     )
 
     # Initially present, then purged by the background worker within a few ticks.

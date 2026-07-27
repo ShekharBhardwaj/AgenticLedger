@@ -8,15 +8,15 @@ WORKDIR /app
 #     `docker build`; when present, it wins.
 #   - A cold build from a plain checkout has only dist/.gitkeep, so the build
 #     falls back to the published release on PyPI. Pin a version with
-#     `--build-arg AGENTLEDGER_VERSION=0.3.4`.
-ARG AGENTLEDGER_VERSION=
+#     `--build-arg AGENTICLEDGER_VERSION=0.3.4`.
+ARG AGENTICLEDGER_VERSION=
 COPY dist/ /tmp/dist/
 RUN set -eu; \
     WHL=$(find /tmp/dist -name '*.whl' | head -n 1); \
     if [ -n "$WHL" ]; then \
         pip install --no-cache-dir "${WHL}[otel]"; \
     else \
-        pip install --no-cache-dir "agentic-ledger[otel]${AGENTLEDGER_VERSION:+==${AGENTLEDGER_VERSION}}"; \
+        pip install --no-cache-dir "agentic-ledger[otel]${AGENTICLEDGER_VERSION:+==${AGENTICLEDGER_VERSION}}"; \
     fi; \
     rm -rf /tmp/dist
 
@@ -24,20 +24,20 @@ RUN set -eu; \
 # volume) is owned by that user; named volumes inherit this ownership on first
 # mount. Bind mounts on Linux hosts need `chown 10001` on the host directory —
 # see docs/deployment.md.
-RUN useradd --uid 10001 --create-home --home-dir /home/agentledger --shell /usr/sbin/nologin agentledger \
+RUN useradd --uid 10001 --create-home --home-dir /home/agenticledger --shell /usr/sbin/nologin agenticledger \
     && mkdir -p /data \
-    && chown agentledger:agentledger /data
-USER agentledger
+    && chown agenticledger:agenticledger /data
+USER agenticledger
 
-ENV AGENTLEDGER_HOST=0.0.0.0
-ENV AGENTLEDGER_PORT=8000
-ENV AGENTLEDGER_DSN=sqlite:////data/agentledger.db
-ENV AGENTLEDGER_UPSTREAM_URL=https://api.openai.com
+ENV AGENTICLEDGER_HOST=0.0.0.0
+ENV AGENTICLEDGER_PORT=8000
+ENV AGENTICLEDGER_DSN=sqlite:////data/agenticledger.db
+ENV AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com
 
 VOLUME ["/data"]
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('AGENTLEDGER_PORT', '8000') + '/health', timeout=4)"]
+    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('AGENTICLEDGER_PORT', '8000') + '/health', timeout=4)"]
 
-CMD ["python", "-m", "agentledger.proxy"]
+CMD ["python", "-m", "agenticledger.proxy"]

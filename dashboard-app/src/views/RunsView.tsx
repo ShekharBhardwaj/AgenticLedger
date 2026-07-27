@@ -85,8 +85,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             No loop runs yet.
             <br />
             <span className="muted">
-              Start one with <code>agentledger run -- …</code> or send
-              x-agentledger-run-id headers.
+              Start one with <code>agenticledger run -- …</code> or send
+              x-agenticledger-run-id headers.
             </span>
           </div>
         )}

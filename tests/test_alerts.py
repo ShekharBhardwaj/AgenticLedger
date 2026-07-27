@@ -1,4 +1,4 @@
-"""Tests for agentledger.proxy.alerts.check_and_fire.
+"""Tests for agenticledger.proxy.alerts.check_and_fire.
 
 The module fires a webhook POST whenever a configured threshold is breached.
 We monkeypatch ``alerts._fire`` with an async collector so nothing touches the
@@ -15,9 +15,9 @@ import time
 
 import pytest
 
-from agentledger.proxy import alerts as alerts_mod
-from agentledger.proxy.alerts import AlertConfig, check_and_fire
-from agentledger.proxy.normalize import (
+from agenticledger.proxy import alerts as alerts_mod
+from agenticledger.proxy.alerts import AlertConfig, check_and_fire
+from agenticledger.proxy.normalize import (
     CanonicalRequest,
     normalize_response,
 )

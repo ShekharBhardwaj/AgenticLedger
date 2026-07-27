@@ -4,12 +4,12 @@ Capture-time data governance: redaction and capture levels.
 Agentic Ledger captures full prompts and responses by default. For privacy-sensitive
 or regulated deployments, two controls reduce what is stored (and traced/broadcast):
 
-* **Capture level** (``AGENTLEDGER_CAPTURE_LEVEL``):
+* **Capture level** (``AGENTICLEDGER_CAPTURE_LEVEL``):
     - ``full``     — store everything (default), with redaction applied if configured.
     - ``metadata`` — store only metrics/metadata (model, tokens, cost, latency, agent,
                      status); strip messages, system prompt, response content, and tools.
 
-* **Redaction** (``AGENTLEDGER_REDACT`` + ``AGENTLEDGER_REDACT_PATTERNS``): replace PII /
+* **Redaction** (``AGENTICLEDGER_REDACT`` + ``AGENTICLEDGER_REDACT_PATTERNS``): replace PII /
   secrets in captured text with ``[REDACTED:<label>]`` before anything is persisted.
 
 Crucially, these transform only the captured/stored copy — the agent always receives
@@ -99,7 +99,7 @@ def build_redactor(redact_spec: str = "", patterns_spec: str = "") -> Optional[R
             for label, pattern in items:
                 custom.append((label, re.compile(pattern)))
         except Exception as exc:
-            logger.warning("AGENTLEDGER_REDACT_PATTERNS ignored (invalid): %s", exc)
+            logger.warning("AGENTICLEDGER_REDACT_PATTERNS ignored (invalid): %s", exc)
 
     if not categories and not custom:
         return None
@@ -109,7 +109,7 @@ def build_redactor(redact_spec: str = "", patterns_spec: str = "") -> Optional[R
 def normalize_capture_level(level: Optional[str]) -> str:
     level = (level or CAPTURE_FULL).strip().lower()
     if level not in CAPTURE_LEVELS:
-        logger.warning("Unknown AGENTLEDGER_CAPTURE_LEVEL %r — using 'full'", level)
+        logger.warning("Unknown AGENTICLEDGER_CAPTURE_LEVEL %r — using 'full'", level)
         return CAPTURE_FULL
     return level
 

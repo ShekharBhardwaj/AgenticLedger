@@ -56,7 +56,7 @@ def test_capture_failure_is_failopen_and_counted(proxy):
     resp = client.post(
         "/v1/chat/completions",
         json={"model": "gpt-4o", "messages": [{"role": "user", "content": "ping"}]},
-        headers={"x-agentledger-session-id": "s1"},
+        headers={"x-agenticledger-session-id": "s1"},
     )
     # Fail-open: the upstream response is still returned unmodified.
     assert resp.status_code == 200
