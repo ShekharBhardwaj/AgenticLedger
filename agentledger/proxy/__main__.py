@@ -62,6 +62,7 @@ Reads config from environment variables:
 
 import logging
 import os
+import sys
 
 import uvicorn
 
@@ -142,6 +143,20 @@ app = create_app(
     loop_repeat_threshold=int(os.environ.get("AGENTLEDGER_LOOP_REPEAT_THRESHOLD", "3")),
     loop_run_gap_seconds=float(os.environ.get("AGENTLEDGER_LOOP_RUN_GAP_SECONDS", "900")),
     completion_promise=os.environ.get("AGENTLEDGER_COMPLETION_PROMISE") or None,
+)
+
+try:
+    from importlib.metadata import version as _pkg_version
+    _version = _pkg_version("agentic-ledger")
+except Exception:
+    _version = "0.0.0"
+# Version banner so testers can see at a glance what they are running —
+# a stale venv silently serving an old release looks identical otherwise.
+print(
+    f"Agentic Ledger v{_version} — proxying {upstream_url} — "
+    f"dashboard: http://{'localhost' if host == '0.0.0.0' else host}:{port}",
+    file=sys.stderr,
+    flush=True,
 )
 
 _logger = logging.getLogger("agentledger")

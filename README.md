@@ -63,7 +63,7 @@ AGENTLEDGER_UPSTREAM_URL=https://api.openai.com uv run python -m agentledger.pro
 With `pip`:
 ```bash
 python -m venv venv && source venv/bin/activate
-pip install agentic-ledger
+pip install -U agentic-ledger
 AGENTLEDGER_UPSTREAM_URL=https://api.openai.com ./venv/bin/python -m agentledger.proxy
 ```
 
@@ -753,6 +753,13 @@ This runs three jobs:
 ---
 
 ## Troubleshooting
+
+**Old version / still says "AgentLedger" at startup** — you're running a
+pre-0.3 release from a venv that already had the package installed: plain
+`pip install agentic-ledger` says "requirement already satisfied" and does
+NOT upgrade. Run `pip install -U agentic-ledger` and restart. The proxy
+prints its version on the first line at startup, and `curl
+localhost:8000/health` reports it too — 0.3.x is current.
 
 **`incompatible architecture (have 'arm64', need 'x86_64')`** on macOS — your
 terminal is running under Rosetta, so Python picks its x86_64 slice while pip
