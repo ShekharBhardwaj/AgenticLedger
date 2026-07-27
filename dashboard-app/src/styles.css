@@ -45,6 +45,9 @@ body {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--green); box-shadow: 0 0 6px var(--green);
 }
+.live-dot.down {
+  background: #e5484d; box-shadow: 0 0 6px rgba(229, 72, 77, 0.6);
+}
 
 .layout { display: flex; flex: 1; min-height: 0; }
 .sidebar {

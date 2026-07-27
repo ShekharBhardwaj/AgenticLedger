@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { connectionStatus } from "./api";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
 
@@ -27,6 +28,8 @@ function Logo({ size = 24 }: { size?: number }) {
 export default function App() {
   const [tab, setTab] = useState<Tab>("runs");
   const [focusSession, setFocusSession] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
+  useEffect(() => connectionStatus(setLive), []);
 
   const openSession = (sessionId: string) => {
     setFocusSession(sessionId);
@@ -52,7 +55,10 @@ export default function App() {
           </a>
         </div>
         <span className="spacer" />
-        <span className="live-dot" title="live via WebSocket" />
+        <span
+          className={`live-dot ${live ? "" : "down"}`}
+          title={live ? "live via WebSocket" : "disconnected — proxy unreachable, retrying"}
+        />
       </div>
       {tab === "runs" ? (
         <RunsView onOpenSession={openSession} />

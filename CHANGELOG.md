@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The header's live dot now tells the truth.** It was static CSS — green
+  forever, even with the proxy shut down (dogfood report). It now tracks
+  the WebSocket connection state: green while connected, red with a
+  "disconnected — proxy unreachable, retrying" tooltip while down, and it
+  recovers automatically when the proxy comes back.
+
 ### Added
 - **OTLP `http/protobuf` ingest.** `/v1/traces` and `/v1/logs` now accept
   the protobuf encoding alongside JSON (needs `opentelemetry-proto`,

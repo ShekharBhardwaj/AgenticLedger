@@ -103,6 +103,27 @@ export interface Call {
   loop_flags: string | null;
 }
 
+// Connection status shared by every live socket — the header dot listens
+// here so it reflects reality (green only while at least one /ws socket is
+// actually open, red while disconnected and retrying).
+const statusListeners = new Set<(up: boolean) => void>();
+let openSockets = 0;
+
+function notifyStatus() {
+  const up = openSockets > 0;
+  statusListeners.forEach((l) => l(up));
+}
+
+/** Subscribe to live-connection status; fires immediately with the current
+ *  state and returns an unsubscribe function. */
+export function connectionStatus(listener: (up: boolean) => void): () => void {
+  statusListeners.add(listener);
+  listener(openSockets > 0);
+  return () => {
+    statusListeners.delete(listener);
+  };
+}
+
 /** Subscribe to live call events; returns an unsubscribe function. */
 export function liveUpdates(onEvent: () => void): () => void {
   let ws: WebSocket | null = null;
@@ -114,11 +135,22 @@ export function liveUpdates(onEvent: () => void): () => void {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const key = apiKey ? `?token=${encodeURIComponent(apiKey)}` : "";
     ws = new WebSocket(`${proto}://${window.location.host}/ws${key}`);
+    let counted = false;
+    ws.onopen = () => {
+      counted = true;
+      openSockets += 1;
+      notifyStatus();
+    };
     ws.onmessage = () => {
       window.clearTimeout(debounce);
       debounce = window.setTimeout(onEvent, 400);
     };
     ws.onclose = () => {
+      if (counted) {
+        counted = false;
+        openSockets -= 1;
+        notifyStatus();
+      }
       if (!closed) window.setTimeout(connect, 3000);
     };
   };
