@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-28
+
 ### Security
 - **Cleared all CodeQL path-injection alerts in SPA asset serving.** The
   asset route validated containment with a prefix `startswith` check (the
