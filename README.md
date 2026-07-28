@@ -275,6 +275,7 @@ Every LLM call is stored with:
 | `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete`) — poll this from loop scripts |
 | `GET` | `/api/sessions/{session_id}/tools` | Derived tool executions — each tool call paired with its result, latency, and error status |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
+| `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, per-agent totals |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |
 | `GET` | `/explain/{action_id}` | Single call by action ID |
@@ -416,6 +417,7 @@ Once connected, you can ask your assistant things like:
 | Variable | Default | Description |
 |---|---|---|
 | `AGENTICLEDGER_ALERT_WEBHOOK_URL` | _(none)_ | URL to POST alert payloads to. Required for any alerts to fire. |
+| `AGENTICLEDGER_DIGEST_HOUR` | _(off)_ | UTC hour (0–23) to POST a daily spend digest — last 24h totals, cache savings, top models/agents — to the alert webhook. Slack-incoming-webhook friendly (`text`). |
 | `AGENTICLEDGER_ALERT_COST_PER_CALL` | _(none)_ | Alert when a single call costs more than `$X`. |
 | `AGENTICLEDGER_ALERT_LATENCY_MS` | _(none)_ | Alert when a single call takes longer than `Xms`. |
 | `AGENTICLEDGER_ALERT_ERROR_RATE` | _(none)_ | Alert when session error rate exceeds `X` (e.g. `0.5` = 50%). |

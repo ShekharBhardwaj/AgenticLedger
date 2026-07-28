@@ -45,6 +45,8 @@ Reads config from environment variables:
 
   Alerts (POST to webhook on threshold breach — does not block calls):
     AGENTICLEDGER_ALERT_WEBHOOK_URL     Webhook URL for alerts (default: none)
+    AGENTICLEDGER_DIGEST_HOUR           UTC hour (0-23) to POST a daily spend digest for the
+                                        last 24h to the alert webhook (default: off)
     AGENTICLEDGER_ALERT_COST_PER_CALL   Alert if single call costs more than $X (default: none)
     AGENTICLEDGER_ALERT_LATENCY_MS      Alert if single call takes longer than Xms (default: none)
     AGENTICLEDGER_ALERT_ERROR_RATE      Alert if session error rate exceeds X, e.g. 0.5 (default: none)
@@ -143,6 +145,7 @@ app = create_app(
     loop_repeat_threshold=int(os.environ.get("AGENTICLEDGER_LOOP_REPEAT_THRESHOLD", "3")),
     loop_run_gap_seconds=float(os.environ.get("AGENTICLEDGER_LOOP_RUN_GAP_SECONDS", "900")),
     completion_promise=os.environ.get("AGENTICLEDGER_COMPLETION_PROMISE") or None,
+    digest_hour=int(os.environ["AGENTICLEDGER_DIGEST_HOUR"]) if os.environ.get("AGENTICLEDGER_DIGEST_HOUR") else None,
 )
 
 try:

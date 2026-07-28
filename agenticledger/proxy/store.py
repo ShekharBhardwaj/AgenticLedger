@@ -200,6 +200,13 @@ class Store(ABC):
     async def get_period_cost(self, since_ts: float) -> float: ...
 
     @abstractmethod
+    async def get_report_aggregates(self, since_ts: float) -> dict[str, list[dict[str, Any]]]:
+        """Raw per-day / per-model / per-agent aggregates for calls at or
+        after since_ts — the input to reports.build_report(). Days are UTC
+        'YYYY-MM-DD' strings."""
+        ...
+
+    @abstractmethod
     async def delete_session(self, session_id: str) -> int:
         """Delete all calls for a session. Returns number of rows deleted."""
         ...
@@ -547,6 +554,56 @@ class _SqliteStore(Store):
         ) as cur:
             row = await cur.fetchone()
         return float(row[0]) if row else 0.0
+
+    async def get_report_aggregates(self, since_ts: float) -> dict[str, list[dict[str, Any]]]:
+        async with self._db.execute(
+            """
+            SELECT
+                date(timestamp, 'unixepoch')         AS day,
+                COUNT(*)                             AS call_count,
+                SUM(COALESCE(cost_usd, 0))           AS cost_usd,
+                SUM(COALESCE(tokens_in, 0))          AS tokens_in,
+                SUM(COALESCE(tokens_out, 0))         AS tokens_out,
+                SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
+                SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
+                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
+            FROM llm_calls WHERE timestamp >= ?
+            GROUP BY day ORDER BY day
+            """,
+            (since_ts,),
+        ) as cur:
+            daily = [dict(r) for r in await cur.fetchall()]
+        async with self._db.execute(
+            """
+            SELECT
+                model_id,
+                provider,
+                COUNT(*)                             AS call_count,
+                SUM(COALESCE(cost_usd, 0))           AS cost_usd,
+                SUM(COALESCE(tokens_in, 0))          AS tokens_in,
+                SUM(COALESCE(tokens_out, 0))         AS tokens_out,
+                SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
+                SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens
+            FROM llm_calls WHERE timestamp >= ?
+            GROUP BY model_id, provider ORDER BY cost_usd DESC
+            """,
+            (since_ts,),
+        ) as cur:
+            models = [dict(r) for r in await cur.fetchall()]
+        async with self._db.execute(
+            """
+            SELECT
+                COALESCE(agent_name, '(unattributed)') AS agent_name,
+                COUNT(*)                               AS call_count,
+                SUM(COALESCE(cost_usd, 0))             AS cost_usd,
+                COUNT(DISTINCT session_id)             AS session_count
+            FROM llm_calls WHERE timestamp >= ?
+            GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY cost_usd DESC
+            """,
+            (since_ts,),
+        ) as cur:
+            agents = [dict(r) for r in await cur.fetchall()]
+        return {"daily": daily, "models": models, "agents": agents}
 
     async def delete_session(self, session_id: str) -> int:
         async with self._db.execute(
@@ -989,6 +1046,62 @@ class _PostgresStore(Store):
                 since,
             )
         return float(val or 0)
+
+    async def get_report_aggregates(self, since_ts: float) -> dict[str, list[dict[str, Any]]]:
+        import datetime as _dt
+        since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
+        async with self._pool.acquire() as conn:
+            daily = [dict(r) for r in await conn.fetch(
+                """
+                SELECT
+                    to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+                    COUNT(*)                             AS call_count,
+                    SUM(COALESCE(cost_usd, 0))           AS cost_usd,
+                    SUM(COALESCE(tokens_in, 0))          AS tokens_in,
+                    SUM(COALESCE(tokens_out, 0))         AS tokens_out,
+                    SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
+                    SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
+                    SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
+                FROM llm_calls WHERE timestamp >= $1
+                GROUP BY day ORDER BY day
+                """,
+                since,
+            )]
+            models = [dict(r) for r in await conn.fetch(
+                """
+                SELECT
+                    model_id,
+                    provider,
+                    COUNT(*)                             AS call_count,
+                    SUM(COALESCE(cost_usd, 0))           AS cost_usd,
+                    SUM(COALESCE(tokens_in, 0))          AS tokens_in,
+                    SUM(COALESCE(tokens_out, 0))         AS tokens_out,
+                    SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
+                    SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens
+                FROM llm_calls WHERE timestamp >= $1
+                GROUP BY model_id, provider ORDER BY 4 DESC
+                """,
+                since,
+            )]
+            agents = [dict(r) for r in await conn.fetch(
+                """
+                SELECT
+                    COALESCE(agent_name, '(unattributed)') AS agent_name,
+                    COUNT(*)                               AS call_count,
+                    SUM(COALESCE(cost_usd, 0))             AS cost_usd,
+                    COUNT(DISTINCT session_id)             AS session_count
+                FROM llm_calls WHERE timestamp >= $1
+                GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY 3 DESC
+                """,
+                since,
+            )]
+        # asyncpg returns Decimal for SUM over double columns is fine (floats),
+        # but normalize numerics so JSON encoding never trips.
+        for rows in (daily, models, agents):
+            for r in rows:
+                if r.get("cost_usd") is not None:
+                    r["cost_usd"] = float(r["cost_usd"])
+        return {"daily": daily, "models": models, "agents": agents}
 
     async def delete_session(self, session_id: str) -> int:
         async with self._pool.acquire() as conn:

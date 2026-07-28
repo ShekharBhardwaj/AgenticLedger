@@ -53,6 +53,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSoc
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from .alerts import AlertConfig, check_and_fire
+from .reports import build_report, digest_text
 from .auth import (
     ROLE_ADMIN,
     ROLE_EDITOR,
@@ -199,6 +200,7 @@ def create_app(
     loop_repeat_threshold: int = DEFAULT_REPEAT_THRESHOLD,
     loop_run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
     completion_promise: Optional[str] = None,
+    digest_hour: Optional[int] = None,   # UTC hour (0-23) for the daily digest webhook
 ) -> FastAPI:
 
     broadcaster = _Broadcaster()
@@ -244,7 +246,14 @@ def create_app(
         retention_task: Optional[asyncio.Task] = None
         if _retention_days is not None:
             retention_task = asyncio.create_task(_retention_worker(app))
+        digest_task: Optional[asyncio.Task] = None
+        if digest_hour is not None and _alert_config.webhook_url:
+            digest_task = asyncio.create_task(_digest_worker(app))
         yield
+        if digest_task is not None:
+            digest_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await digest_task
         if retention_task is not None:
             retention_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -376,6 +385,28 @@ def create_app(
             except Exception:
                 logger.warning("Retention purge failed", exc_info=True)
             await asyncio.sleep(_retention_interval)
+
+    async def _digest_worker(app: FastAPI) -> None:
+        """Once a day at digest_hour UTC, post a spend digest for the last
+        24h to the alert webhook (Slack-incoming-webhook friendly `text`)."""
+        import datetime as _dt
+        from .alerts import _fire
+        while True:
+            now = _dt.datetime.now(_dt.timezone.utc)
+            target = now.replace(hour=digest_hour, minute=0, second=0, microsecond=0)
+            if target <= now:
+                target += _dt.timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            try:
+                raw = await app.state.store.get_report_aggregates(time.time() - 86400)
+                report = build_report(raw["daily"], raw["models"], raw["agents"], days=1)
+                await _fire(_alert_config.webhook_url, {
+                    "type": "daily_digest",
+                    "text": digest_text(report, hours=24),
+                    "totals": report["totals"],
+                })
+            except Exception:
+                logger.warning("Daily digest failed", exc_info=True)
 
     async def _capture(job: _CaptureJob) -> None:
         """Persist a captured call — enqueued (async mode) or inline (sync mode)."""
@@ -571,6 +602,16 @@ def create_app(
         await _require(request, ROLE_VIEWER)
         runs = await request.app.state.store.list_runs()
         return JSONResponse([_with_run_status(r) for r in runs])
+
+    @app.get("/api/reports")
+    async def api_reports(request: Request, days: int = 30) -> JSONResponse:
+        """Spend insights over the window: daily trend, model mix with
+        signed cache savings, and per-agent totals."""
+        await _require(request, ROLE_VIEWER)
+        days = max(1, min(days, 365))
+        raw = await request.app.state.store.get_report_aggregates(
+            time.time() - days * 86400)
+        return JSONResponse(build_report(raw["daily"], raw["models"], raw["agents"], days))
 
     @app.get("/api/sessions/{session_id}/tools")
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:

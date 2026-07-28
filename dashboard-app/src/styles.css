@@ -49,6 +49,18 @@ body {
   background: #e5484d; box-shadow: 0 0 6px rgba(229, 72, 77, 0.6);
 }
 
+/* Reports view */
+.reports { padding: 16px 20px; overflow-y: auto; }
+.mono { font-family: var(--mono); }
+.rtable { width: 100%; border-collapse: collapse; margin: 8px 0 20px; font-size: 13px; }
+.rtable th {
+  text-align: left; color: var(--text-dim); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+}
+.rtable td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+.rtable tr:hover td { background: var(--bg-hover); }
+
 .layout { display: flex; flex: 1; min-height: 0; }
 .sidebar {
   width: 340px; min-width: 260px; overflow-y: auto;

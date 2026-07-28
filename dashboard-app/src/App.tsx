@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { connectionStatus } from "./api";
+import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
 
-type Tab = "runs" | "sessions";
+type Tab = "runs" | "sessions" | "reports";
 
 /** Abstract raccoon mark: geometric head, triangle ears, and the signature
  *  mask band in accent blue with punched-out eyes. Flat, two-tone — a nod to
@@ -50,6 +51,9 @@ export default function App() {
           <button className={`tab ${tab === "sessions" ? "active" : ""}`} onClick={() => setTab("sessions")}>
             Sessions
           </button>
+          <button className={`tab ${tab === "reports" ? "active" : ""}`} onClick={() => setTab("reports")}>
+            Reports
+          </button>
           <a className="tab" href="/classic" title="The original single-file dashboard">
             Classic
           </a>
@@ -62,6 +66,8 @@ export default function App() {
       </div>
       {tab === "runs" ? (
         <RunsView onOpenSession={openSession} />
+      ) : tab === "reports" ? (
+        <ReportsView />
       ) : (
         <SessionsView focusSession={focusSession} />
       )}

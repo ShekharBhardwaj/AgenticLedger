@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Reports view — where your money goes.** New tab in the web app (and
+  `GET /api/reports?days=N`): spend per day, model mix, per-agent totals,
+  and **signed cache savings** — what your prompt-cache traffic would have
+  cost at full input rates minus what it actually cost, per provider
+  convention. Heavy cache writes that never get read back show up as a net
+  cost rather than being clamped to zero.
+- **Daily digest webhook.** Set `AGENTICLEDGER_DIGEST_HOUR` (UTC hour) and
+  the proxy POSTs a last-24h summary — spend, calls, cache savings, top
+  models and agents — to `AGENTICLEDGER_ALERT_WEBHOOK_URL`, formatted to
+  render nicely in a Slack incoming webhook.
+
 ### Fixed
 - **The header's live dot now tells the truth.** It was static CSS — green
   forever, even with the proxy shut down (dogfood report). It now tracks
