@@ -23,7 +23,9 @@ Endpoints:
     GET  /                             Dashboard (live via WebSocket)
     GET  /api/sessions                 List recent sessions
     GET  /api/runs                     List loop runs (explicit or inferred)
+    GET  /api/reports?days=N           Spend insights: daily trend, model mix, cache savings
     GET  /api/search?q=...             Full-text search across calls
+    POST /v1/traces                    OTLP/HTTP ingest (JSON + protobuf) — GenAI spans
     GET  /explain/{action_id}          Single captured call
     GET  /session/{session_id}         All calls in a run, ordered by time
     GET  /export/{session_id}          JSON compliance export

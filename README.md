@@ -140,8 +140,9 @@ http://localhost:8000
 
 The web app updates live via WebSocket as calls come in. No refresh needed.
 
-- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, per-iteration breakdowns, and plain-English explanations of every flag
-- **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine
+- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas — the change-the-prompt-and-rerun workflow.
+- **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Hover a session card for one-click delete.
+- **Reports** — where the money goes: spend per day, model mix, per-agent totals, and **cache savings** — what your prompt-cache traffic would have cost at full input rates versus what it actually cost (signed: caching that costs more than it saves shows in red)
 - **Search** — full-text across prompts, outputs, and agents
 
 The classic single-file dashboard remains at `http://localhost:8000/classic`:
@@ -194,6 +195,10 @@ agent prints the completion promise in a response, run status flips to
 `complete` and the loop exits with a cost/token summary. Any existing loop
 script works too — poll `GET /api/runs/{run_id}` yourself, or let the proxy's
 budgets (`AGENTICLEDGER_BUDGET_DAILY=25.00`) hard-stop a runaway loop.
+
+Iterating on the prompt? Rerun and use **⇆ compare** in the Loop Lens to diff
+the two runs — cost, iterations, calls, and flags side by side — so "did the
+new prompt actually help" gets a number instead of a feeling.
 
 The same recipe works for any client with a base-URL override (Codex CLI,
 opencode, OpenClaw, LiteLLM-based stacks) — set the OpenAI/Anthropic base URL
@@ -648,7 +653,7 @@ Agentic Ledger fires a `POST` to your webhook URL when a threshold is breached. 
 - **Budgets** (`AGENTICLEDGER_BUDGET_*`) — block the call before it reaches the LLM. Agent gets HTTP 429.
 - **Alerts** (`AGENTICLEDGER_ALERT_*`) — the call goes through, you get notified after.
 
-**Slack** — create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) and point `AGENTICLEDGER_ALERT_WEBHOOK_URL` at it.
+**Slack** — create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) and point `AGENTICLEDGER_ALERT_WEBHOOK_URL` at it. Add `AGENTICLEDGER_DIGEST_HOUR=8` and the same webhook also gets a daily good-morning digest: last-24h spend, cache savings, and the top models and agents.
 
 **PagerDuty** — use the [Events API v2](https://developer.pagerduty.com/docs/events-api-v2/) URL or a thin adapter that maps `type` → PagerDuty severity.
 
