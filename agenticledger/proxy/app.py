@@ -53,7 +53,6 @@ from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSoc
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from .alerts import AlertConfig, check_and_fire
-from .reports import build_report, digest_text
 from .auth import (
     ROLE_ADMIN,
     ROLE_EDITOR,
@@ -81,6 +80,7 @@ from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import Redactor, apply_capture_policy, normalize_capture_level
+from .reports import build_report, digest_text
 from .store import Store
 from .stream import detect_stream_error, reconstruct_from_sse
 
@@ -390,6 +390,7 @@ def create_app(
         """Once a day at digest_hour UTC, post a spend digest for the last
         24h to the alert webhook (Slack-incoming-webhook friendly `text`)."""
         import datetime as _dt
+
         from .alerts import _fire
         while True:
             now = _dt.datetime.now(_dt.timezone.utc)
