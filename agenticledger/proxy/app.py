@@ -43,6 +43,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -568,10 +569,14 @@ def create_app(
     @app.get("/app/assets/{filename}")
     async def spa_asset(filename: str) -> FileResponse:
         # Hashed build artifacts (js/css) — no data inside, served ungated so
-        # the browser can load them without credential plumbing.
+        # the browser can load them without credential plumbing. Vite emits
+        # single-segment names like index-B3hH8DVD.js; anything with a path
+        # separator or dot-segment is not one of ours.
+        if not re.fullmatch(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9]+)+", filename) or ".." in filename:
+            raise HTTPException(status_code=404)
         asset_dir = (_SPA_DIR / "assets").resolve()
         target = (asset_dir / filename).resolve()
-        if not str(target).startswith(str(asset_dir)) or not target.is_file():
+        if not target.is_relative_to(asset_dir) or not target.is_file():
             raise HTTPException(status_code=404)
         return FileResponse(target)
 

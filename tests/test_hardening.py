@@ -9,6 +9,8 @@
 import hashlib
 import json
 
+import pytest
+
 from agenticledger.proxy.export import build_export
 from agenticledger.proxy.ratelimit import RateLimitConfig, RateLimiter
 
@@ -98,3 +100,28 @@ def test_hmac_depends_on_key_and_is_tamper_evident(monkeypatch):
     tampered[0]["cost_usd"] = 999.0
     tag_tampered = build_export("s1", tampered)["export"]["integrity"]
     assert tag_tampered != tag_k2
+
+
+# ── SPA asset serving — path containment (CodeQL py/path-injection) ──────────
+
+def test_spa_asset_traversal_blocked(proxy):
+    """Single-segment names that aren't hashed build files 404 before
+    touching disk. Encoded multi-segment traversals decode to paths that no
+    longer match the asset route — they fall through to the upstream proxy
+    catch-all — and must never leak local file contents either way."""
+    client = proxy()
+    for evil in ("no-extension", "a..b.js", "evil..js", "..js"):
+        assert client.get(f"/app/assets/{evil}").status_code == 404
+    for evil in ("..%2F..%2F..%2Fpyproject.toml", "%2e%2e%2f%2e%2e%2fapp.py"):
+        resp = client.get(f"/app/assets/{evil}")
+        assert "[build-system]" not in resp.text   # pyproject.toml marker
+        assert "def create_app" not in resp.text   # app.py marker
+
+
+def test_spa_asset_serves_built_files(proxy):
+    from agenticledger.proxy.app import _SPA_DIR
+    assets = sorted((_SPA_DIR / "assets").glob("*.js"))
+    if not assets:
+        pytest.skip("SPA not built in this checkout")
+    client = proxy()
+    assert client.get(f"/app/assets/{assets[0].name}").status_code == 200
