@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-28
+
 ### Added
 - **Reports view — where your money goes.** New tab in the web app (and
   `GET /api/reports?days=N`): spend per day, model mix, per-agent totals,
