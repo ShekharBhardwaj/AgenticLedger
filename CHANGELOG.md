@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the proxy POSTs a last-24h summary — spend, calls, cache savings, top
   models and agents — to `AGENTICLEDGER_ALERT_WEBHOOK_URL`, formatted to
   render nicely in a Slack incoming webhook.
+- **Run comparison in Loop Lens.** Pick any two runs with the new ⇆ toggle
+  and get a side-by-side diff — cost, iterations, calls, tokens, flagged
+  calls, duration, each with a signed delta and percentage — plus both
+  cost-per-iteration ribbons on one shared scale. Built for the
+  change-the-prompt-and-rerun workflow: did the new run actually get
+  cheaper, shorter, and cleaner?
 
 ### Fixed
 - **The header's live dot now tells the truth.** It was static CSS — green

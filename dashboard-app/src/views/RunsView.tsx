@@ -3,6 +3,7 @@ import {
   FlaggedCall, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get, Iteration,
   liveUpdates, Run,
 } from "../api";
+import CompareView from "./CompareView";
 
 function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (s: string) => void }) {
   const names: string[] = JSON.parse(flag.loop_flags);
@@ -49,6 +50,11 @@ function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (
 export default function RunsView({ onOpenSession }: { onOpenSession: (s: string) => void }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [compare, setCompare] = useState<string[]>([]);
+  const toggleCompare = (id: string) =>
+    setCompare((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur.slice(-1), id],
+    );
   const [detail, setDetail] = useState<Run | null>(null);
   const [iterations, setIterations] = useState<Iteration[]>([]);
   const [flags, setFlags] = useState<FlaggedCall[]>([]);
@@ -96,6 +102,15 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             className={`card ${selected === r.run_id ? "selected" : ""}`}
             onClick={() => setSelected(r.run_id)}
           >
+            <button
+              className={`card-cmp ${compare.includes(r.run_id) ? "on" : ""}`}
+              title={compare.includes(r.run_id)
+                ? "Remove from comparison"
+                : "Compare this run (pick two)"}
+              onClick={(e) => { e.stopPropagation(); toggleCompare(r.run_id); }}
+            >
+              ⇆
+            </button>
             <div className="card-title">
               {r.run_id} <span className={`badge ${r.status}`}>{r.status}</span>
             </div>
@@ -110,8 +125,19 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
       </div>
 
       <div className="main">
-        {!detail ? (
-          <div className="empty">Select a run to open the Loop Lens.</div>
+        {compare.length === 2 ? (
+          <CompareView
+            a={compare[0]}
+            b={compare[1]}
+            onClose={() => setCompare([])}
+            onOpenSession={onOpenSession}
+          />
+        ) : !detail ? (
+          <div className="empty">
+            {compare.length === 1
+              ? <>Pick a second run with <span className="mono">⇆</span> to compare.</>
+              : "Select a run to open the Loop Lens."}
+          </div>
         ) : (
           <>
             <h2 className="page-title">
