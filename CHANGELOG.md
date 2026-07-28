@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Cleared all CodeQL path-injection alerts in SPA asset serving.** The
+  asset route validated containment with a prefix `startswith` check (the
+  sibling-directory bypass shape). Assets are now served by exact-name
+  lookup against the directory listing — the request name is only ever a
+  dictionary key, so user input never becomes a filesystem path. Behavior
+  is strictly tighter: only files literally present in the build output
+  can be served. Code scanning now reports zero open alerts.
+
 ## [0.5.0] - 2026-07-28
 
 ### Added
