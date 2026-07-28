@@ -85,6 +85,13 @@ body {
 .diff-del { background: rgba(229, 72, 77, 0.14); }
 .diff-add-key { color: var(--green); }
 .diff-del-key { color: #e5484d; }
+.diff-fold {
+  color: var(--text-dim); text-align: center; font-size: 11px;
+  border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border);
+  margin: 2px 0; padding: 1px 0;
+}
+mark.w-add { background: rgba(63, 185, 80, 0.38); color: inherit; border-radius: 2px; }
+mark.w-del { background: rgba(229, 72, 77, 0.38); color: inherit; border-radius: 2px; }
 
 /* Reports view */
 .reports { padding: 16px 20px; overflow-y: auto; }

@@ -132,6 +132,8 @@ export interface Call {
   run_id: string | null;
   iteration: number | null;
   loop_flags: string | null;
+  tools: { name?: string; function?: { name?: string } }[] | null;
+  temperature: number | null;
 }
 
 // Connection status shared by every live socket — the header dot listens
