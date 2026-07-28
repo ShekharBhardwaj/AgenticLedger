@@ -89,6 +89,19 @@ _FLAGGED_CALL_COLUMNS = (
 )
 
 
+def _attach_percentiles(rows: list[dict], key: str, latencies: dict[str, list[float]]) -> None:
+    """Nearest-rank p50/p95/p99 from per-group latency samples (SQLite path;
+    Postgres computes percentile_cont natively in SQL)."""
+    for row in rows:
+        values = sorted(latencies.get(row.get(key) or "", []))
+        for pct, name in ((0.50, "p50_latency_ms"), (0.95, "p95_latency_ms"), (0.99, "p99_latency_ms")):
+            if values:
+                idx = max(0, min(len(values) - 1, int(pct * len(values) + 0.999999) - 1))
+                row[name] = round(values[idx], 1)
+            else:
+                row[name] = None
+
+
 def _flagged_row(d: dict) -> dict:
     ts = d.get("timestamp")
     if isinstance(ts, (int, float)):
@@ -195,6 +208,9 @@ class Store(ABC):
 
     @abstractmethod
     async def get_agent_cost(self, agent_name: str, since_ts: float) -> float: ...
+
+    @abstractmethod
+    async def get_user_cost(self, user_id: str, since_ts: float) -> float: ...
 
     @abstractmethod
     async def get_period_cost(self, since_ts: float) -> float: ...
@@ -547,6 +563,14 @@ class _SqliteStore(Store):
             row = await cur.fetchone()
         return float(row[0]) if row else 0.0
 
+    async def get_user_cost(self, user_id: str, since_ts: float) -> float:
+        async with self._db.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE user_id = ? AND timestamp >= ? AND status_code = 200",
+            (user_id, since_ts),
+        ) as cur:
+            row = await cur.fetchone()
+        return float(row[0]) if row else 0.0
+
     async def get_period_cost(self, since_ts: float) -> float:
         async with self._db.execute(
             "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE timestamp >= ? AND status_code = 200",
@@ -583,7 +607,8 @@ class _SqliteStore(Store):
                 SUM(COALESCE(tokens_in, 0))          AS tokens_in,
                 SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                 SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
-                SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens
+                SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
+                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY model_id, provider ORDER BY cost_usd DESC
             """,
@@ -596,13 +621,28 @@ class _SqliteStore(Store):
                 COALESCE(agent_name, '(unattributed)') AS agent_name,
                 COUNT(*)                               AS call_count,
                 SUM(COALESCE(cost_usd, 0))             AS cost_usd,
-                COUNT(DISTINCT session_id)             AS session_count
+                COUNT(DISTINCT session_id)             AS session_count,
+                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY cost_usd DESC
             """,
             (since_ts,),
         ) as cur:
             agents = [dict(r) for r in await cur.fetchall()]
+        model_lat: dict[str, list[float]] = {}
+        agent_lat: dict[str, list[float]] = {}
+        async with self._db.execute(
+            """
+            SELECT model_id, COALESCE(agent_name, '(unattributed)') AS agent_name, latency_ms
+            FROM llm_calls WHERE timestamp >= ? AND latency_ms IS NOT NULL
+            """,
+            (since_ts,),
+        ) as cur:
+            for r in await cur.fetchall():
+                model_lat.setdefault(r["model_id"], []).append(float(r["latency_ms"]))
+                agent_lat.setdefault(r["agent_name"], []).append(float(r["latency_ms"]))
+        _attach_percentiles(models, "model_id", model_lat)
+        _attach_percentiles(agents, "agent_name", agent_lat)
         return {"daily": daily, "models": models, "agents": agents}
 
     async def delete_session(self, session_id: str) -> int:
@@ -1037,6 +1077,16 @@ class _PostgresStore(Store):
             )
         return float(val or 0)
 
+    async def get_user_cost(self, user_id: str, since_ts: float) -> float:
+        import datetime as _dt
+        since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
+        async with self._pool.acquire() as conn:
+            val = await conn.fetchval(
+                "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE user_id = $1 AND timestamp >= $2 AND status_code = 200",
+                user_id, since,
+            )
+        return float(val or 0)
+
     async def get_period_cost(self, since_ts: float) -> float:
         import datetime as _dt
         since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
@@ -1077,7 +1127,11 @@ class _PostgresStore(Store):
                     SUM(COALESCE(tokens_in, 0))          AS tokens_in,
                     SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                     SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
-                    SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens
+                    SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
+                    SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls,
+                    percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
+                    percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms,
+                    percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) AS p99_latency_ms
                 FROM llm_calls WHERE timestamp >= $1
                 GROUP BY model_id, provider ORDER BY 4 DESC
                 """,
@@ -1089,18 +1143,23 @@ class _PostgresStore(Store):
                     COALESCE(agent_name, '(unattributed)') AS agent_name,
                     COUNT(*)                               AS call_count,
                     SUM(COALESCE(cost_usd, 0))             AS cost_usd,
-                    COUNT(DISTINCT session_id)             AS session_count
+                    COUNT(DISTINCT session_id)             AS session_count,
+                    SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls,
+                    percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
+                    percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms,
+                    percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) AS p99_latency_ms
                 FROM llm_calls WHERE timestamp >= $1
                 GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY 3 DESC
                 """,
                 since,
             )]
-        # asyncpg returns Decimal for SUM over double columns is fine (floats),
-        # but normalize numerics so JSON encoding never trips.
+        # asyncpg returns Decimal/float mixes — normalize numerics so JSON
+        # encoding never trips.
         for rows in (daily, models, agents):
             for r in rows:
-                if r.get("cost_usd") is not None:
-                    r["cost_usd"] = float(r["cost_usd"])
+                for key in ("cost_usd", "p50_latency_ms", "p95_latency_ms", "p99_latency_ms"):
+                    if r.get(key) is not None:
+                        r[key] = round(float(r[key]), 1) if key.endswith("_ms") else float(r[key])
         return {"daily": daily, "models": models, "agents": agents}
 
     async def delete_session(self, session_id: str) -> int:

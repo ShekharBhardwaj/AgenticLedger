@@ -1,8 +1,64 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Call, del, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get,
-  interactionTags, liveUpdates, Session, toolNames,
+  interactionTags, liveUpdates, post, ReplayResult, Session, toolNames,
 } from "../api";
+
+function ReplayPanel({ call }: { call: Call }) {
+  const [model, setModel] = useState(call.model_id);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ReplayResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = () => {
+    setBusy(true);
+    setError(null);
+    post<ReplayResult>("/api/replay", { action_id: call.action_id, model: model.trim() })
+      .then(setResult)
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="replay-panel">
+      <div className="replay-controls">
+        <input
+          className="replay-model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          title="Model to replay on (same provider)"
+        />
+        <button className="link-btn" disabled={busy} onClick={run}>
+          {busy ? "Replaying…" : "Run replay"}
+        </button>
+        <span className="muted">re-sends this exact call; costs real tokens</span>
+      </div>
+      {error && <div className="replay-error">{error}</div>}
+      {result && (
+        <div className="replay-grid">
+          <div>
+            <div className="muted mono">{result.original.model_id} (original)</div>
+            <div className="replay-stats">
+              {fmtNum(result.original.tokens_in)} → {fmtNum(result.original.tokens_out)} tok
+              · {fmtUsd(result.original.cost_usd)}
+              · {result.original.latency_ms != null ? `${Math.round(result.original.latency_ms)}ms` : "—"}
+            </div>
+            <pre>{result.original.content ?? "(no text content)"}</pre>
+          </div>
+          <div>
+            <div className="muted mono">{result.replay.model_id} (replay)</div>
+            <div className="replay-stats">
+              {fmtNum(result.replay.tokens_in)} → {fmtNum(result.replay.tokens_out)} tok
+              · {fmtUsd(result.replay.cost_usd)}
+              · {result.replay.latency_ms != null ? `${Math.round(result.replay.latency_ms)}ms` : "—"}
+            </div>
+            <pre>{result.replay.content ?? "(no text content)"}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 import FlowView from "./FlowView";
 import TraceView from "./TraceView";
 
@@ -10,6 +66,7 @@ type Mode = "calls" | "flow" | "trace";
 
 function CallCard({ call }: { call: Call }) {
   const [open, setOpen] = useState(false);
+  const [replaying, setReplaying] = useState(false);
   const failed = (call.status_code ?? 200) !== 200;
   const tools = toolNames(call);
   return (
@@ -52,6 +109,15 @@ function CallCard({ call }: { call: Call }) {
       </div>
       {open && (
         <div className="call-body">
+          {(call.framework !== "replay") && (
+            <button
+              className="link-btn"
+              onClick={(e) => { e.stopPropagation(); setReplaying(!replaying); }}
+            >
+              {replaying ? "Hide replay" : "↻ Replay this call"}
+            </button>
+          )}
+          {replaying && <ReplayPanel call={call} />}
           {call.error_detail && (<><h4>Error</h4><pre>{call.error_detail}</pre></>)}
           {call.system_prompt && (<><h4>System prompt</h4><pre>{call.system_prompt}</pre></>)}
           {call.thinking && (<><h4>Thinking</h4><pre>{call.thinking}</pre></>)}

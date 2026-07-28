@@ -16,10 +16,11 @@ def _req(model: str, provider: str) -> CanonicalRequest:
     )
 
 
-def _resp(tokens_in, tokens_out, cost, cache_read=None, cache_write=None) -> CanonicalResponse:
+def _resp(tokens_in, tokens_out, cost, cache_read=None, cache_write=None,
+          latency=100.0) -> CanonicalResponse:
     return CanonicalResponse(
         content="ok", tool_calls=None, stop_reason="stop",
-        tokens_in=tokens_in, tokens_out=tokens_out, latency_ms=100.0,
+        tokens_in=tokens_in, tokens_out=tokens_out, latency_ms=latency,
         cost_usd=cost, cache_read_tokens=cache_read, cache_write_tokens=cache_write,
     )
 
@@ -34,13 +35,13 @@ async def _seed(store) -> None:
     await store.save(
         "10000000-0000-0000-0000-000000000002",
         _req("gpt-4o", "openai"),
-        _resp(2_000, 100, 0.006, cache_read=1_000),
+        _resp(2_000, 100, 0.006, cache_read=1_000, latency=200.0),
         session_id="s2", agent_name="writer",
     )
     await store.save(
         "10000000-0000-0000-0000-000000000003",
         _req("gpt-4o", "openai"),
-        _resp(100, 0, 0.0),
+        _resp(100, 0, 0.0, latency=400.0),
         session_id="s2", agent_name="writer",
         status_code=500, error_detail="boom",
     )
@@ -79,6 +80,15 @@ async def test_report_aggregates_and_cache_savings(store):
     assert agents["writer"]["call_count"] == 2
     assert agents["writer"]["session_count"] == 1
     assert agents["researcher"]["call_count"] == 1
+
+    # Latency percentiles (nearest-rank) and per-group error counts.
+    gpt = models["gpt-4o"]
+    assert gpt["error_calls"] == 1
+    assert gpt["p50_latency_ms"] == 200.0     # of [200, 400]
+    assert gpt["p95_latency_ms"] == 400.0
+    assert models["claude-sonnet-5"]["p99_latency_ms"] == 100.0
+    assert agents["writer"]["p95_latency_ms"] == 400.0
+    assert agents["researcher"]["error_calls"] == 0
 
     assert len(report["daily"]) == 1  # seeded "now" — one UTC day bucket
     assert report["daily"][0]["call_count"] == 3

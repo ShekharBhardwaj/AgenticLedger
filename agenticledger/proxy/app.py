@@ -80,8 +80,10 @@ from .otel import emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
+from .pricing import compute_cost
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import Redactor, apply_capture_policy, normalize_capture_level
+from .replay import build_replay_request, replay_auth_headers, replayable_reason
 from .reports import build_report, digest_text
 from .store import Store
 from .stream import detect_stream_error, reconstruct_from_sse
@@ -187,6 +189,7 @@ def create_app(
     budget_session: Optional[float] = None,
     budget_agent: Optional[float] = None,
     budget_daily: Optional[float] = None,
+    budget_user: Optional[float] = None,   # max USD per user_id per UTC day
     budget_action: str = "block",   # "block" | "warn" | "both"
     alert_config: Optional[AlertConfig] = None,
     rate_limit_config: Optional[RateLimitConfig] = None,
@@ -203,6 +206,7 @@ def create_app(
     loop_run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
     completion_promise: Optional[str] = None,
     digest_hour: Optional[int] = None,   # UTC hour (0-23) for the daily digest webhook
+    replay_api_key: Optional[str] = None,   # enables POST /api/replay when set
 ) -> FastAPI:
 
     broadcaster = _Broadcaster()
@@ -612,6 +616,88 @@ def create_app(
         runs = await request.app.state.store.list_runs()
         return JSONResponse([_with_run_status(r) for r in runs])
 
+    @app.post("/api/replay")
+    async def api_replay(request: Request) -> JSONResponse:
+        """Re-execute a captured call (optionally on a swapped same-provider
+        model) using the proxy's replay credential; the result is stored as a
+        new call linked to the original."""
+        principal = await _require(request, ROLE_EDITOR)
+        if not replay_api_key:
+            return JSONResponse(
+                {"error": "Replay is not configured — set AGENTICLEDGER_REPLAY_API_KEY "
+                          "on the proxy to enable re-execution."},
+                status_code=409,
+            )
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        action_id = str(payload.get("action_id") or "").strip()
+        original = await request.app.state.store.get(action_id) if action_id else None
+        if original is None:
+            raise HTTPException(status_code=404, detail="action_id not found")
+        reason = replayable_reason(original)
+        if reason:
+            return JSONResponse({"error": f"Not replayable: {reason}"}, status_code=400)
+
+        provider = original.get("provider")
+        model = str(payload.get("model") or original["model_id"]).strip()
+        path, body = build_replay_request(original, model)
+        start = time.time()
+        try:
+            upstream = await request.app.state.client.post(
+                "/" + path, json=body,
+                headers=replay_auth_headers(provider, replay_api_key),
+            )
+        except Exception as exc:
+            return JSONResponse({"error": f"Upstream unreachable: {exc}"}, status_code=502)
+        latency_ms = (time.time() - start) * 1000
+        if upstream.status_code != 200:
+            return JSONResponse(
+                {"error": "Upstream rejected the replay",
+                 "upstream_status": upstream.status_code,
+                 "detail": upstream.text[:500]},
+                status_code=502,
+            )
+        resp = normalize_response(upstream.json(), latency_ms, model)
+        if resp.cost_usd is None:
+            resp.cost_usd = compute_cost(
+                model, resp.tokens_in or 0, resp.tokens_out or 0,
+                cache_read_tokens=resp.cache_read_tokens,
+                cache_write_tokens=resp.cache_write_tokens,
+                provider=provider or "",
+            )
+        req = CanonicalRequest(
+            messages=original.get("messages") or [], model_id=model,
+            provider=provider or "", timestamp=start,
+            tools=original.get("tools"), system_prompt=original.get("system_prompt"),
+            temperature=original.get("temperature"), max_tokens=original.get("max_tokens"),
+        )
+        new_id = str(uuid.uuid4())
+        await request.app.state.store.save(
+            new_id, req, resp,
+            session_id=f"replay-{action_id[:8]}",
+            agent_name=original.get("agent_name"),
+            framework="replay",
+            parent_action_id=action_id,
+            environment=original.get("environment") or "development",
+        )
+        await _audit(principal, request, "replay", action_id, f"model={model}")
+        return JSONResponse({
+            "original": {
+                "action_id": action_id, "model_id": original["model_id"],
+                "content": original.get("content"),
+                "tokens_in": original.get("tokens_in"), "tokens_out": original.get("tokens_out"),
+                "cost_usd": original.get("cost_usd"), "latency_ms": original.get("latency_ms"),
+            },
+            "replay": {
+                "action_id": new_id, "model_id": model,
+                "content": resp.content, "tool_calls": resp.tool_calls,
+                "tokens_in": resp.tokens_in, "tokens_out": resp.tokens_out,
+                "cost_usd": resp.cost_usd, "latency_ms": round(latency_ms, 1),
+            },
+        })
+
     @app.get("/api/reports")
     async def api_reports(request: Request, days: int = 30) -> JSONResponse:
         """Spend insights over the window: daily trend, model mix with
@@ -976,11 +1062,11 @@ def create_app(
         # Fail open: if the store is unavailable the agent must not be blocked.
         # Budget enforcement resumes automatically once the store recovers.
         _budget_warning: Optional[str] = None  # set in warn mode; carried into actual save
-        if is_llm_path and not is_count_tokens and (budget_session is not None or budget_agent is not None or budget_daily is not None):
+        if is_llm_path and not is_count_tokens and (budget_session is not None or budget_agent is not None or budget_daily is not None or budget_user is not None):
             try:
                 budget_error = await _check_budgets(
                     request.app.state.store, meta,
-                    budget_session, budget_agent, budget_daily,
+                    budget_session, budget_agent, budget_daily, budget_user,
                 )
             except Exception:
                 logger.warning("Budget check failed — allowing call through", exc_info=True)
@@ -1180,10 +1266,12 @@ async def _check_budgets(
     budget_session: Optional[float],
     budget_agent: Optional[float],
     budget_daily: Optional[float],
+    budget_user: Optional[float] = None,
 ) -> Optional[str]:
     """Return an error message if any budget is exceeded, else None."""
     session_id = meta.get("session_id")
     agent_name = meta.get("agent_name")
+    user_id = meta.get("user_id")
 
     if budget_session is not None and session_id:
         spent = await store.get_session_cost(session_id)
@@ -1200,6 +1288,15 @@ async def _check_budgets(
             return (
                 f"Agent daily budget of ${budget_agent:.4f} exceeded "
                 f"(current spend: ${spent:.4f}). Agent: {agent_name}"
+            )
+
+    if budget_user is not None and user_id:
+        since = _today_start_ts()
+        spent = await store.get_user_cost(user_id, since)
+        if spent >= budget_user:
+            return (
+                f"User daily budget of ${budget_user:.4f} exceeded "
+                f"(current spend: ${spent:.4f}). User: {user_id}"
             )
 
     if budget_daily is not None:

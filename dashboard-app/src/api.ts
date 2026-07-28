@@ -25,6 +25,37 @@ export async function del(path: string): Promise<void> {
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
 }
 
+export async function post<T>(path: string, body: unknown): Promise<T> {
+  const resp = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers() },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = (data as { error?: string; detail?: string }).error
+      ?? (data as { detail?: string }).detail
+      ?? `${resp.status} ${resp.statusText}`;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+export interface ReplaySide {
+  action_id: string;
+  model_id: string;
+  content: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  cost_usd: number | null;
+  latency_ms: number | null;
+}
+
+export interface ReplayResult {
+  original: ReplaySide;
+  replay: ReplaySide & { tool_calls: unknown };
+}
+
 export interface Run {
   run_id: string;
   iterations: number | null;

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Replay.** Re-execute any captured call from the dashboard (or
+  `POST /api/replay`): same messages, system prompt, tools, and sampling
+  parameters, on the original model or a swapped same-provider one — then
+  compare output, tokens, cost, and latency side by side. Replays are
+  stored as first-class ledger calls linked to the original
+  (`framework=replay`, `parent_action_id`), so what-if experiments are
+  themselves audited and priced. The proxy never stores agent credentials,
+  so replay uses its own key: set `AGENTICLEDGER_REPLAY_API_KEY` to enable
+  (unset = feature off).
+- **Prompt drift in run comparison.** Comparing two runs now also diffs
+  their system prompts and opening instructions — the recorder-native
+  answer to "what did I actually change between these runs."
+- **Latency percentiles and error rates in Reports.** p50/p95/p99 latency
+  and error counts per model and per agent (`percentile_cont` on Postgres,
+  nearest-rank on SQLite).
+- **Per-user daily budgets.** `AGENTICLEDGER_BUDGET_USER` caps spend per
+  `user_id` per UTC day — the budget follows the user across sessions,
+  blocking with 429 before the call reaches the provider.
+
 ## [0.5.1] - 2026-07-28
 
 ### Security

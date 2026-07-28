@@ -140,9 +140,9 @@ http://localhost:8000
 
 The web app updates live via WebSocket as calls come in. No refresh needed.
 
-- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas — the change-the-prompt-and-rerun workflow.
-- **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Hover a session card for one-click delete.
-- **Reports** — where the money goes: spend per day, model mix, per-agent totals, and **cache savings** — what your prompt-cache traffic would have cost at full input rates versus what it actually cost (signed: caching that costs more than it saves shows in red)
+- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
+- **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Hover a session card for one-click delete. Open any call and **↻ Replay** it — re-execute the exact captured prompt on the same or a cheaper model and compare output, tokens, and cost side by side (set `AGENTICLEDGER_REPLAY_API_KEY` to enable).
+- **Reports** — where the money goes: spend per day, model mix with **latency p50/p95/p99** and error rates, per-agent totals, and **cache savings** — what your prompt-cache traffic would have cost at full input rates versus what it actually cost (signed: caching that costs more than it saves shows in red)
 - **Search** — full-text across prompts, outputs, and agents
 
 The classic single-file dashboard remains at `http://localhost:8000/classic`:
@@ -280,7 +280,8 @@ Every LLM call is stored with:
 | `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete`) — poll this from loop scripts |
 | `GET` | `/api/sessions/{session_id}/tools` | Derived tool executions — each tool call paired with its result, latency, and error status |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
-| `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, per-agent totals |
+| `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent totals |
+| `POST` | `/api/replay` | Re-execute a captured call (optionally on a swapped same-provider model); result stored linked to the original. Needs `AGENTICLEDGER_REPLAY_API_KEY` |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |
 | `GET` | `/explain/{action_id}` | Single call by action ID |
@@ -379,6 +380,7 @@ Once connected, you can ask your assistant things like:
 | `AGENTICLEDGER_PORT` | No | `8000` | Port to run on. |
 | `AGENTICLEDGER_API_KEY` | No | _(none)_ | Master admin key. When set, the dashboard, read, and management endpoints require authentication; the key grants the `admin` role and bootstraps API tokens (below). Skip for local dev; set when the proxy is on a server — you choose the value. |
 | `AGENTICLEDGER_INGEST_KEY` | No | _(none)_ | When set, the proxy forwards a request only if it carries a matching `x-agenticledger-ingest-key` header — closing the open relay. Off by default; a loud startup warning fires when unset. |
+| `AGENTICLEDGER_REPLAY_API_KEY` | No | _(none)_ | Provider API key for `POST /api/replay` — the proxy never stores agent credentials, so re-execution needs its own. Unset = replay off. |
 | `AGENTICLEDGER_EXPORT_HMAC_KEY` | No | _(none)_ | When set, compliance exports carry a tamper-evident keyed `hmac-sha256` integrity tag instead of a plain `sha256` checksum. |
 | `AGENTICLEDGER_EXTRA_PATHS` | No | _(none)_ | Comma-separated additional request paths to capture, e.g. `v1/responses,v1/custom`. Built-in paths (`v1/chat/completions`, `v1/messages`, `v1/responses`, plus `v1/messages/count_tokens` recorded as a free call) are always captured. |
 | `AGENTICLEDGER_ASYNC_CAPTURE` | No | `off` | Persist captures on a background worker so storage never adds latency to the agent's call. Trade-off: reads become **eventually consistent** (a just-captured call may not be queryable for a brief moment). Recommended for high throughput. |
@@ -396,6 +398,7 @@ Once connected, you can ask your assistant things like:
 | `AGENTICLEDGER_BUDGET_SESSION` | _(none)_ | Max USD per `session_id` across its lifetime. |
 | `AGENTICLEDGER_BUDGET_AGENT` | _(none)_ | Max USD per `agent_name` per calendar day (UTC). |
 | `AGENTICLEDGER_BUDGET_DAILY` | _(none)_ | Max USD total across all calls per calendar day (UTC). |
+| `AGENTICLEDGER_BUDGET_USER` | _(none)_ | Max USD per `user_id` per calendar day (UTC) — follows the user across sessions. |
 | `AGENTICLEDGER_BUDGET_ACTION` | `block` | What happens when a budget is exceeded: `block` returns HTTP 429 (call never reaches the LLM), `warn` lets the call through and fires a webhook alert, `both` blocks and fires the webhook. |
 
 **Rate limits** — block calls that exceed request frequency (returns HTTP 429, sliding 60-second window):

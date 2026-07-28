@@ -22,6 +22,10 @@ interface ModelRow {
   cache_read_tokens: number;
   cache_write_tokens: number;
   cache_savings_usd: number;
+  error_calls: number;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  p99_latency_ms: number | null;
 }
 
 interface AgentRow {
@@ -29,6 +33,25 @@ interface AgentRow {
   call_count: number;
   cost_usd: number;
   session_count: number;
+  error_calls: number;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  p99_latency_ms: number | null;
+}
+
+const fmtMs = (v: number | null | undefined) =>
+  v == null ? "—" : v >= 10_000 ? `${(v / 1000).toFixed(1)}s` : `${Math.round(v)}ms`;
+
+function LatencyCell({ r }: { r: { p50_latency_ms: number | null; p95_latency_ms: number | null; p99_latency_ms: number | null } }) {
+  return (
+    <td title="latency p50 / p95 / p99">
+      {fmtMs(r.p50_latency_ms)} / {fmtMs(r.p95_latency_ms)} / {fmtMs(r.p99_latency_ms)}
+    </td>
+  );
+}
+
+function ErrorCell({ n }: { n: number }) {
+  return <td style={{ color: n ? "var(--red)" : undefined }}>{n || "—"}</td>;
 }
 
 interface Report {
@@ -132,8 +155,8 @@ export default function ReportsView() {
       <table className="rtable">
         <thead>
           <tr>
-            <th>model</th><th>calls</th><th>tokens in / out</th>
-            <th>cache r / w</th><th>cache Δ</th><th>cost</th>
+            <th>model</th><th>calls</th><th>errors</th><th>latency p50/p95/p99</th>
+            <th>tokens in / out</th><th>cache r / w</th><th>cache Δ</th><th>cost</th>
           </tr>
         </thead>
         <tbody>
@@ -141,6 +164,8 @@ export default function ReportsView() {
             <tr key={`${m.model_id}|${m.provider}`}>
               <td className="mono">{m.model_id}</td>
               <td>{fmtNum(m.call_count)}</td>
+              <ErrorCell n={m.error_calls} />
+              <LatencyCell r={m} />
               <td>{fmtNum(m.tokens_in)} / {fmtNum(m.tokens_out)}</td>
               <td>{fmtNum(m.cache_read_tokens)} / {fmtNum(m.cache_write_tokens)}</td>
               <td style={{ color: m.cache_savings_usd > 0 ? "var(--green)" : m.cache_savings_usd < 0 ? "var(--red)" : undefined }}>
@@ -155,13 +180,18 @@ export default function ReportsView() {
       <div className="section-title">By agent</div>
       <table className="rtable">
         <thead>
-          <tr><th>agent</th><th>calls</th><th>sessions</th><th>cost</th></tr>
+          <tr>
+            <th>agent</th><th>calls</th><th>errors</th>
+            <th>latency p50/p95/p99</th><th>sessions</th><th>cost</th>
+          </tr>
         </thead>
         <tbody>
           {report.agents.map((a) => (
             <tr key={a.agent_name}>
               <td className="mono">{a.agent_name}</td>
               <td>{fmtNum(a.call_count)}</td>
+              <ErrorCell n={a.error_calls} />
+              <LatencyCell r={a} />
               <td>{fmtNum(a.session_count)}</td>
               <td>{fmtUsd(a.cost_usd)}</td>
             </tr>

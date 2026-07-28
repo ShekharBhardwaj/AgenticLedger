@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fmtNum, fmtTime, fmtUsd, get, Iteration, Run } from "../api";
+import { Call, fmtNum, fmtTime, fmtUsd, get, Iteration, Run } from "../api";
 
 /** Side-by-side diff of two loop runs — the change-the-prompt-and-rerun
  *  workflow: did the new run get cheaper, shorter, less flagged? */
@@ -7,12 +7,78 @@ import { fmtNum, fmtTime, fmtUsd, get, Iteration, Run } from "../api";
 function useRun(id: string) {
   const [detail, setDetail] = useState<Run | null>(null);
   const [iterations, setIterations] = useState<Iteration[]>([]);
+  const [firstCall, setFirstCall] = useState<Call | null>(null);
   useEffect(() => {
     get<Run>(`/api/runs/${encodeURIComponent(id)}`).then(setDetail).catch(() => setDetail(null));
     get<Iteration[]>(`/api/runs/${encodeURIComponent(id)}/iterations`)
       .then(setIterations).catch(() => setIterations([]));
   }, [id]);
-  return { detail, iterations };
+  useEffect(() => {
+    const sid = iterations[0]?.session_id;
+    if (!sid) { setFirstCall(null); return; }
+    get<Call[]>(`/session/${encodeURIComponent(sid)}`)
+      .then((rows) => setFirstCall(rows[0] ?? null))
+      .catch(() => setFirstCall(null));
+  }, [iterations]);
+  return { detail, iterations, firstCall };
+}
+
+// ── Prompt drift ─────────────────────────────────────────────────────────────
+
+type DiffLine = { kind: "same" | "add" | "del"; text: string };
+
+function diffLines(a: string, b: string): DiffLine[] {
+  const A = a.split("\n");
+  const B = b.split("\n");
+  const m = A.length, n = B.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--)
+    for (let j = n - 1; j >= 0; j--)
+      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out: DiffLine[] = [];
+  let i = 0, j = 0;
+  while (i < m && j < n) {
+    if (A[i] === B[j]) { out.push({ kind: "same", text: A[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ kind: "del", text: A[i] }); i++; }
+    else { out.push({ kind: "add", text: B[j] }); j++; }
+  }
+  while (i < m) out.push({ kind: "del", text: A[i++] });
+  while (j < n) out.push({ kind: "add", text: B[j++] });
+  return out;
+}
+
+function firstUserText(call: Call | null): string {
+  const msgs = Array.isArray(call?.messages) ? (call!.messages as any[]) : [];
+  const first = msgs.find((msg) => msg?.role === "user");
+  const content = first?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content))
+    return content.map((block) => (typeof block === "string" ? block : block?.text ?? "")).join("\n");
+  return "";
+}
+
+function DriftBlock({ label, a, b }: { label: string; a: string; b: string }) {
+  if (!a && !b) return null;
+  if (a === b) {
+    return (
+      <div className="drift-block">
+        <div className="muted">{label}: identical in both runs</div>
+      </div>
+    );
+  }
+  const lines = diffLines(a, b);
+  return (
+    <div className="drift-block">
+      <div className="muted">{label} — <span className="diff-del-key">removed</span> vs <span className="diff-add-key">added</span></div>
+      <pre className="diff">
+        {lines.map((line, i) => (
+          <div key={i} className={line.kind === "same" ? "" : line.kind === "add" ? "diff-add" : "diff-del"}>
+            {line.kind === "add" ? "+ " : line.kind === "del" ? "− " : "  "}{line.text}
+          </div>
+        ))}
+      </pre>
+    </div>
+  );
 }
 
 function durationMin(r: Run | null): number | null {
@@ -137,6 +203,22 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
         <Ribbon id={a} iterations={ra.iterations} maxCost={maxCost} onOpenSession={onOpenSession} />
         <Ribbon id={b} iterations={rb.iterations} maxCost={maxCost} onOpenSession={onOpenSession} />
       </div>
+
+      {(ra.firstCall || rb.firstCall) && (
+        <>
+          <div className="section-title">Prompt drift — what changed between the runs</div>
+          <DriftBlock
+            label="System prompt"
+            a={ra.firstCall?.system_prompt ?? ""}
+            b={rb.firstCall?.system_prompt ?? ""}
+          />
+          <DriftBlock
+            label="Opening instruction"
+            a={firstUserText(ra.firstCall)}
+            b={firstUserText(rb.firstCall)}
+          />
+        </>
+      )}
     </>
   );
 }

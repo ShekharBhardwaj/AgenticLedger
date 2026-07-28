@@ -35,6 +35,7 @@ Reads config from environment variables:
     AGENTICLEDGER_BUDGET_SESSION        Max USD per session_id (default: none)
     AGENTICLEDGER_BUDGET_AGENT          Max USD per agent_name per calendar day (default: none)
     AGENTICLEDGER_BUDGET_DAILY          Max USD total per calendar day (default: none)
+    AGENTICLEDGER_BUDGET_USER           Max USD per user_id per calendar day (default: none)
     AGENTICLEDGER_BUDGET_ACTION         block (default) | warn | both
 
   Rate limits (returns HTTP 429, sliding 60-second window):
@@ -56,6 +57,11 @@ Reads config from environment variables:
     AGENTICLEDGER_OTEL_ENDPOINT         OTLP/HTTP base URL, e.g. http://localhost:4318 (default: none)
     AGENTICLEDGER_OTEL_SERVICE_NAME     service.name reported to collector (default: agenticledger)
     AGENTICLEDGER_OTEL_HEADERS          Comma-separated key=value auth headers (default: none)
+
+  Replay (re-execute captured calls from the dashboard/API):
+    AGENTICLEDGER_REPLAY_API_KEY      Provider API key used by POST /api/replay. The proxy
+                                      never stores agent credentials, so replay needs its
+                                      own. Unset = replay disabled (default)
 
   Pricing overrides (merged over the built-in table at startup):
     AGENTICLEDGER_PRICING               Inline JSON — e.g. '{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'
@@ -115,6 +121,7 @@ app = create_app(
     upstream_url=upstream_url,
     dsn=dsn,
     budget_session=_float_env("AGENTICLEDGER_BUDGET_SESSION"),
+    budget_user=_float_env("AGENTICLEDGER_BUDGET_USER"),
     budget_agent=_float_env("AGENTICLEDGER_BUDGET_AGENT"),
     budget_daily=_float_env("AGENTICLEDGER_BUDGET_DAILY"),
     budget_action=os.environ.get("AGENTICLEDGER_BUDGET_ACTION", "block"),
@@ -146,6 +153,7 @@ app = create_app(
     loop_run_gap_seconds=float(os.environ.get("AGENTICLEDGER_LOOP_RUN_GAP_SECONDS", "900")),
     completion_promise=os.environ.get("AGENTICLEDGER_COMPLETION_PROMISE") or None,
     digest_hour=int(os.environ["AGENTICLEDGER_DIGEST_HOUR"]) if os.environ.get("AGENTICLEDGER_DIGEST_HOUR") else None,
+    replay_api_key=os.environ.get("AGENTICLEDGER_REPLAY_API_KEY") or None,
 )
 
 try:

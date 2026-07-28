@@ -885,3 +885,28 @@ def test_run_complete_webhook_fires_morning_report(proxy, monkeypatch):
     assert report["run_id"] == "night-run"
     assert report["call_count"] >= 1
     assert "complete" in report["message"]
+
+
+def test_budget_user_daily_block(proxy):
+    """AGENTICLEDGER_BUDGET_USER: the same user_id is blocked across
+    different sessions once their daily spend crosses the cap."""
+    client = proxy(handler=_ok_handler(), budget_user=0.000001)
+
+    first = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                        headers={"x-agenticledger-session-id": "u-s1",
+                                 "x-agenticledger-user-id": "shekhar"})
+    assert first.status_code == 200
+
+    # New session, same user — still blocked: the budget follows the user.
+    second = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                         headers={"x-agenticledger-session-id": "u-s2",
+                                  "x-agenticledger-user-id": "shekhar"})
+    assert second.status_code == 429
+    assert second.json()["error"]["type"] == "budget_exceeded"
+    assert "User daily budget" in second.json()["error"]["message"]
+
+    # A different user is unaffected.
+    other = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                        headers={"x-agenticledger-session-id": "u-s3",
+                                 "x-agenticledger-user-id": "someone-else"})
+    assert other.status_code == 200
