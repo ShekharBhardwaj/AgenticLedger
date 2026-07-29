@@ -220,8 +220,8 @@ should switch to HTTP: `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
 **Framework guides** — one per integration in
 [docs/integrations](docs/integrations/README.md): Claude Code, Codex CLI,
 opencode, OpenClaw, BMAD-METHOD, LangGraph/LangChain, CrewAI, OpenAI Agents
-SDK, Gemini CLI, AutoGen/AG2, Pydantic AI, Vercel AI SDK, LiteLLM, and
-OpenRouter.
+SDK, Gemini CLI, AutoGen/AG2, Pydantic AI, Vercel AI SDK, LiteLLM,
+OpenRouter, and LM Studio (fully offline: local model, local ledger).
 
 **Production deployment** — TLS termination, auth keys, redaction, image
 signature/SBOM verification, enterprise mirrors, and scaling guidance in
