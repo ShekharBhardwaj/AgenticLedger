@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-28
+
 ### Added
 - **Replay.** Re-execute any captured call from the dashboard (or
   `POST /api/replay`): same messages, system prompt, tools, and sampling
