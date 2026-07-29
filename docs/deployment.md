@@ -131,6 +131,7 @@ Every deployment that leaves localhost should set:
 | `AGENTICLEDGER_INGEST_KEY` | The proxy forwards traffic only when the caller presents the matching `x-agenticledger-ingest-key` header — closes the open-relay hole where anyone who can reach the proxy can spend your LLM credits. |
 | `AGENTICLEDGER_HOST=127.0.0.1` | When the proxy and its TLS terminator share a host, don't listen on all interfaces. |
 | `AGENTICLEDGER_EXPORT_HMAC_KEY` | Compliance exports get a keyed tamper-evident integrity tag instead of a plain hash. |
+| `AGENTICLEDGER_REPLAY_API_KEY` | Off by default. When set, `POST /api/replay` (editor role and above) can re-execute captured calls, spending real tokens on this key. Use a dedicated key with its own spend limit on your provider console, not your production agent key — replay spend then stays separately visible and separately capped. Agents' own keys are never stored, with or without this. |
 
 ### Protect the data you capture
 
