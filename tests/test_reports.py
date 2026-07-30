@@ -81,13 +81,14 @@ async def test_report_aggregates_and_cache_savings(store):
     assert agents["writer"]["session_count"] == 1
     assert agents["researcher"]["call_count"] == 1
 
-    # Latency percentiles (nearest-rank) and per-group error counts.
+    # Latency percentiles (nearest-rank, successful calls only — the 400ms
+    # call errored and is excluded per #30) and per-group error counts.
     gpt = models["gpt-4o"]
     assert gpt["error_calls"] == 1
-    assert gpt["p50_latency_ms"] == 200.0     # of [200, 400]
-    assert gpt["p95_latency_ms"] == 400.0
+    assert gpt["p50_latency_ms"] == 200.0
+    assert gpt["p95_latency_ms"] == 200.0
     assert models["claude-sonnet-5"]["p99_latency_ms"] == 100.0
-    assert agents["writer"]["p95_latency_ms"] == 400.0
+    assert agents["writer"]["p95_latency_ms"] == 200.0
     assert agents["researcher"]["error_calls"] == 0
 
     assert len(report["daily"]) == 1  # seeded "now" — one UTC day bucket
