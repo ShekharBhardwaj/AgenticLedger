@@ -59,7 +59,7 @@ body {
 .card:hover .card-cmp { opacity: 1; }
 .card-cmp:hover { color: var(--accent); }
 .card-cmp.on { opacity: 1; color: var(--accent); font-weight: 700; }
-.cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 720px; }
 .cmp-col .muted { margin-bottom: 4px; }
 .drift-block { margin: 10px 0 18px; }
 
