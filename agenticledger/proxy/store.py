@@ -677,7 +677,8 @@ class _SqliteStore(Store):
         async with self._db.execute(
             """
             SELECT model_id, COALESCE(agent_name, '(unattributed)') AS agent_name, latency_ms
-            FROM llm_calls WHERE timestamp >= ? AND latency_ms IS NOT NULL
+            FROM llm_calls
+            WHERE timestamp >= ? AND latency_ms IS NOT NULL AND status_code = 200
             """,
             (since_ts,),
         ) as cur:
@@ -1198,9 +1199,9 @@ class _PostgresStore(Store):
                     SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                     SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
                     SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls,
-                    percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
-                    percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms,
-                    percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) AS p99_latency_ms
+                    percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
+                    percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
+                    percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p99_latency_ms
                 FROM llm_calls WHERE timestamp >= $1
                 GROUP BY model_id, provider ORDER BY 4 DESC
                 """,
@@ -1214,9 +1215,9 @@ class _PostgresStore(Store):
                     SUM(COALESCE(cost_usd, 0))             AS cost_usd,
                     COUNT(DISTINCT session_id)             AS session_count,
                     SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls,
-                    percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) AS p50_latency_ms,
-                    percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms,
-                    percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) AS p99_latency_ms
+                    percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
+                    percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
+                    percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p99_latency_ms
                 FROM llm_calls WHERE timestamp >= $1
                 GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY 3 DESC
                 """,

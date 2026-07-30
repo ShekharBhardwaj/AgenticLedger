@@ -159,3 +159,13 @@ async def test_report_tz_offset_shifts_day_bucket(store):
     local = await store.get_report_aggregates(0.0, tz_offset_minutes=120)
     assert utc["daily"][0]["day"] == "2026-07-28"
     assert local["daily"][0]["day"] == "2026-07-29"
+
+
+async def test_latency_percentiles_ignore_blocked_calls(store):
+    """Issue #30: 0ms blocked/errored calls must not drag percentiles down —
+    latency describes successful calls only."""
+    await _seed(store)  # gpt-4o: 200-ok at 200ms, 500-err at 400ms
+    raw = await store.get_report_aggregates(0.0)
+    gpt = next(m for m in raw["models"] if m["model_id"] == "gpt-4o")
+    assert gpt["p50_latency_ms"] == 200.0
+    assert gpt["p99_latency_ms"] == 200.0   # the 400ms call errored — excluded
