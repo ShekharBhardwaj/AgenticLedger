@@ -164,7 +164,7 @@ _TOOLS = [
 ]
 
 
-def _run_status(run: dict) -> dict:
+def _run_status(run: dict, explicitly_ended: bool = False) -> dict:
     """Mirror the /api/runs status derivation for MCP consumers (using the
     default run-gap window: MCP has no per-proxy config)."""
     import contextlib
@@ -175,6 +175,8 @@ def _run_status(run: dict) -> dict:
         run["status"] = "complete"
     elif run.get("flagged_calls"):
         run["status"] = "flagged"
+    elif explicitly_ended:
+        run["status"] = "ended"
     else:
         run["status"] = "running"
         with contextlib.suppress(Exception):
@@ -260,7 +262,9 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
 
     if name == "list_runs":
         limit = max(1, min(int(args.get("limit", 20)), 100))
-        runs = [_run_status(r) for r in await store.list_runs(limit=limit)]
+        raw = await store.list_runs(limit=limit)
+        ended = await store.get_run_end_markers([r["run_id"] for r in raw])
+        runs = [_run_status(r, explicitly_ended=r["run_id"] in ended) for r in raw]
         return (_ok(id_, _text_content(json.dumps(runs, indent=2, default=str))))
 
     if name == "get_run_status":
@@ -270,7 +274,9 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         run = await store.get_run(run_id)
         if run is None:
             return (_err(id_, -32602, f"No run found for run_id {run_id!r}"))
-        return (_ok(id_, _text_content(json.dumps(_run_status(run), indent=2, default=str))))
+        ended = await store.get_run_end_markers([run_id])
+        return (_ok(id_, _text_content(json.dumps(
+            _run_status(run, explicitly_ended=run_id in ended), indent=2, default=str))))
 
     return (_err(id_, -32601, f"Unknown tool: {name!r}"))
 

@@ -137,6 +137,14 @@ def run_command(args: argparse.Namespace) -> int:
             break
 
     status = _fetch_status(proxy, run_id, api_key) or status
+    # The runner knows the loop exited — tell the ledger so the run reads
+    # "ended" immediately instead of after the inactivity window. Best
+    # effort: a failure here must never change the loop's exit code.
+    try:
+        headers = {"x-agenticledger-api-key": api_key} if api_key else {}
+        httpx.post(f"{proxy}/api/runs/{run_id}/end", headers=headers, timeout=5.0)
+    except Exception:
+        pass
     _print_summary(run_id, iteration, status, reason)
     return last_exit
 

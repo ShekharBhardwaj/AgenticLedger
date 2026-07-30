@@ -86,6 +86,9 @@ function CallCard({ call }: { call: Call }) {
           </span>
         ))}
         {failed && <span className="badge error">{call.status_code}</span>}
+        {call.error_detail?.startsWith("partial:") && (
+          <span className="badge fw" title={call.error_detail}>partial</span>
+        )}
         {call.loop_flags &&
           (JSON.parse(call.loop_flags) as string[]).map((n) => (
             <span

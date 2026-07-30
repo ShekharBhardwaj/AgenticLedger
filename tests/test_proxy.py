@@ -951,3 +951,19 @@ def test_finished_run_reads_ended_and_lists_models(proxy):
     run = client.get("/api/runs/er-run").json()
     assert run["status"] == "ended"
     assert "gpt-4o" in (run.get("models") or "")
+
+
+def test_run_end_marker_flips_status_immediately(proxy):
+    """Issue #29: the runner's exit signal marks the run ended at once —
+    no waiting for the inactivity window."""
+    client = proxy(handler=_ok_handler())  # default 900s gap
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-session-id": "em-s",
+                         "x-agenticledger-run-id": "em-run",
+                         "x-agenticledger-iteration": "1"})
+    # Fresh call → inference alone would say "running".
+    assert client.get("/api/runs/em-run").json()["status"] == "running"
+    assert client.post("/api/runs/em-run/end").status_code == 200
+    assert client.get("/api/runs/em-run").json()["status"] == "ended"
+    # Completion promise / flags still outrank the marker; unknown run 404s.
+    assert client.post("/api/runs/nope/end").status_code == 404

@@ -219,6 +219,16 @@ class Store(ABC):
     async def get_user_cost(self, user_id: str, since_ts: float) -> float: ...
 
     @abstractmethod
+    async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
+        """Record that a runner explicitly finished this run (idempotent)."""
+        ...
+
+    @abstractmethod
+    async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
+        """Subset of run_ids that carry an explicit ended marker."""
+        ...
+
+    @abstractmethod
     async def get_period_cost(self, since_ts: float) -> float: ...
 
     @abstractmethod
@@ -367,6 +377,12 @@ class _SqliteStore(Store):
         await db.execute("""
             CREATE INDEX IF NOT EXISTS tool_executions_session_idx
             ON tool_executions (session_id) WHERE session_id IS NOT NULL
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS run_markers (
+                run_id   TEXT PRIMARY KEY,
+                ended_at REAL NOT NULL
+            )
         """)
         await db.commit()
         return cls(db)
@@ -577,6 +593,24 @@ class _SqliteStore(Store):
         ) as cur:
             row = await cur.fetchone()
         return float(row[0]) if row else 0.0
+
+    async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
+        await self._db.execute(
+            "INSERT INTO run_markers (run_id, ended_at) VALUES (?, ?) "
+            "ON CONFLICT(run_id) DO UPDATE SET ended_at = excluded.ended_at",
+            (run_id, ended_at),
+        )
+        await self._db.commit()
+
+    async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
+        if not run_ids:
+            return set()
+        placeholders = ",".join("?" for _ in run_ids)
+        async with self._db.execute(
+            f"SELECT run_id FROM run_markers WHERE run_id IN ({placeholders})",
+            tuple(run_ids),
+        ) as cur:
+            return {r[0] for r in await cur.fetchall()}
 
     async def get_period_cost(self, since_ts: float) -> float:
         async with self._db.execute(
@@ -873,6 +907,12 @@ class _PostgresStore(Store):
                 CREATE INDEX IF NOT EXISTS tool_executions_session_idx
                 ON tool_executions (session_id) WHERE session_id IS NOT NULL
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS run_markers (
+                    run_id   TEXT PRIMARY KEY,
+                    ended_at DOUBLE PRECISION NOT NULL
+                )
+            """)
         return cls(pool)
 
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
@@ -1095,6 +1135,24 @@ class _PostgresStore(Store):
                 user_id, since,
             )
         return float(val or 0)
+
+    async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO run_markers (run_id, ended_at) VALUES ($1, $2) "
+                "ON CONFLICT (run_id) DO UPDATE SET ended_at = EXCLUDED.ended_at",
+                run_id, ended_at,
+            )
+
+    async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
+        if not run_ids:
+            return set()
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT run_id FROM run_markers WHERE run_id = ANY($1::text[])",
+                run_ids,
+            )
+        return {r["run_id"] for r in rows}
 
     async def get_period_cost(self, since_ts: float) -> float:
         import datetime as _dt

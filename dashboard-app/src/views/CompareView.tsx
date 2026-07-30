@@ -23,14 +23,15 @@ function useRun(id: string) {
   return { detail, iterations, firstCall };
 }
 
-/** The call whose prompt is worth diffing: Claude Code sessions open with a
- *  tiny utility probe carrying identical boilerplate every run — prefer the
- *  first call with a system prompt, then the first non-trivial one. */
+/** The call whose prompt is worth diffing. Claude Code sessions carry
+ *  hidden utility calls (quota probe, title generator) that are tiny even
+ *  when they have their own system prompts — prompt SIZE is the reliable
+ *  tell, so take the earliest call in the same league as the session's
+ *  biggest prompt. */
 function pickSubstantive(rows: Call[]): Call | null {
-  return rows.find((r) => (r.system_prompt ?? "").length > 0)
-    ?? rows.find((r) => (r.tokens_in ?? 0) > 64)
-    ?? rows[0]
-    ?? null;
+  if (!rows.length) return null;
+  const maxIn = Math.max(...rows.map((r) => r.tokens_in ?? 0));
+  return rows.find((r) => (r.tokens_in ?? 0) >= Math.max(65, maxIn * 0.5)) ?? rows[0];
 }
 
 // ── Prompt drift ─────────────────────────────────────────────────────────────
@@ -195,6 +196,18 @@ function DriftBlock({ label, a, b }: { label: string; a: string; b: string }) {
     return (
       <div className="drift-block">
         <div className="muted">{label}: identical in both runs</div>
+      </div>
+    );
+  }
+  // One side empty usually means the run was captured by an older version
+  // that didn't store this field — an all-removed diff would just mislead.
+  if (!a || !b) {
+    return (
+      <div className="drift-block">
+        <div className="muted">
+          {label}: only recorded for one of the runs (the other was captured
+          before this field was stored, or sent none) — nothing to diff.
+        </div>
       </div>
     );
   }

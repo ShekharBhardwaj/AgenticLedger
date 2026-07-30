@@ -614,8 +614,25 @@ def create_app(
     @app.get("/api/runs")
     async def api_runs(request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
-        runs = await request.app.state.store.list_runs()
-        return JSONResponse([_with_run_status(r, loop_run_gap_seconds) for r in runs])
+        store = request.app.state.store
+        runs = await store.list_runs()
+        ended = await store.get_run_end_markers([r["run_id"] for r in runs])
+        return JSONResponse([
+            _with_run_status(r, loop_run_gap_seconds, explicitly_ended=r["run_id"] in ended)
+            for r in runs
+        ])
+
+    @app.post("/api/runs/{run_id}/end")
+    async def api_run_end(run_id: str, request: Request) -> JSONResponse:
+        """The runner's exit signal: marks the run ended immediately instead
+        of waiting for the inactivity window. Idempotent."""
+        principal = await _require(request, ROLE_EDITOR)
+        store = request.app.state.store
+        if await store.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="run_id not found")
+        await store.mark_run_ended(run_id, time.time())
+        await _audit(principal, request, "run_end", run_id, "runner exit signal")
+        return JSONResponse({"run_id": run_id, "status": "ended"})
 
     @app.post("/api/replay")
     async def api_replay(request: Request) -> JSONResponse:
@@ -739,7 +756,9 @@ def create_app(
         run = await request.app.state.store.get_run(run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="run not found")
-        return JSONResponse(_with_run_status(run, loop_run_gap_seconds))
+        ended = await request.app.state.store.get_run_end_markers([run["run_id"]])
+        return JSONResponse(_with_run_status(
+            run, loop_run_gap_seconds, explicitly_ended=run["run_id"] in ended))
 
     @app.get("/api/runs/{run_id}/iterations")
     async def api_run_iterations(run_id: str, request: Request) -> JSONResponse:
@@ -1408,17 +1427,20 @@ def _int_or_none(value) -> Optional[int]:
         return None
 
 
-def _with_run_status(run: dict, run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS) -> dict:
+def _with_run_status(run: dict, run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
+                     explicitly_ended: bool = False) -> dict:
     """Derive a runner-facing status from the aggregate row.
 
-    A run with no completion promise and no flags is "running" only while
-    calls are still arriving; once its last call is older than the run-gap
-    window (the same window that groups iterations), it reads "ended"."""
+    Precedence: completion promise → flags → an explicit end marker (the
+    runner told us the loop exited) → inactivity inference (last call older
+    than the run-gap window) → running."""
     promise_seen = bool(run.pop("promise_seen", 0))
     if promise_seen:
         run["status"] = "complete"
     elif run.get("flagged_calls"):
         run["status"] = "flagged"
+    elif explicitly_ended:
+        run["status"] = "ended"
     else:
         run["status"] = "running"
         last = run.get("last_call_at")
