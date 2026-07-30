@@ -165,13 +165,22 @@ _TOOLS = [
 
 
 def _run_status(run: dict) -> dict:
-    """Mirror the /api/runs status derivation for MCP consumers."""
+    """Mirror the /api/runs status derivation for MCP consumers (using the
+    default run-gap window: MCP has no per-proxy config)."""
+    import contextlib
+    import datetime as _dt
+
     promise_seen = bool(run.pop("promise_seen", 0))
-    run["status"] = (
-        "complete" if promise_seen
-        else "flagged" if run.get("flagged_calls")
-        else "running"
-    )
+    if promise_seen:
+        run["status"] = "complete"
+    elif run.get("flagged_calls"):
+        run["status"] = "flagged"
+    else:
+        run["status"] = "running"
+        with contextlib.suppress(Exception):
+            last = _dt.datetime.fromisoformat(str(run.get("last_call_at")))
+            if (_dt.datetime.now(_dt.timezone.utc) - last).total_seconds() > 900:
+                run["status"] = "ended"
     return run
 
 

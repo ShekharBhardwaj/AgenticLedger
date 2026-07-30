@@ -132,3 +132,24 @@ def test_replay_upstream_error_surfaces_as_502(proxy):
     out = client.post("/api/replay", json={"action_id": action_id})
     assert out.status_code == 502
     assert out.json()["upstream_status"] == 401
+
+
+def test_replay_preserves_block_form_system(proxy):
+    """Issue #25: Claude Code sends system as content blocks — replay must
+    carry them through verbatim, not drop the system prompt."""
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()),
+                   replay_api_key="rk")
+    blocks = [{"type": "text", "text": "Be terse.",
+               "cache_control": {"type": "ephemeral"}}]
+    resp = client.post("/v1/messages",
+                       json={"model": "claude-sonnet-4", "max_tokens": 64,
+                             "system": blocks,
+                             "messages": [{"role": "user", "content": "hi"}]},
+                       headers={"x-agenticledger-session-id": "cap-blocks"})
+    action_id = resp.headers["x-agenticledger-action-id"]
+
+    out = client.post("/api/replay", json={"action_id": action_id})
+    assert out.status_code == 200
+    body = client.upstream.last_json()
+    assert body["system"] == blocks
+    assert all(m["role"] != "system" for m in body["messages"])

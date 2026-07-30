@@ -47,10 +47,11 @@ _MIGRATION_COLUMNS = [
     ("loop_flags",         "TEXT"),   # JSON list of flags raised by THIS call
 ]
 
-# Shared run-aggregation projection — identical SQL in both dialects, so the
-# backends can't drift apart. promise_seen = a completion-promise flag was
-# observed on any call in the run (the runner-visible "loop is done" signal).
-_RUN_AGGREGATE_COLUMNS = """
+# Shared run-aggregation projection — one template so the backends can't
+# drift apart; only the distinct-model aggregation differs by dialect.
+# promise_seen = a completion-promise flag was observed on any call in the
+# run (the runner-visible "loop is done" signal).
+_RUN_AGGREGATE_COLUMNS_BASE = """
                 run_id,
                 MAX(iteration)                AS iterations,
                 COUNT(*)                      AS call_count,
@@ -61,9 +62,14 @@ _RUN_AGGREGATE_COLUMNS = """
                 SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
                 SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
                 MAX(framework)                AS framework,
+                {models_agg}                  AS models,
                 SUM(CASE WHEN loop_flags LIKE '%repeat_tool_call%' OR loop_flags LIKE '%step_budget_exceeded%' THEN 1 ELSE 0 END) AS flagged_calls,
                 MAX(CASE WHEN loop_flags LIKE '%completion_promise%' THEN 1 ELSE 0 END) AS promise_seen
 """
+_RUN_AGGREGATE_COLUMNS = _RUN_AGGREGATE_COLUMNS_BASE.format(
+    models_agg="GROUP_CONCAT(DISTINCT model_id)")
+_RUN_AGGREGATE_COLUMNS_PG = _RUN_AGGREGATE_COLUMNS_BASE.format(
+    models_agg="STRING_AGG(DISTINCT model_id, ',')")
 
 # Per-iteration projection for the Loop Lens iteration ribbon.
 _ITERATION_AGGREGATE_COLUMNS = """
@@ -216,10 +222,11 @@ class Store(ABC):
     async def get_period_cost(self, since_ts: float) -> float: ...
 
     @abstractmethod
-    async def get_report_aggregates(self, since_ts: float) -> dict[str, list[dict[str, Any]]]:
+    async def get_report_aggregates(self, since_ts: float,
+                                    tz_offset_minutes: int = 0) -> dict[str, list[dict[str, Any]]]:
         """Raw per-day / per-model / per-agent aggregates for calls at or
-        after since_ts — the input to reports.build_report(). Days are UTC
-        'YYYY-MM-DD' strings."""
+        after since_ts — the input to reports.build_report(). Days are
+        'YYYY-MM-DD' strings bucketed at UTC + tz_offset_minutes."""
         ...
 
     @abstractmethod
@@ -579,11 +586,13 @@ class _SqliteStore(Store):
             row = await cur.fetchone()
         return float(row[0]) if row else 0.0
 
-    async def get_report_aggregates(self, since_ts: float) -> dict[str, list[dict[str, Any]]]:
+    async def get_report_aggregates(self, since_ts: float,
+                                    tz_offset_minutes: int = 0) -> dict[str, list[dict[str, Any]]]:
+        day_shift = int(tz_offset_minutes) * 60
         async with self._db.execute(
-            """
+            f"""
             SELECT
-                date(timestamp, 'unixepoch')         AS day,
+                date(timestamp + {day_shift}, 'unixepoch') AS day,
                 COUNT(*)                             AS call_count,
                 SUM(COALESCE(cost_usd, 0))           AS cost_usd,
                 SUM(COALESCE(tokens_in, 0))          AS tokens_in,
@@ -922,7 +931,7 @@ class _PostgresStore(Store):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 f"""
-                SELECT {_RUN_AGGREGATE_COLUMNS}
+                SELECT {_RUN_AGGREGATE_COLUMNS_PG}
                 FROM llm_calls
                 WHERE run_id IS NOT NULL
                 GROUP BY run_id
@@ -938,7 +947,7 @@ class _PostgresStore(Store):
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 f"""
-                SELECT {_RUN_AGGREGATE_COLUMNS}
+                SELECT {_RUN_AGGREGATE_COLUMNS_PG}
                 FROM llm_calls
                 WHERE run_id = $1
                 GROUP BY run_id
@@ -1097,14 +1106,16 @@ class _PostgresStore(Store):
             )
         return float(val or 0)
 
-    async def get_report_aggregates(self, since_ts: float) -> dict[str, list[dict[str, Any]]]:
+    async def get_report_aggregates(self, since_ts: float,
+                                    tz_offset_minutes: int = 0) -> dict[str, list[dict[str, Any]]]:
         import datetime as _dt
         since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
+        day_shift = int(tz_offset_minutes)
         async with self._pool.acquire() as conn:
             daily = [dict(r) for r in await conn.fetch(
-                """
+                f"""
                 SELECT
-                    to_char(timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+                    to_char((timestamp + make_interval(mins => {day_shift})) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
                     COUNT(*)                             AS call_count,
                     SUM(COALESCE(cost_usd, 0))           AS cost_usd,
                     SUM(COALESCE(tokens_in, 0))          AS tokens_in,

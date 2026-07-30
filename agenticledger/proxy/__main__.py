@@ -37,6 +37,8 @@ Reads config from environment variables:
     AGENTICLEDGER_BUDGET_DAILY          Max USD total per calendar day (default: none)
     AGENTICLEDGER_BUDGET_USER           Max USD per user_id per calendar day (default: none)
     AGENTICLEDGER_BUDGET_ACTION         block (default) | warn | both
+    AGENTICLEDGER_BUDGET_STATUS         HTTP status for budget blocks: 429 (default, sent with
+                                        Retry-After) or 402 — clients never retry a 402
 
   Rate limits (returns HTTP 429, sliding 60-second window):
     AGENTICLEDGER_RATE_LIMIT_RPM        Max requests per minute globally (default: none)
@@ -122,6 +124,7 @@ app = create_app(
     dsn=dsn,
     budget_session=_float_env("AGENTICLEDGER_BUDGET_SESSION"),
     budget_user=_float_env("AGENTICLEDGER_BUDGET_USER"),
+    budget_status=int(os.environ.get("AGENTICLEDGER_BUDGET_STATUS", "429")),
     budget_agent=_float_env("AGENTICLEDGER_BUDGET_AGENT"),
     budget_daily=_float_env("AGENTICLEDGER_BUDGET_DAILY"),
     budget_action=os.environ.get("AGENTICLEDGER_BUDGET_ACTION", "block"),

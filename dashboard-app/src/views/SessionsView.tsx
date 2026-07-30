@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Call, del, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get,
+  Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
   interactionTags, liveUpdates, post, ReplayResult, Session, toolNames,
 } from "../api";
+
+function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
+  const parts: string[] = [];
+  if (side.cache_read_tokens) parts.push(`⚡ ${fmtNum(side.cache_read_tokens)} cached`);
+  if (side.cache_write_tokens) parts.push(`✍ ${fmtNum(side.cache_write_tokens)} written`);
+  return parts.length ? " · " + parts.join(" · ") : "";
+}
 
 function ReplayPanel({ call }: { call: Call }) {
   const [model, setModel] = useState(call.model_id);
@@ -39,7 +46,7 @@ function ReplayPanel({ call }: { call: Call }) {
           <div>
             <div className="muted mono">{result.original.model_id} (original)</div>
             <div className="replay-stats">
-              {fmtNum(result.original.tokens_in)} → {fmtNum(result.original.tokens_out)} tok
+              {fmtNum(result.original.tokens_in)} → {fmtNum(result.original.tokens_out)} tok{cacheStats(result.original)}
               · {fmtUsd(result.original.cost_usd)}
               · {result.original.latency_ms != null ? `${Math.round(result.original.latency_ms)}ms` : "—"}
             </div>
@@ -48,7 +55,7 @@ function ReplayPanel({ call }: { call: Call }) {
           <div>
             <div className="muted mono">{result.replay.model_id} (replay)</div>
             <div className="replay-stats">
-              {fmtNum(result.replay.tokens_in)} → {fmtNum(result.replay.tokens_out)} tok
+              {fmtNum(result.replay.tokens_in)} → {fmtNum(result.replay.tokens_out)} tok{cacheStats(result.replay)}
               · {fmtUsd(result.replay.cost_usd)}
               · {result.replay.latency_ms != null ? `${Math.round(result.replay.latency_ms)}ms` : "—"}
             </div>
@@ -100,7 +107,14 @@ function CallCard({ call }: { call: Call }) {
         {call.iteration != null && <span className="dim">iter {call.iteration}</span>}
         <span className="dim">{fmtNum(call.tokens_in)} → {fmtNum(call.tokens_out)} tok</span>
         {call.cache_read_tokens != null && call.cache_read_tokens > 0 && (
-          <span className="dim">⚡ {fmtNum(call.cache_read_tokens)} cached</span>
+          <span className="dim" title="prompt-cache reads — billed at a fraction of the input rate">
+            ⚡ {fmtNum(call.cache_read_tokens)} cached
+          </span>
+        )}
+        {call.cache_write_tokens != null && call.cache_write_tokens > 0 && (
+          <span className="dim" title="prompt-cache writes — billed at a premium over the input rate; this is usually where a surprising cost comes from">
+            ✍ {fmtNum(call.cache_write_tokens)} written
+          </span>
         )}
         <span className="dim">{fmtUsd(call.cost_usd)}</span>
         <span className="dim">{call.latency_ms != null ? `${call.latency_ms}ms` : ""}</span>
@@ -213,6 +227,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             </button>
             <div className="card-title">{s.session_id}</div>
             <div className="card-sub">
+              <span>{fmtAgo(s.started_at)}</span>
               <span>{s.call_count} calls</span>
               <span>{fmtUsd(s.total_cost_usd)}</span>
               {s.agent_name && <span className="badge fw">{s.agent_name}</span>}

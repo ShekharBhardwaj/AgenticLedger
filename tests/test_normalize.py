@@ -187,16 +187,21 @@ class TestNormalizeRequestAnthropic:
         assert req.messages[0] == {"role": "system", "content": "Be terse."}
         assert req.messages[1] == {"role": "user", "content": "hi"}
 
-    def test_non_string_system_not_used_as_prompt_but_still_prepended(self):
-        """A non-string system (e.g. block list) is prepended but system_prompt is None."""
-        system_blocks = [{"type": "text", "text": "Be terse."}]
+    def test_block_list_system_flattened_into_system_prompt(self):
+        """Block-form system (what Claude Code sends) is prepended verbatim
+        AND its text is flattened into system_prompt, so drift diffs and
+        replay have it (issue #25)."""
+        system_blocks = [
+            {"type": "text", "text": "Be terse."},
+            {"type": "text", "text": "Never guess.", "cache_control": {"type": "ephemeral"}},
+        ]
         body = {
             "model": "claude-3-5-sonnet",
             "system": system_blocks,
             "messages": [{"role": "user", "content": "hi"}],
         }
         req = normalize_request(body, "/v1/messages")
-        assert req.system_prompt is None
+        assert req.system_prompt == "Be terse.\nNever guess."
         assert req.messages[0] == {"role": "system", "content": system_blocks}
 
     def test_anthropic_tool_result_blocks_extracted(self):

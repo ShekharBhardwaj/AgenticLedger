@@ -17,10 +17,20 @@ function useRun(id: string) {
     const sid = iterations[0]?.session_id;
     if (!sid) { setFirstCall(null); return; }
     get<Call[]>(`/session/${encodeURIComponent(sid)}`)
-      .then((rows) => setFirstCall(rows[0] ?? null))
+      .then((rows) => setFirstCall(pickSubstantive(rows)))
       .catch(() => setFirstCall(null));
   }, [iterations]);
   return { detail, iterations, firstCall };
+}
+
+/** The call whose prompt is worth diffing: Claude Code sessions open with a
+ *  tiny utility probe carrying identical boilerplate every run — prefer the
+ *  first call with a system prompt, then the first non-trivial one. */
+function pickSubstantive(rows: Call[]): Call | null {
+  return rows.find((r) => (r.system_prompt ?? "").length > 0)
+    ?? rows.find((r) => (r.tokens_in ?? 0) > 64)
+    ?? rows[0]
+    ?? null;
 }
 
 // ── Prompt drift ─────────────────────────────────────────────────────────────
@@ -264,21 +274,21 @@ function ConfigDrift({ a, b }: { a: Call | null; b: Call | null }) {
   return (
     <div className="drift-block">
       <div className="muted">
-        Configuration{drifted.length === 0 ? ": identical in both runs" : " — differences change costs too, not just the prompt"}
+        Configuration{drifted.length === 0
+          ? " — identical in both runs"
+          : " — differences change costs too, not just the prompt"}
       </div>
-      {drifted.length > 0 && (
-        <table className="rtable" style={{ maxWidth: 640 }}>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.label}>
-                <td>{r.label}</td>
-                <td className="mono" style={{ color: r.va !== r.vb ? "#e5484d" : undefined }}>{r.va}</td>
-                <td className="mono" style={{ color: r.va !== r.vb ? "var(--green)" : undefined }}>{r.vb}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <table className="rtable" style={{ maxWidth: 640 }}>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label}>
+              <td>{r.label}</td>
+              <td className="mono" style={{ color: r.va !== r.vb ? "#e5484d" : undefined }}>{r.va}</td>
+              <td className="mono" style={{ color: r.va !== r.vb ? "var(--green)" : undefined }}>{r.vb}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -300,7 +310,9 @@ interface Row {
 function DeltaCell({ row }: { row: Row }) {
   if (row.a == null || row.b == null) return <td>—</td>;
   const d = row.b - row.a;
-  if (d === 0) return <td className="muted">=</td>;
+  // "=" whenever the delta is invisible at display precision — a signed
+  // zero with a percentage ("−0.0 (-31%)") reads as broken.
+  if (d === 0 || row.fmt(Math.abs(d)) === row.fmt(0)) return <td className="muted">=</td>;
   const pct = row.a !== 0 ? ` (${d > 0 ? "+" : ""}${Math.round((100 * d) / row.a)}%)` : "";
   const color = row.lowerIsBetter === undefined
     ? undefined
@@ -360,7 +372,13 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
     { label: "tokens in", a: ra.detail?.total_tokens_in ?? null, b: rb.detail?.total_tokens_in ?? null, fmt: fmtNum },
     { label: "tokens out", a: ra.detail?.total_tokens_out ?? null, b: rb.detail?.total_tokens_out ?? null, fmt: fmtNum },
     { label: "flagged calls", a: ra.detail?.flagged_calls ?? null, b: rb.detail?.flagged_calls ?? null, fmt: String, lowerIsBetter: true },
-    { label: "duration (min)", a: durationMin(ra.detail), b: durationMin(rb.detail), fmt: (v) => v.toFixed(1), lowerIsBetter: true },
+    {
+      label: "duration",
+      a: durationMin(ra.detail),
+      b: durationMin(rb.detail),
+      fmt: (v) => (v < 2 ? `${Math.round(v * 60)}s` : `${v.toFixed(1)}m`),
+      lowerIsBetter: true,
+    },
   ];
 
   return (

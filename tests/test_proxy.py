@@ -910,3 +910,44 @@ def test_budget_user_daily_block(proxy):
                         headers={"x-agenticledger-session-id": "u-s3",
                                  "x-agenticledger-user-id": "someone-else"})
     assert other.status_code == 200
+
+
+def test_budget_daily_block_carries_retry_after(proxy):
+    """Issue #27: daily-window budget blocks tell clients when retrying can
+    actually succeed (seconds until UTC midnight) instead of inviting a storm."""
+    client = proxy(handler=_ok_handler(), budget_daily=0.000001)
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-session-id": "ra-1"})
+    second = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                         headers={"x-agenticledger-session-id": "ra-2"})
+    assert second.status_code == 429
+    retry_after = int(second.headers["retry-after"])
+    assert 0 < retry_after <= 86400
+
+
+def test_budget_status_402_option(proxy):
+    """Issue #27: AGENTICLEDGER_BUDGET_STATUS=402 opts into Payment Required,
+    which clients never retry. Session budgets never reset → no Retry-After."""
+    client = proxy(handler=_ok_handler(), budget_session=0.000001, budget_status=402)
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-session-id": "s-402"})
+    second = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                         headers={"x-agenticledger-session-id": "s-402"})
+    assert second.status_code == 402
+    assert "retry-after" not in second.headers
+
+
+def test_finished_run_reads_ended_and_lists_models(proxy):
+    """Issues #17 + #18: a run whose last call is older than the run-gap
+    window reads 'ended' (not 'running' forever), and run aggregates carry
+    the distinct models."""
+    import time as _time
+    client = proxy(handler=_ok_handler(), loop_run_gap_seconds=0.01)
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-session-id": "er-s",
+                         "x-agenticledger-run-id": "er-run",
+                         "x-agenticledger-iteration": "1"})
+    _time.sleep(0.05)
+    run = client.get("/api/runs/er-run").json()
+    assert run["status"] == "ended"
+    assert "gpt-4o" in (run.get("models") or "")

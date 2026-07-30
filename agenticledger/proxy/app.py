@@ -191,6 +191,7 @@ def create_app(
     budget_daily: Optional[float] = None,
     budget_user: Optional[float] = None,   # max USD per user_id per UTC day
     budget_action: str = "block",   # "block" | "warn" | "both"
+    budget_status: int = 429,       # 429 (default) or 402 — 402 stops client retry storms
     alert_config: Optional[AlertConfig] = None,
     rate_limit_config: Optional[RateLimitConfig] = None,
     async_capture: bool = False,
@@ -614,7 +615,7 @@ def create_app(
     async def api_runs(request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
         runs = await request.app.state.store.list_runs()
-        return JSONResponse([_with_run_status(r) for r in runs])
+        return JSONResponse([_with_run_status(r, loop_run_gap_seconds) for r in runs])
 
     @app.post("/api/replay")
     async def api_replay(request: Request) -> JSONResponse:
@@ -653,12 +654,18 @@ def create_app(
             return JSONResponse({"error": f"Upstream unreachable: {exc}"}, status_code=502)
         latency_ms = (time.time() - start) * 1000
         if upstream.status_code != 200:
-            return JSONResponse(
-                {"error": "Upstream rejected the replay",
-                 "upstream_status": upstream.status_code,
-                 "detail": upstream.text[:500]},
-                status_code=502,
-            )
+            payload = {"error": "Upstream rejected the replay",
+                       "upstream_status": upstream.status_code,
+                       "detail": upstream.text[:500]}
+            if upstream.status_code == 401:
+                payload["hint"] = (
+                    "The replay key was rejected by the provider — check "
+                    "AGENTICLEDGER_REPLAY_API_KEY. A Claude Code subscription "
+                    "login is not an API key; create one at console.anthropic.com, "
+                    "or replay for free against a local model (see the LM Studio "
+                    "integration guide)."
+                )
+            return JSONResponse(payload, status_code=502)
         resp = normalize_response(upstream.json(), latency_ms, model)
         if resp.cost_usd is None:
             resp.cost_usd = compute_cost(
@@ -688,24 +695,32 @@ def create_app(
                 "action_id": action_id, "model_id": original["model_id"],
                 "content": original.get("content"),
                 "tokens_in": original.get("tokens_in"), "tokens_out": original.get("tokens_out"),
+                "cache_read_tokens": original.get("cache_read_tokens"),
+                "cache_write_tokens": original.get("cache_write_tokens"),
                 "cost_usd": original.get("cost_usd"), "latency_ms": original.get("latency_ms"),
             },
             "replay": {
                 "action_id": new_id, "model_id": model,
                 "content": resp.content, "tool_calls": resp.tool_calls,
                 "tokens_in": resp.tokens_in, "tokens_out": resp.tokens_out,
+                "cache_read_tokens": resp.cache_read_tokens,
+                "cache_write_tokens": resp.cache_write_tokens,
                 "cost_usd": resp.cost_usd, "latency_ms": round(latency_ms, 1),
             },
         })
 
     @app.get("/api/reports")
-    async def api_reports(request: Request, days: int = 30) -> JSONResponse:
+    async def api_reports(request: Request, days: int = 30,
+                          tz_offset_minutes: int = 0) -> JSONResponse:
         """Spend insights over the window: daily trend, model mix with
-        signed cache savings, and per-agent totals."""
+        signed cache savings, and per-agent totals. tz_offset_minutes shifts
+        the day bucketing (positive = east of UTC) so 'per day' can mean the
+        viewer's local day; budgets and the digest remain UTC."""
         await _require(request, ROLE_VIEWER)
         days = max(1, min(days, 365))
+        tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
         raw = await request.app.state.store.get_report_aggregates(
-            time.time() - days * 86400)
+            time.time() - days * 86400, tz_offset_minutes=tz_offset_minutes)
         return JSONResponse(build_report(raw["daily"], raw["models"], raw["agents"], days))
 
     @app.get("/api/sessions/{session_id}/tools")
@@ -724,7 +739,7 @@ def create_app(
         run = await request.app.state.store.get_run(run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="run not found")
-        return JSONResponse(_with_run_status(run))
+        return JSONResponse(_with_run_status(run, loop_run_gap_seconds))
 
     @app.get("/api/runs/{run_id}/iterations")
     async def api_run_iterations(run_id: str, request: Request) -> JSONResponse:
@@ -1042,9 +1057,11 @@ def create_app(
                 logger.warning("Rate limiter check failed — allowing call through", exc_info=True)
                 rate_error = None
             if rate_error:
+                # Sliding 60s window — a retry after it genuinely can succeed.
                 return JSONResponse(
                     {"error": {"type": "rate_limit_exceeded", "message": rate_error}},
                     status_code=429,
+                    headers={"Retry-After": "60"},
                 )
 
         # ── Loop circuit breaker ─────────────────────────────────────────────
@@ -1056,6 +1073,7 @@ def create_app(
                 return JSONResponse(
                     {"error": {"type": "loop_detected", "message": loop_error}},
                     status_code=429,
+                    headers={"Retry-After": "60"},
                 )
 
         # ── Budget check ─────────────────────────────────────────────────────
@@ -1064,13 +1082,13 @@ def create_app(
         _budget_warning: Optional[str] = None  # set in warn mode; carried into actual save
         if is_llm_path and not is_count_tokens and (budget_session is not None or budget_agent is not None or budget_daily is not None or budget_user is not None):
             try:
-                budget_error = await _check_budgets(
+                budget_error, budget_retry_after = await _check_budgets(
                     request.app.state.store, meta,
                     budget_session, budget_agent, budget_daily, budget_user,
                 )
             except Exception:
                 logger.warning("Budget check failed — allowing call through", exc_info=True)
-                budget_error = None
+                budget_error, budget_retry_after = None, None
             if budget_error:
                 should_block = budget_action in ("block", "both")
                 should_warn  = budget_action in ("warn",  "both")
@@ -1082,20 +1100,26 @@ def create_app(
                         apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
                         await request.app.state.store.save(
                             action_id, canonical_req, blocked_resp,
-                            status_code=429, error_detail=budget_error, **meta,
+                            status_code=budget_status, error_detail=budget_error, **meta,
                         )
                         await broadcaster.broadcast({
                             "type": "call",
                             "action_id": action_id,
                             "session_id": meta.get("session_id"),
-                            "status_code": 429,
+                            "status_code": budget_status,
                             "budget_warning": False,
                         })
                     except Exception:
                         _record_capture_drop(request.app, action_id)
+                    # A budget exceedance is not transient: tell well-behaved
+                    # clients when retrying could actually succeed (daily
+                    # windows reset at UTC midnight; session budgets never do).
+                    headers = ({"Retry-After": str(budget_retry_after)}
+                               if budget_retry_after else {})
                     return JSONResponse(
                         {"error": {"type": "budget_exceeded", "message": budget_error}},
-                        status_code=429,
+                        status_code=budget_status,
+                        headers=headers,
                     )
                 if should_warn:
                     # Let call through; tag the actual response on save
@@ -1260,6 +1284,14 @@ async def _streaming_proxy(
     )
 
 
+def _seconds_to_utc_midnight() -> int:
+    """When daily budget windows reset — the honest Retry-After value."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    tomorrow = (now + datetime.timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    return max(1, int((tomorrow - now).total_seconds()))
+
+
 async def _check_budgets(
     store: Store,
     meta: dict,
@@ -1267,8 +1299,10 @@ async def _check_budgets(
     budget_agent: Optional[float],
     budget_daily: Optional[float],
     budget_user: Optional[float] = None,
-) -> Optional[str]:
-    """Return an error message if any budget is exceeded, else None."""
+) -> tuple[Optional[str], Optional[int]]:
+    """(error message, Retry-After seconds) if a budget is exceeded, else
+    (None, None). Daily windows carry the seconds until UTC midnight;
+    session budgets never reset, so they carry no Retry-After."""
     session_id = meta.get("session_id")
     agent_name = meta.get("agent_name")
     user_id = meta.get("user_id")
@@ -1278,7 +1312,8 @@ async def _check_budgets(
         if spent >= budget_session:
             return (
                 f"Session budget of ${budget_session:.4f} exceeded "
-                f"(current spend: ${spent:.4f}). Session: {session_id}"
+                f"(current spend: ${spent:.4f}). Session: {session_id}",
+                None,
             )
 
     if budget_agent is not None and agent_name:
@@ -1287,7 +1322,8 @@ async def _check_budgets(
         if spent >= budget_agent:
             return (
                 f"Agent daily budget of ${budget_agent:.4f} exceeded "
-                f"(current spend: ${spent:.4f}). Agent: {agent_name}"
+                f"(current spend: ${spent:.4f}). Agent: {agent_name}",
+                _seconds_to_utc_midnight(),
             )
 
     if budget_user is not None and user_id:
@@ -1296,7 +1332,8 @@ async def _check_budgets(
         if spent >= budget_user:
             return (
                 f"User daily budget of ${budget_user:.4f} exceeded "
-                f"(current spend: ${spent:.4f}). User: {user_id}"
+                f"(current spend: ${spent:.4f}). User: {user_id}",
+                _seconds_to_utc_midnight(),
             )
 
     if budget_daily is not None:
@@ -1305,10 +1342,11 @@ async def _check_budgets(
         if spent >= budget_daily:
             return (
                 f"Daily budget of ${budget_daily:.4f} exceeded "
-                f"(current spend: ${spent:.4f})."
+                f"(current spend: ${spent:.4f}).",
+                _seconds_to_utc_midnight(),
             )
 
-    return None
+    return None, None
 
 
 def _today_start_ts() -> float:
@@ -1370,14 +1408,25 @@ def _int_or_none(value) -> Optional[int]:
         return None
 
 
-def _with_run_status(run: dict) -> dict:
-    """Derive a runner-facing status from the aggregate row."""
+def _with_run_status(run: dict, run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS) -> dict:
+    """Derive a runner-facing status from the aggregate row.
+
+    A run with no completion promise and no flags is "running" only while
+    calls are still arriving; once its last call is older than the run-gap
+    window (the same window that groups iterations), it reads "ended"."""
     promise_seen = bool(run.pop("promise_seen", 0))
-    run["status"] = (
-        "complete" if promise_seen
-        else "flagged" if run.get("flagged_calls")
-        else "running"
-    )
+    if promise_seen:
+        run["status"] = "complete"
+    elif run.get("flagged_calls"):
+        run["status"] = "flagged"
+    else:
+        run["status"] = "running"
+        last = run.get("last_call_at")
+        with suppress(Exception):
+            last_dt = datetime.datetime.fromisoformat(str(last))
+            age = (datetime.datetime.now(datetime.timezone.utc) - last_dt).total_seconds()
+            if age > run_gap_seconds:
+                run["status"] = "ended"
     return run
 
 

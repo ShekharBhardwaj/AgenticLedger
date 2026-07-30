@@ -399,6 +399,7 @@ Once connected, you can ask your assistant things like:
 | `AGENTICLEDGER_BUDGET_AGENT` | _(none)_ | Max USD per `agent_name` per calendar day (UTC). |
 | `AGENTICLEDGER_BUDGET_DAILY` | _(none)_ | Max USD total across all calls per calendar day (UTC). |
 | `AGENTICLEDGER_BUDGET_USER` | _(none)_ | Max USD per `user_id` per calendar day (UTC) — follows the user across sessions. |
+| `AGENTICLEDGER_BUDGET_STATUS` | `429` | HTTP status for budget blocks. `429` ships with an honest `Retry-After` (seconds until the UTC-midnight window reset); set `402` if your clients retry 429s aggressively — nothing retries Payment Required. |
 | `AGENTICLEDGER_BUDGET_ACTION` | `block` | What happens when a budget is exceeded: `block` returns HTTP 429 (call never reaches the LLM), `warn` lets the call through and fires a webhook alert, `both` blocks and fires the webhook. |
 
 **Rate limits** — block calls that exceed request frequency (returns HTTP 429, sliding 60-second window):
@@ -780,6 +781,12 @@ already satisfied" and does NOT upgrade. Run `pip install -U agentic-ledger`
 and restart. The proxy prints its version on the first line at startup, and
 `curl localhost:8000/health` reports it too. Since 0.4.0 everything is named
 `agenticledger` — see the migration notes in the CHANGELOG.
+
+**Replay fails with 401 "invalid x-api-key"** — `AGENTICLEDGER_REPLAY_API_KEY`
+needs a real provider API key from [console.anthropic.com](https://console.anthropic.com)
+(or platform.openai.com). A Claude Code subscription login is **not** an API
+key and cannot be used. No key? Replay for free against a local model — see
+the [LM Studio guide](docs/integrations/lm-studio.md).
 
 **`incompatible architecture (have 'arm64', need 'x86_64')`** on macOS — your
 terminal is running under Rosetta, so Python picks its x86_64 slice while pip

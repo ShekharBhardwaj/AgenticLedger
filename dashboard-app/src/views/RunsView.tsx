@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  FlaggedCall, flagBadgeClass, flagInfo, fmtNum, fmtTime, fmtUsd, get, Iteration,
-  liveUpdates, Run,
+  FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
+  Iteration, liveUpdates, Run,
 } from "../api";
 import CompareView from "./CompareView";
 
@@ -115,9 +115,11 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               {r.run_id} <span className={`badge ${r.status}`}>{r.status}</span>
             </div>
             <div className="card-sub">
+              <span>{fmtAgo(r.last_call_at)}</span>
               <span>{r.iterations ?? "?"} iterations</span>
               <span>{r.call_count} calls</span>
               <span>{fmtUsd(r.total_cost_usd)}</span>
+              {r.models && <span className="mono">{r.models}</span>}
               {r.framework && <span className="badge fw">{r.framework}</span>}
             </div>
           </div>
@@ -146,6 +148,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             </h2>
             <div className="muted">
               started {fmtTime(detail.started_at)} · last call {fmtTime(detail.last_call_at)}
+              {detail.models && <> · <span className="mono">{detail.models}</span></>}
             </div>
 
             <div className="stats-row">

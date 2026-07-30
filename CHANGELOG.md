@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Thirteen fixes from the first full user walkthrough of 0.6.0 — every
+finding was filed as an issue during the test and closed by this release.
+
+### Fixed
+- **Budget blocks no longer cause client retry storms** (#27): budget 429s
+  carry an honest `Retry-After` (seconds until the UTC-midnight reset;
+  session budgets never reset so they send none), rate-limit and
+  loop-breaker 429s carry a short one, and `AGENTICLEDGER_BUDGET_STATUS=402`
+  opts into Payment Required, which clients never retry.
+- **Replay preserves block-form system prompts** (#25): Claude Code sends
+  `system` as content blocks; these are now flattened into the stored
+  system_prompt and passed through verbatim on replay instead of being
+  silently dropped.
+- **Finished runs read `ended`, not `running` forever** (#17): a run with
+  no promise and no flags flips to `ended` once its last call is older than
+  the run-gap window.
+- **Prompt drift compares the real prompt, not Claude Code's utility
+  probe** (#19): the diff now selects the first substantive call (first
+  with a system prompt, then first non-trivial).
+- **Replay errors show the reason** (#24, #26): upstream status and detail
+  render in the panel, and a 401 explains that a subscription login is not
+  an API key, pointing at the console and the free LM Studio path.
+- **Comparison durations format sanely** (#20): seconds under two minutes,
+  and deltas invisible at display precision show "=" instead of "−0.0 (-31%)".
+
+### Added
+- **Cache-write visibility** (#16): call cards show a ✍ written chip next
+  to the ⚡ cached one, and the replay side-by-side includes cache figures —
+  the "why does a 6-token call cost $0.23" mystery now answers itself.
+- **Models everywhere they were missing** (#18): run cards, the run detail
+  header, and the comparison's configuration table (now always visible)
+  name the models involved.
+- **Local-time reports** (#22): `/api/reports` accepts `tz_offset_minutes`
+  and the web app buckets days in your browser's timezone; budgets and the
+  digest remain UTC.
+- **Readable spend-bar labels** (#21): "Jul 29" instead of a bare "29".
+- **Cache explained in-UI** (#23): hover titles on the cache tile and
+  columns plus a footnote defining cache Δ.
+- **Relative timestamps on session and run tiles** (#14): "2h ago" makes
+  the newest-first order visible.
+
 ## [0.6.0] - 2026-07-28
 
 ### Added

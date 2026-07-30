@@ -70,10 +70,18 @@ def normalize_request(body: dict, path: str) -> CanonicalRequest:
     messages = list(body.get("messages", []))
     system_prompt: Optional[str] = None
 
-    # Anthropic puts the system prompt as a top-level key
+    # Anthropic puts the system prompt as a top-level key — either a plain
+    # string or a list of content blocks (Claude Code sends blocks). Either
+    # way the text lands in system_prompt so drift diffs and replay have it.
     system = body.get("system")
     if system and provider == "anthropic":
-        system_prompt = system if isinstance(system, str) else None
+        if isinstance(system, str):
+            system_prompt = system
+        elif isinstance(system, list):
+            system_prompt = "\n".join(
+                block.get("text", "") for block in system
+                if isinstance(block, dict) and block.get("type") == "text"
+            ) or None
         messages = [{"role": "system", "content": system}] + messages
     else:
         for msg in messages:

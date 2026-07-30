@@ -73,13 +73,27 @@ interface Report {
 
 const WINDOWS = [7, 30, 90];
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Bar label: "Jul 29" when the month is new or ambiguous, bare day otherwise. */
+function fmtDayLabel(day: string, prevDay: string): string {
+  const month = MONTHS[parseInt(day.slice(5, 7), 10) - 1] ?? "";
+  const dom = String(parseInt(day.slice(8), 10));
+  return prevDay.slice(0, 7) === day.slice(0, 7) ? dom : `${month} ${dom}`;
+}
+
 export default function ReportsView() {
   const [report, setReport] = useState<Report | null>(null);
   const [days, setDays] = useState(30);
 
+  // Bucket days in the viewer's local timezone (JS offset is minutes behind
+  // UTC, the API wants minutes ahead — hence the negation).
+  const tzOffset = -new Date().getTimezoneOffset();
   const refresh = useCallback(() => {
-    get<Report>(`/api/reports?days=${days}`).then(setReport).catch(() => {});
-  }, [days]);
+    get<Report>(`/api/reports?days=${days}&tz_offset_minutes=${tzOffset}`)
+      .then(setReport).catch(() => {});
+  }, [days, tzOffset]);
 
   useEffect(() => {
     refresh();
@@ -121,7 +135,7 @@ export default function ReportsView() {
           <div className="l">tokens in / out</div>
         </div>
         {cacheUsed && (
-          <div className="stat">
+          <div className="stat" title="What your prompt-cache traffic would have cost at full input rates minus what it actually cost. Negative (red) means heavy cache writes were never read back — caching cost more than it saved.">
             <div className="v" style={{ color: t.cache_savings_usd >= 0 ? "var(--green)" : "var(--red)" }}>
               {t.cache_savings_usd >= 0 ? "" : "−"}{fmtUsd(Math.abs(t.cache_savings_usd))}
             </div>
@@ -132,7 +146,9 @@ export default function ReportsView() {
 
       {report.daily.length > 0 && (
         <>
-          <div className="section-title">Spend per day (UTC)</div>
+          <div className="section-title">
+            Spend per day ({tzOffset === 0 ? "UTC" : "your local time"})
+          </div>
           <div className="ribbon">
             {report.daily.map((d) => (
               <div
@@ -144,8 +160,8 @@ export default function ReportsView() {
             ))}
           </div>
           <div className="ribbon-labels">
-            {report.daily.map((d) => (
-              <div key={d.day}>{d.day.slice(8)}</div>
+            {report.daily.map((d, i) => (
+              <div key={d.day}>{fmtDayLabel(d.day, i === 0 ? "" : report.daily[i - 1].day)}</div>
             ))}
           </div>
         </>
@@ -156,7 +172,10 @@ export default function ReportsView() {
         <thead>
           <tr>
             <th>model</th><th>calls</th><th>errors</th><th>latency p50/p95/p99</th>
-            <th>tokens in / out</th><th>cache r / w</th><th>cache Δ</th><th>cost</th>
+            <th>tokens in / out</th>
+            <th title="prompt-cache tokens: reads are billed at a fraction of the input rate, writes at a premium">cache r / w</th>
+            <th title="effect of caching on your bill: minus = money saved vs paying full input rates, plus = caching cost extra">cache Δ</th>
+            <th>cost</th>
           </tr>
         </thead>
         <tbody>
@@ -176,6 +195,12 @@ export default function ReportsView() {
           ))}
         </tbody>
       </table>
+
+      <div className="muted" style={{ fontSize: 12, margin: "-12px 0 20px" }}>
+        Cache Δ = what cached traffic would have cost at full input rates minus
+        what it actually cost. Minus is savings; plus means cache writes
+        outweighed the reads.
+      </div>
 
       <div className="section-title">By agent</div>
       <table className="rtable">

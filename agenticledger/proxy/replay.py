@@ -37,7 +37,16 @@ def build_replay_request(record: dict[str, Any], model: str) -> tuple[str, dict[
             "messages": [m for m in messages if not (isinstance(m, dict) and m.get("role") == "system")],
             "max_tokens": record.get("max_tokens") or 4096,
         }
-        if record.get("system_prompt"):
+        # Restore the top-level system verbatim from the captured synthetic
+        # system message — string or content-block form both pass through —
+        # falling back to the flattened system_prompt column.
+        sys_msg = next(
+            (m for m in messages if isinstance(m, dict) and m.get("role") == "system"),
+            None,
+        )
+        if sys_msg is not None and sys_msg.get("content"):
+            body["system"] = sys_msg["content"]
+        elif record.get("system_prompt"):
             body["system"] = record["system_prompt"]
         path = "v1/messages"
     else:

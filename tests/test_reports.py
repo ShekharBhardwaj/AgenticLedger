@@ -142,3 +142,20 @@ def test_reports_endpoint(proxy):
     assert data["models"][0]["model_id"] == "gpt-4o"
     assert data["totals"]["total_cost_usd"] == pytest.approx(
         (1200 * 2.50 + 300 * 10.00) / 1_000_000)
+
+
+async def test_report_tz_offset_shifts_day_bucket(store):
+    """Issue #22: a 23:30 UTC call lands on the next day when viewed from
+    UTC+2 — the tz offset moves the bucketing, not the data."""
+    import datetime as dt
+    ts = dt.datetime(2026, 7, 28, 23, 30, tzinfo=dt.timezone.utc).timestamp()
+    req = CanonicalRequest(
+        messages=[{"role": "user", "content": "hi"}],
+        model_id="gpt-4o", provider="openai", timestamp=ts,
+    )
+    await store.save("20000000-0000-0000-0000-000000000001", req,
+                     _resp(10, 5, 0.001), session_id="tz-s")
+    utc = await store.get_report_aggregates(0.0)
+    local = await store.get_report_aggregates(0.0, tz_offset_minutes=120)
+    assert utc["daily"][0]["day"] == "2026-07-28"
+    assert local["daily"][0]["day"] == "2026-07-29"

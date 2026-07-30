@@ -33,12 +33,28 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    const msg = (data as { error?: string; detail?: string }).error
-      ?? (data as { detail?: string }).detail
-      ?? `${resp.status} ${resp.statusText}`;
-    throw new Error(msg);
+    const err = data as { error?: string; detail?: string; upstream_status?: number; hint?: string };
+    const parts = [
+      err.error ?? `${resp.status} ${resp.statusText}`,
+      err.upstream_status != null ? `(upstream ${err.upstream_status})` : "",
+      err.detail ?? "",
+      err.hint ?? "",
+    ].filter(Boolean);
+    throw new Error(parts.join("\n"));
   }
   return data as T;
+}
+
+/** Relative age for list tiles: "just now", "8m ago", "2h ago", "3d ago". */
+export function fmtAgo(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const min = ms / 60000;
+  if (min < 1) return "just now";
+  if (min < 60) return `${Math.floor(min)}m ago`;
+  if (min < 1440) return `${Math.floor(min / 60)}h ago`;
+  return `${Math.floor(min / 1440)}d ago`;
 }
 
 export interface ReplaySide {
@@ -47,6 +63,8 @@ export interface ReplaySide {
   content: string | null;
   tokens_in: number | null;
   tokens_out: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
   cost_usd: number | null;
   latency_ms: number | null;
 }
@@ -67,8 +85,9 @@ export interface Run {
   total_tokens_in: number;
   total_tokens_out: number;
   framework: string | null;
+  models: string | null;   // comma-separated distinct models in the run
   flagged_calls: number;
-  status: "running" | "flagged" | "complete";
+  status: "running" | "flagged" | "complete" | "ended";
 }
 
 export interface Iteration {
