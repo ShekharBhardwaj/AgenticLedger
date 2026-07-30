@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Thirteen fixes from the first full user walkthrough of 0.6.0 — every
-finding was filed as an issue during the test and closed by this release.
+## [0.6.1] - 2026-07-30
+
+Nineteen fixes across two rounds of a full hands-on user walkthrough —
+every finding was filed as an issue during the test, fixed, and re-verified
+live before this release. Round two added: an instant run-end signal
+(`POST /api/runs/{id}/end`, fired by `agenticledger run` on exit, so runs
+read `ended` the moment the loop stops), size-based prompt-drift call
+selection (no more diffing Claude Code's hidden title-generator prompt),
+latency percentiles computed over successful calls only, a `partial` badge
+for aborted streams, and comparison-layout polish.
 
 ### Fixed
 - **Budget blocks no longer cause client retry storms** (#27): budget 429s
