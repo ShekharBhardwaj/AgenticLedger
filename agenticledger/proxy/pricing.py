@@ -199,3 +199,15 @@ def compute_cost(
         + (tokens_out or 0) * out_price
     ) / 1_000_000
     return round(cost, 8)
+
+
+def infer_provider(model_id: str) -> str:
+    """Best-effort provider guess from a model name — used by cost what-if
+    and cross-provider replay to pick the right cache convention and wire
+    format. Unknown families return "" (plain input/output pricing)."""
+    m = (model_id or "").lower()
+    if m.startswith("claude") or "anthropic" in m:
+        return "anthropic"
+    if m.startswith(("gpt", "o1", "o3", "o4", "chatgpt", "text-embedding", "davinci")):
+        return "openai"
+    return ""

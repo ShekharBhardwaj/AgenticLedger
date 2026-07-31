@@ -112,3 +112,40 @@ def digest_text(report: dict[str, Any], hours: int = 24) -> str:
             f"{a['agent_name']} ${float(a.get('cost_usd') or 0):.2f}" for a in top_agents
         ))
     return "\n".join(lines)
+
+
+def estimate_whatif(rows: list[dict[str, Any]], target_model: str,
+                    target_provider: str) -> Optional[dict[str, Any]]:
+    """Reprice captured token counts against another model — no API calls.
+    Returns None when the target model has no pricing. Cache tokens are
+    repriced under the target provider's convention; the result is an
+    estimate (tokenizers differ between model families) and says so."""
+    actual = 0.0
+    estimated = 0.0
+    counted = 0
+    for row in rows:
+        tokens_in = int(row.get("tokens_in") or 0)
+        tokens_out = int(row.get("tokens_out") or 0)
+        if tokens_in == 0 and tokens_out == 0:
+            continue  # blocked/partial calls carry no token economics
+        cost = compute_cost(
+            target_model, tokens_in, tokens_out,
+            cache_read_tokens=row.get("cache_read_tokens"),
+            cache_write_tokens=row.get("cache_write_tokens"),
+            provider=target_provider,
+        )
+        if cost is None:
+            return None
+        estimated += cost
+        actual += float(row.get("cost_usd") or 0)
+        counted += 1
+    return {
+        "target_model": target_model,
+        "target_provider": target_provider or None,
+        "calls": counted,
+        "actual_cost_usd": round(actual, 6),
+        "estimated_cost_usd": round(estimated, 6),
+        "delta_usd": round(estimated - actual, 6),
+        "note": "estimate: token counts from the original captures; "
+                "tokenizers and cache behavior differ between model families",
+    }

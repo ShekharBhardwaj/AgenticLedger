@@ -80,11 +80,11 @@ from .otel import emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
-from .pricing import compute_cost
+from .pricing import compute_cost, infer_provider
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import Redactor, apply_capture_policy, normalize_capture_level
 from .replay import build_replay_request, replay_auth_headers, replayable_reason
-from .reports import build_report, digest_text
+from .reports import build_report, digest_text, estimate_whatif
 from .store import Store
 from .stream import detect_stream_error, reconstruct_from_sse
 
@@ -725,6 +725,33 @@ def create_app(
                 "cost_usd": resp.cost_usd, "latency_ms": round(latency_ms, 1),
             },
         })
+
+    @app.get("/api/whatif")
+    async def api_whatif(request: Request, model: str,
+                         session_id: str = "", run_id: str = "",
+                         action_id: str = "") -> JSONResponse:
+        """Reprice captured token counts against another model — pure math,
+        zero API calls: 'this run on haiku would have cost $0.31'."""
+        await _require(request, ROLE_VIEWER)
+        scopes = [("session_id", session_id), ("run_id", run_id), ("action_id", action_id)]
+        chosen = [(f, v) for f, v in scopes if v.strip()]
+        if len(chosen) != 1:
+            return JSONResponse(
+                {"error": "pass exactly one of session_id, run_id, action_id"},
+                status_code=400,
+            )
+        field, value = chosen[0]
+        rows = await request.app.state.store.get_token_rows(field, value.strip())
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"no calls for {field}={value}")
+        result = estimate_whatif(rows, model.strip(), infer_provider(model))
+        if result is None:
+            return JSONResponse(
+                {"error": f"no pricing known for {model!r} — add it via "
+                          "AGENTICLEDGER_PRICING or use a model from the built-in table"},
+                status_code=400,
+            )
+        return JSONResponse(result)
 
     @app.get("/api/reports")
     async def api_reports(request: Request, days: int = 30,

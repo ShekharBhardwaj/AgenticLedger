@@ -219,6 +219,12 @@ class Store(ABC):
     async def get_user_cost(self, user_id: str, since_ts: float) -> float: ...
 
     @abstractmethod
+    async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
+        """Token/cost columns for every call in a scope — scope is one of
+        'session_id', 'run_id', 'action_id'. Input to cost what-if."""
+        ...
+
+    @abstractmethod
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         """Record that a runner explicitly finished this run (idempotent)."""
         ...
@@ -593,6 +599,19 @@ class _SqliteStore(Store):
         ) as cur:
             row = await cur.fetchone()
         return float(row[0]) if row else 0.0
+
+    async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
+        if scope not in ("session_id", "run_id", "action_id"):
+            raise ValueError(f"invalid what-if scope: {scope!r}")
+        async with self._db.execute(
+            f"""
+            SELECT model_id, provider, tokens_in, tokens_out,
+                   cache_read_tokens, cache_write_tokens, cost_usd, status_code
+            FROM llm_calls WHERE {scope} = ?
+            """,
+            (value,),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         await self._db.execute(
@@ -1136,6 +1155,20 @@ class _PostgresStore(Store):
                 user_id, since,
             )
         return float(val or 0)
+
+    async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
+        if scope not in ("session_id", "run_id", "action_id"):
+            raise ValueError(f"invalid what-if scope: {scope!r}")
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"""
+                SELECT model_id, provider, tokens_in, tokens_out,
+                       cache_read_tokens, cache_write_tokens, cost_usd, status_code
+                FROM llm_calls WHERE {scope} = $1
+                """,
+                value if scope != "action_id" else __import__("uuid").UUID(value),
+            )
+        return [dict(r) for r in rows]
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         async with self._pool.acquire() as conn:

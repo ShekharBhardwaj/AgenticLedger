@@ -16,7 +16,13 @@ function headers(): Record<string, string> {
 
 export async function get<T>(path: string): Promise<T> {
   const resp = await fetch(path, { headers: headers() });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    const msg = (data as { error?: string; detail?: string }).error
+      ?? (data as { detail?: string }).detail
+      ?? `${resp.status} ${resp.statusText}`;
+    throw new Error(msg);
+  }
   return resp.json();
 }
 

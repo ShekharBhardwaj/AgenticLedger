@@ -170,3 +170,49 @@ async def test_latency_percentiles_ignore_blocked_calls(store):
     gpt = next(m for m in raw["models"] if m["model_id"] == "gpt-4o")
     assert gpt["p50_latency_ms"] == 200.0
     assert gpt["p99_latency_ms"] == 200.0   # the 400ms call errored — excluded
+
+
+def test_estimate_whatif_math():
+    """Repricing math under the anthropic convention, hand-checked."""
+    from agenticledger.proxy.reports import estimate_whatif
+    rows = [{"tokens_in": 1000, "tokens_out": 200, "cache_read_tokens": 10_000,
+             "cache_write_tokens": 2_000, "cost_usd": 0.02}]
+    # claude-haiku-4-5: $1/M in, $5/M out; reads 0.1x, writes 1.25x
+    out = estimate_whatif(rows, "claude-haiku-4-5", "anthropic")
+    expected = (1000 * 1 + 10_000 * 0.1 * 1 + 2_000 * 1.25 * 1 + 200 * 5) / 1e6
+    assert out["estimated_cost_usd"] == pytest.approx(expected)
+    assert out["actual_cost_usd"] == pytest.approx(0.02)
+    assert out["calls"] == 1
+    assert estimate_whatif(rows, "not-a-model-anyone-prices", "") is None
+
+
+def test_whatif_endpoint(proxy):
+    client = proxy()
+    now_ns = int(time.time() * 1e9)
+    span = {"resourceSpans": [{"scopeSpans": [{"spans": [{
+        "traceId": "0af7651916cd43dd8448eb211c80319c", "spanId": "e1e2e3e4e5e6e7e8",
+        "name": "chat gpt-4o", "startTimeUnixNano": str(now_ns),
+        "endTimeUnixNano": str(now_ns + 1_000_000_000),
+        "attributes": [
+            {"key": "gen_ai.system", "value": {"stringValue": "openai"}},
+            {"key": "gen_ai.request.model", "value": {"stringValue": "gpt-4o"}},
+            {"key": "gen_ai.usage.input_tokens", "value": {"intValue": "1200"}},
+            {"key": "gen_ai.usage.output_tokens", "value": {"intValue": "300"}},
+            {"key": "gen_ai.conversation.id", "value": {"stringValue": "wi-1"}},
+        ]}]}]}]}
+    assert client.post("/v1/traces", json=span,
+                       headers={"content-type": "application/json"}).status_code == 200
+
+    r = client.get("/api/whatif", params={"session_id": "wi-1", "model": "gpt-4o-mini"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["calls"] == 1
+    assert 0 < data["estimated_cost_usd"] < data["actual_cost_usd"]
+
+    assert client.get("/api/whatif", params={"model": "gpt-4o"}).status_code == 400
+    assert client.get("/api/whatif", params={"session_id": "wi-1", "run_id": "x",
+                                             "model": "gpt-4o"}).status_code == 400
+    assert client.get("/api/whatif", params={"session_id": "nope",
+                                             "model": "gpt-4o"}).status_code == 404
+    assert client.get("/api/whatif", params={"session_id": "wi-1",
+                                             "model": "mystery-9000"}).status_code == 400

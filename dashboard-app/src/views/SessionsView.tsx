@@ -68,6 +68,7 @@ function ReplayPanel({ call }: { call: Call }) {
 }
 import FlowView from "./FlowView";
 import TraceView from "./TraceView";
+import WhatIf from "./WhatIf";
 
 type Mode = "calls" | "flow" | "trace";
 
@@ -239,6 +240,9 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
         ))}
       </div>
       <div className="main">
+        {results === null && selected && (
+          <WhatIf params={`session_id=${encodeURIComponent(selected)}`} />
+        )}
         {results !== null && (
           <div className="section-title">{results.length} search results</div>
         )}

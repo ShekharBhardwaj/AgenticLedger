@@ -41,6 +41,19 @@ body {
 .tab:hover { background: var(--bg-hover); color: var(--text); }
 .tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .spacer { flex: 1; }
+.whatif {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 10px 0 16px;
+}
+.whatif-result { font-size: 13px; }
+
+.key-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-dim); font-size: 15px; line-height: 1;
+  padding: 2px 6px; margin-right: 10px;
+}
+.key-btn:hover { color: var(--text); }
+
 .live-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--green); box-shadow: 0 0 6px var(--green);

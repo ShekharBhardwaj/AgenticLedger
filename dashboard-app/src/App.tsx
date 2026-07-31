@@ -59,6 +59,23 @@ export default function App() {
           </a>
         </div>
         <span className="spacer" />
+        <button
+          className="key-btn"
+          title={localStorage.getItem("agenticledger.key")
+            ? "Dashboard access key is set — click to change or clear"
+            : "Set the dashboard access key (needed when AGENTICLEDGER_API_KEY is configured)"}
+          onClick={() => {
+            const current = localStorage.getItem("agenticledger.key") ?? "";
+            const next = window.prompt(
+              "Dashboard access key (leave empty to clear):", current);
+            if (next === null) return;
+            if (next.trim()) localStorage.setItem("agenticledger.key", next.trim());
+            else localStorage.removeItem("agenticledger.key");
+            location.reload();
+          }}
+        >
+          ⚿
+        </button>
         <span
           className={`live-dot ${live ? "" : "down"}`}
           title={live ? "live via WebSocket" : "disconnected — proxy unreachable, retrying"}

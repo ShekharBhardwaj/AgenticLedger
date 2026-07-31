@@ -4,6 +4,7 @@ import {
   Iteration, liveUpdates, Run,
 } from "../api";
 import CompareView from "./CompareView";
+import WhatIf from "./WhatIf";
 
 function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (s: string) => void }) {
   const names: string[] = JSON.parse(flag.loop_flags);
@@ -164,6 +165,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                 <div className="l">flagged calls</div>
               </div>
             </div>
+
+            <WhatIf params={`run_id=${encodeURIComponent(detail.run_id)}`} />
 
             {iterations.length > 0 && (
               <>
