@@ -13,6 +13,7 @@ function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens
 
 function ReplayPanel({ call }: { call: Call }) {
   const [model, setModel] = useState(call.model_id);
+  const [provider, setProvider] = useState("auto");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ReplayResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +21,11 @@ function ReplayPanel({ call }: { call: Call }) {
   const run = () => {
     setBusy(true);
     setError(null);
-    post<ReplayResult>("/api/replay", { action_id: call.action_id, model: model.trim() })
+    post<ReplayResult>("/api/replay", {
+      action_id: call.action_id,
+      model: model.trim(),
+      ...(provider !== "auto" ? { provider } : {}),
+    })
       .then(setResult)
       .catch((e) => setError(e.message))
       .finally(() => setBusy(false));
@@ -35,12 +40,22 @@ function ReplayPanel({ call }: { call: Call }) {
           onChange={(e) => setModel(e.target.value)}
           title="Model to replay on — any provider; the wire format is translated automatically"
         />
+        <select
+          className="replay-provider"
+          value={provider}
+          onChange={(e) => setProvider(e.target.value)}
+          title="Where to send it — auto recognizes gpt-*/claude-* names; pick openai for a local model behind an OpenAI-style server (LM Studio)"
+        >
+          <option value="auto">auto</option>
+          <option value="openai">openai</option>
+          <option value="anthropic">anthropic</option>
+        </select>
         <button className="link-btn" disabled={busy} onClick={run}>
           {busy ? "Replaying…" : "Run replay"}
         </button>
         <span className="muted">
           re-sends this exact call — type any model: gpt-*, claude-*, or a local
-          one (free via an LM Studio target). Cloud replays cost real tokens.
+          one (pick openai + an LM Studio target). Cloud replays cost real tokens.
         </span>
       </div>
       {error && <div className="replay-error">{error}</div>}

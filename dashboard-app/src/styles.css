@@ -103,6 +103,11 @@ body {
   background: var(--bg-input, var(--bg-card)); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; min-width: 180px;
 }
+.replay-provider {
+  font-family: var(--mono); font-size: 12px; padding: 5px 6px;
+  background: var(--bg-input, var(--bg-card)); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+}
 .replay-error {
   color: #e5484d; font-size: 12px; margin-top: 8px;
   white-space: pre-wrap; word-break: break-word; max-width: 720px;
