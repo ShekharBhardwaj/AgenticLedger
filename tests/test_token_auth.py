@@ -226,3 +226,48 @@ def test_ws_authenticated_client_receives_call_events(proxy, monkeypatch):
         event = ws.receive_json()
     assert event["type"] == "call"
     assert event["session_id"] == "s-ws"
+
+
+# ── /api/whoami — "what is this key?" ────────────────────────────────────────
+
+def test_whoami_open_server(proxy):
+    """No key configured: whoami says so instead of pretending auth exists."""
+    body = proxy().get("/api/whoami").json()
+    assert body["auth"] is False and body["dashboard"] is True
+
+
+def test_whoami_identifies_master_and_tokens(proxy, monkeypatch):
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy()
+    body = client.get("/api/whoami", headers=MASTER).json()
+    assert (body["role"], body["source"], body["team"]) == (ROLE_ADMIN, "master", None)
+
+    viewer = _mint(client, "ops-viewer", ROLE_VIEWER)
+    body = client.get("/api/whoami", headers=_bearer(viewer)).json()
+    assert (body["name"], body["role"], body["dashboard"]) == ("ops-viewer", ROLE_VIEWER, True)
+
+    assert client.get("/api/whoami").status_code == 401
+    assert client.get("/api/whoami", headers=_bearer("agl_bogus")).status_code == 401
+
+
+def test_whoami_names_the_team_card(proxy, monkeypatch):
+    """A team card pasted into the dashboard gets named, not a bare 401."""
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy()
+    resp = client.post("/api/tokens", json={"name": "team-rocket", "role": "ingest"},
+                       headers=MASTER)
+    card = resp.json()["token"]
+    body = client.get("/api/whoami", headers={"x-agenticledger-api-key": card}).json()
+    assert body["team"] == "team-rocket" and body["dashboard"] is False
+    # ...but it still cannot read the ledger.
+    assert client.get("/api/sessions", headers=_bearer(card)).status_code == 403
+
+
+def test_dashboard_header_carries_minted_tokens(proxy, monkeypatch):
+    """The SPA's ⚿ field sends x-agenticledger-api-key; a minted token pasted
+    there must work — the server sorts out what the key is."""
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy()
+    viewer = _mint(client, "pasted-into-dashboard", ROLE_VIEWER)
+    resp = client.get("/api/sessions", headers={"x-agenticledger-api-key": viewer})
+    assert resp.status_code == 200

@@ -283,6 +283,7 @@ Every LLM call is stored with:
 | `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent and per-team totals |
 | `GET` | `/api/whatif?model=...&run_id=...` | Reprice a run/session/call's captured tokens on another model — pure math, zero API calls |
 | `POST` | `/api/tokens` | Mint scoped API tokens — including `role: ingest` team cards with `budget_daily` |
+| `GET` | `/api/whoami` | What is the key I'm holding? Name, role, and team (for team cards) — the dashboard's ⚿ panel uses this |
 | `POST` | `/api/replay` | Re-execute a captured call — same provider or translated to the other one (`model` + optional `provider`); result stored linked to the original |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |

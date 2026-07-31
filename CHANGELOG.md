@@ -29,8 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Retry-After`. Reports gains a by-team spend table. The shared
   `AGENTICLEDGER_INGEST_KEY` keeps working unchanged; cards are stored
   hashed and shown once.
-- **⚿ in the topbar** sets or clears the stored dashboard access key — no
-  more `?key=` URL trick.
+- **⚿ in the topbar** — a small panel (not a browser popup) that sets or
+  clears the stored dashboard access key, no more `?key=` URL trick. Before
+  saving, the server identifies the key (`GET /api/whoami`): master key,
+  named viewer/editor/admin token, or — plainly warned — a team card, which
+  opens the relay for agents but not the dashboard. Minted tokens pasted
+  into the ⚿ field now authenticate too (the header the dashboard sends
+  previously only carried the master key).
 
 ## [0.6.1] - 2026-07-30
 

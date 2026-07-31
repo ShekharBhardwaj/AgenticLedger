@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { connectionStatus } from "./api";
+import { connectionStatus, whoami, WhoAmI } from "./api";
 import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
@@ -23,6 +23,101 @@ function Logo({ size = 24 }: { size?: number }) {
       <circle cx="20.8" cy="15.4" r="1.5" fill="var(--bg)" />
       <path d="M14.4 21.6 L17.6 21.6 L16 23.6 Z" fill="var(--text)" opacity="0.7" />
     </svg>
+  );
+}
+
+/** Plain-words answer to "what is this key?" for the ⚿ panel. */
+function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
+  if (!w.auth) {
+    return { text: "This server has no access key set — everything is open, no key needed.", tone: "ok" };
+  }
+  if (w.team) {
+    return {
+      text: `This is team “${w.team}”’s card — it lets agents through the relay, but it can’t open the dashboard. Paste a viewer or admin key here instead.`,
+      tone: "warn",
+    };
+  }
+  if (!w.dashboard) return { text: `This key’s role (${w.role}) can’t open the dashboard.`, tone: "warn" };
+  if (w.source === "master") return { text: "Master key · full admin access", tone: "ok" };
+  return { text: `${w.name ?? "unnamed key"} · ${w.role}`, tone: "ok" };
+}
+
+/** ⚿ — dashboard access key. A small panel (not a browser popup): paste a
+ *  key, the server says what it is, then save. */
+function KeyPanel() {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [status, setStatus] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
+  const stored = localStorage.getItem("agenticledger.key");
+
+  useEffect(() => {
+    if (!open) return;
+    setValue(stored ?? "");
+    setStatus(null);
+    // Identify whatever is in effect right now (stored key, or open server).
+    whoami(stored)
+      .then((w) => setStatus(describeKey(w)))
+      .catch((e) => setStatus(stored
+        ? { text: `Saved key: ${e.message}`, tone: "warn" }
+        : { text: "This server needs a key — paste one to unlock the dashboard.", tone: "warn" }));
+  }, [open, stored]);
+
+  const save = () => {
+    const key = value.trim();
+    if (!key) {
+      localStorage.removeItem("agenticledger.key");
+      location.reload();
+      return;
+    }
+    whoami(key)
+      .then((w) => {
+        // Open server: it ignores keys entirely, so there's nothing to save.
+        if (!w.auth) { setStatus(describeKey(w)); return; }
+        const d = describeKey(w);
+        if (d.tone === "warn") { setStatus(d); return; } // e.g. a team card — don't save it
+        localStorage.setItem("agenticledger.key", key);
+        location.reload();
+      })
+      .catch((e) => setStatus({ text: e.message, tone: "warn" }));
+  };
+
+  return (
+    <div className="key-wrap">
+      <button
+        className={`key-btn ${stored ? "set" : ""}`}
+        title={stored ? "Access key is set — click to inspect, change, or clear"
+          : "Set the dashboard access key (needed when AGENTICLEDGER_API_KEY is configured)"}
+        onClick={() => setOpen(!open)}
+      >
+        ⚿
+      </button>
+      {open && (
+        <div className="key-pop">
+          <div className="key-pop-title">Dashboard access key</div>
+          <input
+            type="password"
+            placeholder="paste key…"
+            value={value}
+            autoFocus
+            onChange={(e) => { setValue(e.target.value); setStatus(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+          />
+          {status && <div className={`key-status ${status.tone}`}>{status.text}</div>}
+          <div className="key-actions">
+            <button className="link-btn" onClick={save}>Save</button>
+            {stored && (
+              <button
+                className="link-btn"
+                onClick={() => { localStorage.removeItem("agenticledger.key"); location.reload(); }}
+              >
+                Clear
+              </button>
+            )}
+            <button className="link-btn" onClick={() => setOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -59,23 +154,7 @@ export default function App() {
           </a>
         </div>
         <span className="spacer" />
-        <button
-          className="key-btn"
-          title={localStorage.getItem("agenticledger.key")
-            ? "Dashboard access key is set — click to change or clear"
-            : "Set the dashboard access key (needed when AGENTICLEDGER_API_KEY is configured)"}
-          onClick={() => {
-            const current = localStorage.getItem("agenticledger.key") ?? "";
-            const next = window.prompt(
-              "Dashboard access key (leave empty to clear):", current);
-            if (next === null) return;
-            if (next.trim()) localStorage.setItem("agenticledger.key", next.trim());
-            else localStorage.removeItem("agenticledger.key");
-            location.reload();
-          }}
-        >
-          ⚿
-        </button>
+        <KeyPanel />
         <span
           className={`live-dot ${live ? "" : "down"}`}
           title={live ? "live via WebSocket" : "disconnected — proxy unreachable, retrying"}

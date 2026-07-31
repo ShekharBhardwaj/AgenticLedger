@@ -14,6 +14,24 @@ function headers(): Record<string, string> {
   return apiKey ? { "x-agenticledger-api-key": apiKey } : {};
 }
 
+export interface WhoAmI {
+  auth: boolean;          // false = server has no key configured, all open
+  role: string;
+  source: string;         // "open" | "master" | "token"
+  name: string | null;
+  team: string | null;    // set when the key is a team card (agents only)
+  dashboard: boolean;     // can this key open the dashboard?
+}
+
+/** Ask the server what a key is — used by the ⚿ panel before saving. */
+export async function whoami(key: string | null): Promise<WhoAmI> {
+  const h: Record<string, string> = key ? { "x-agenticledger-api-key": key } : {};
+  const resp = await fetch("/api/whoami", { headers: h });
+  if (resp.status === 401) throw new Error("not a valid key");
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
 export async function get<T>(path: string): Promise<T> {
   const resp = await fetch(path, { headers: headers() });
   if (!resp.ok) {

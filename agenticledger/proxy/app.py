@@ -459,7 +459,9 @@ def create_app(
         supplied_key = carrier.headers.get("x-agenticledger-api-key") or carrier.query_params.get("api_key")
         if _api_key and supplied_key and hmac.compare_digest(supplied_key, _api_key):
             return Principal(ROLE_ADMIN, "master")
-        raw = _extract_token(carrier)
+        # A minted token pasted where the master key goes (the dashboard's ⚿
+        # field) should still work — the server sorts out what the key is.
+        raw = _extract_token(carrier) or supplied_key
         if raw:
             row = await carrier.app.state.store.get_token_by_hash(hash_token(raw))
             if row and _token_is_valid(row):
@@ -871,6 +873,27 @@ def create_app(
         await _require(request, ROLE_ADMIN)
         entries = await request.app.state.store.list_audit(limit=max(1, min(limit, 1000)))
         return JSONResponse(entries)
+
+    @app.get("/api/whoami")
+    async def api_whoami(request: Request) -> JSONResponse:
+        """What is the key I'm holding? Answers for any valid credential —
+        including team cards, which can't open the dashboard but deserve a
+        clear "this is team X's agent card" instead of a bare 401."""
+        if not _auth_enabled:
+            return JSONResponse({"auth": False, "role": ROLE_ADMIN, "source": "open",
+                                 "name": None, "team": None, "dashboard": True})
+        principal = await _authenticate(request)
+        if principal is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        is_card = principal.role == ROLE_INGEST
+        return JSONResponse({
+            "auth": True,
+            "role": principal.role,
+            "source": principal.source,
+            "name": principal.name,
+            "team": principal.name if is_card else None,
+            "dashboard": role_satisfies(principal.role, ROLE_VIEWER),
+        })
 
     # ── API token management (admin only) ─────────────────────────────────────
 
