@@ -33,12 +33,15 @@ function ReplayPanel({ call }: { call: Call }) {
           className="replay-model"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          title="Model to replay on (same provider)"
+          title="Model to replay on — any provider; the wire format is translated automatically"
         />
         <button className="link-btn" disabled={busy} onClick={run}>
           {busy ? "Replaying…" : "Run replay"}
         </button>
-        <span className="muted">re-sends this exact call; costs real tokens</span>
+        <span className="muted">
+          re-sends this exact call — type any model: gpt-*, claude-*, or a local
+          one (free via an LM Studio target). Cloud replays cost real tokens.
+        </span>
       </div>
       {error && <div className="replay-error">{error}</div>}
       {result && (

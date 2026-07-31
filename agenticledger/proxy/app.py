@@ -84,7 +84,13 @@ from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
 from .pricing import compute_cost, infer_provider
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import Redactor, apply_capture_policy, normalize_capture_level
-from .replay import build_replay_request, replay_auth_headers, replayable_reason
+from .replay import (
+    NotTranslatable,
+    build_cross_request,
+    build_replay_request,
+    replay_auth_headers,
+    replayable_reason,
+)
 from .reports import build_report, digest_text, estimate_whatif
 from .store import Store
 from .stream import detect_stream_error, reconstruct_from_sse
@@ -209,6 +215,7 @@ def create_app(
     completion_promise: Optional[str] = None,
     digest_hour: Optional[int] = None,   # UTC hour (0-23) for the daily digest webhook
     replay_api_key: Optional[str] = None,   # enables POST /api/replay when set
+    replay_targets: Optional[dict] = None,  # {"openai": {"url", "key"}, "anthropic": {...}}
 ) -> FastAPI:
 
     broadcaster = _Broadcaster()
@@ -247,6 +254,10 @@ def create_app(
             base_url=upstream_url,
             timeout=httpx.Timeout(120.0),
         )
+        app.state.replay_clients = {
+            prov: httpx.AsyncClient(base_url=cfg["url"], timeout=httpx.Timeout(120.0))
+            for prov, cfg in (replay_targets or {}).items()
+        }
         app.state.broadcaster = broadcaster
         worker: Optional[asyncio.Task] = None
         if _async_capture:
@@ -275,6 +286,8 @@ def create_app(
                 await worker
         await app.state.store.close()
         await app.state.client.aclose()
+        for rc in app.state.replay_clients.values():
+            await rc.aclose()
 
     app = FastAPI(title="Agentic Ledger Proxy", lifespan=lifespan)
     # Count calls whose capture failed (served to the agent but not recorded), so
@@ -637,14 +650,17 @@ def create_app(
 
     @app.post("/api/replay")
     async def api_replay(request: Request) -> JSONResponse:
-        """Re-execute a captured call (optionally on a swapped same-provider
-        model) using the proxy's replay credential; the result is stored as a
-        new call linked to the original."""
+        """Re-execute a captured call using the proxy's replay credentials —
+        on the original provider, or translated to the other provider's wire
+        format (cross-provider replay); the result is stored as a new call
+        linked to the original."""
         principal = await _require(request, ROLE_EDITOR)
-        if not replay_api_key:
+        if not replay_api_key and not (replay_targets or {}):
             return JSONResponse(
                 {"error": "Replay is not configured — set AGENTICLEDGER_REPLAY_API_KEY "
-                          "on the proxy to enable re-execution."},
+                          "(same-provider) or AGENTICLEDGER_REPLAY_OPENAI_KEY / "
+                          "AGENTICLEDGER_REPLAY_ANTHROPIC_KEY (any provider, including "
+                          "a local LM Studio URL) on the proxy."},
                 status_code=409,
             )
         try:
@@ -659,14 +675,39 @@ def create_app(
         if reason:
             return JSONResponse({"error": f"Not replayable: {reason}"}, status_code=400)
 
-        provider = original.get("provider")
+        source_provider = original.get("provider")
         model = str(payload.get("model") or original["model_id"]).strip()
-        path, body = build_replay_request(original, model)
+        provider = (str(payload.get("provider") or "").strip()
+                    or infer_provider(model) or source_provider)
+
+        # Pick the wire format and the door to knock on.
+        try:
+            if provider == source_provider:
+                path, body = build_replay_request(original, model)
+            else:
+                path, body = build_cross_request(original, model, provider)
+        except NotTranslatable as exc:
+            return JSONResponse(
+                {"error": f"Not replayable on {provider}: {exc}"}, status_code=400)
+
+        target = (replay_targets or {}).get(provider)
+        if target:
+            client, key = request.app.state.replay_clients[provider], target["key"]
+        elif provider == source_provider and replay_api_key:
+            client, key = request.app.state.client, replay_api_key
+        else:
+            return JSONResponse(
+                {"error": f"No replay target for {provider!r} — set "
+                          f"AGENTICLEDGER_REPLAY_{provider.upper()}_KEY (and _URL for a "
+                          "local server like LM Studio, where any key works)."},
+                status_code=409,
+            )
+
         start = time.time()
         try:
-            upstream = await request.app.state.client.post(
+            upstream = await client.post(
                 "/" + path, json=body,
-                headers=replay_auth_headers(provider, replay_api_key),
+                headers=replay_auth_headers(provider, key),
             )
         except Exception as exc:
             return JSONResponse({"error": f"Upstream unreachable: {exc}"}, status_code=502)
@@ -692,10 +733,15 @@ def create_app(
                 cache_write_tokens=resp.cache_write_tokens,
                 provider=provider or "",
             )
+        # The stored replay record carries what was ACTUALLY sent — for a
+        # cross-provider replay that is the translated conversation.
+        sent_system = body.get("system")
         req = CanonicalRequest(
-            messages=original.get("messages") or [], model_id=model,
+            messages=body.get("messages") or [], model_id=model,
             provider=provider or "", timestamp=start,
-            tools=original.get("tools"), system_prompt=original.get("system_prompt"),
+            tools=original.get("tools"),
+            system_prompt=sent_system if isinstance(sent_system, str)
+                          else original.get("system_prompt"),
             temperature=original.get("temperature"), max_tokens=original.get("max_tokens"),
         )
         new_id = str(uuid.uuid4())
@@ -718,7 +764,7 @@ def create_app(
                 "cost_usd": original.get("cost_usd"), "latency_ms": original.get("latency_ms"),
             },
             "replay": {
-                "action_id": new_id, "model_id": model,
+                "action_id": new_id, "model_id": model, "provider": provider,
                 "content": resp.content, "tool_calls": resp.tool_calls,
                 "tokens_in": resp.tokens_in, "tokens_out": resp.tokens_out,
                 "cache_read_tokens": resp.cache_read_tokens,

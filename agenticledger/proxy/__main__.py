@@ -61,9 +61,13 @@ Reads config from environment variables:
     AGENTICLEDGER_OTEL_HEADERS          Comma-separated key=value auth headers (default: none)
 
   Replay (re-execute captured calls from the dashboard/API):
-    AGENTICLEDGER_REPLAY_API_KEY      Provider API key used by POST /api/replay. The proxy
-                                      never stores agent credentials, so replay needs its
-                                      own. Unset = replay disabled (default)
+    AGENTICLEDGER_REPLAY_API_KEY      Key for same-provider replay through the proxy's own
+                                      upstream. The proxy never stores agent credentials,
+                                      so replay needs its own. Unset = off (default)
+    AGENTICLEDGER_REPLAY_OPENAI_KEY   Cross-provider targets: replay any capture on this
+    AGENTICLEDGER_REPLAY_OPENAI_URL   provider. URL defaults to the provider's API; point
+    AGENTICLEDGER_REPLAY_ANTHROPIC_KEY  it at LM Studio (http://localhost:1234, any key)
+    AGENTICLEDGER_REPLAY_ANTHROPIC_URL  for free local replay
 
   Pricing overrides (merged over the built-in table at startup):
     AGENTICLEDGER_PRICING               Inline JSON — e.g. '{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'
@@ -157,6 +161,17 @@ app = create_app(
     completion_promise=os.environ.get("AGENTICLEDGER_COMPLETION_PROMISE") or None,
     digest_hour=int(os.environ["AGENTICLEDGER_DIGEST_HOUR"]) if os.environ.get("AGENTICLEDGER_DIGEST_HOUR") else None,
     replay_api_key=os.environ.get("AGENTICLEDGER_REPLAY_API_KEY") or None,
+    replay_targets={
+        prov: {
+            "url": os.environ.get(f"AGENTICLEDGER_REPLAY_{prov.upper()}_URL", default_url),
+            "key": os.environ[f"AGENTICLEDGER_REPLAY_{prov.upper()}_KEY"],
+        }
+        for prov, default_url in (
+            ("openai", "https://api.openai.com"),
+            ("anthropic", "https://api.anthropic.com"),
+        )
+        if os.environ.get(f"AGENTICLEDGER_REPLAY_{prov.upper()}_KEY")
+    } or None,
 )
 
 try:

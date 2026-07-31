@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Cross-provider replay.** ↻ Replay now crosses providers: a captured
+  Claude call can re-execute on an OpenAI-format model and vice versa —
+  tool_use/tool_result blocks become tool_calls/tool messages, schemas
+  swap between input_schema and function.parameters, and the system prompt
+  moves to the right place, automatically. Configure per-provider targets
+  (`AGENTICLEDGER_REPLAY_OPENAI_KEY`/`_URL`, `..._ANTHROPIC_...`); point
+  the OpenAI target at LM Studio and replaying captured Claude calls on a
+  local model is free. Captures containing images are refused with a clear
+  reason instead of being mangled; the replayed call is stored under the
+  provider that actually served it.
 - **Cost what-if** (`GET /api/whatif` + widgets in run and session views):
   reprice any run, session, or call's captured token counts on another
   model — "this run on haiku: $0.31 instead of $4.20" — pure arithmetic,

@@ -141,7 +141,7 @@ http://localhost:8000
 The web app updates live via WebSocket as calls come in. No refresh needed.
 
 - **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
-- **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Hover a session card for one-click delete. Open any call and **↻ Replay** it — re-execute the exact captured prompt on the same or a cheaper model and compare output, tokens, and cost side by side (set `AGENTICLEDGER_REPLAY_API_KEY` to enable).
+- **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Hover a session card for one-click delete. Open any call and **↻ Replay** it — re-execute the exact captured prompt on the same model, a cheaper one, or **the other provider entirely**: tool calls, schemas, and system prompts are translated between the Anthropic and OpenAI wire formats automatically. With an LM Studio replay target, re-running your captured Claude calls on a local model costs nothing. (Configure `AGENTICLEDGER_REPLAY_API_KEY` and/or the per-provider `AGENTICLEDGER_REPLAY_*_KEY` targets.)
 - **Reports** — where the money goes: spend per day, model mix with **latency p50/p95/p99** and error rates, per-agent totals, and **cache savings** — what your prompt-cache traffic would have cost at full input rates versus what it actually cost (signed: caching that costs more than it saves shows in red)
 - **Search** — full-text across prompts, outputs, and agents
 
@@ -283,7 +283,7 @@ Every LLM call is stored with:
 | `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent and per-team totals |
 | `GET` | `/api/whatif?model=...&run_id=...` | Reprice a run/session/call's captured tokens on another model — pure math, zero API calls |
 | `POST` | `/api/tokens` | Mint scoped API tokens — including `role: ingest` team cards with `budget_daily` |
-| `POST` | `/api/replay` | Re-execute a captured call (optionally on a swapped same-provider model); result stored linked to the original. Needs `AGENTICLEDGER_REPLAY_API_KEY` |
+| `POST` | `/api/replay` | Re-execute a captured call — same provider or translated to the other one (`model` + optional `provider`); result stored linked to the original |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |
 | `GET` | `/explain/{action_id}` | Single call by action ID |
@@ -382,7 +382,9 @@ Once connected, you can ask your assistant things like:
 | `AGENTICLEDGER_PORT` | No | `8000` | Port to run on. |
 | `AGENTICLEDGER_API_KEY` | No | _(none)_ | Master admin key. When set, the dashboard, read, and management endpoints require authentication; the key grants the `admin` role and bootstraps API tokens (below). Skip for local dev; set when the proxy is on a server — you choose the value. |
 | `AGENTICLEDGER_INGEST_KEY` | No | _(none)_ | When set, the proxy forwards a request only if it carries a matching `x-agenticledger-ingest-key` header — closing the open relay. Off by default; a loud startup warning fires when unset. |
-| `AGENTICLEDGER_REPLAY_API_KEY` | No | _(none)_ | Provider API key for `POST /api/replay` — the proxy never stores agent credentials, so re-execution needs its own. Unset = replay off. |
+| `AGENTICLEDGER_REPLAY_API_KEY` | No | _(none)_ | Key for same-provider replay through the proxy's own upstream — the proxy never stores agent credentials, so re-execution needs its own. |
+| `AGENTICLEDGER_REPLAY_OPENAI_KEY` / `_URL` | No | _(none)_ / provider API | Cross-provider replay target: replay **any** capture on OpenAI-format models. Point `_URL` at LM Studio (`http://localhost:1234`, any key) and replaying your captured Claude calls on a local model is **free**. |
+| `AGENTICLEDGER_REPLAY_ANTHROPIC_KEY` / `_URL` | No | _(none)_ / provider API | Cross-provider replay target for Claude models. |
 | `AGENTICLEDGER_EXPORT_HMAC_KEY` | No | _(none)_ | When set, compliance exports carry a tamper-evident keyed `hmac-sha256` integrity tag instead of a plain `sha256` checksum. |
 | `AGENTICLEDGER_EXTRA_PATHS` | No | _(none)_ | Comma-separated additional request paths to capture, e.g. `v1/responses,v1/custom`. Built-in paths (`v1/chat/completions`, `v1/messages`, `v1/responses`, plus `v1/messages/count_tokens` recorded as a free call) are always captured. |
 | `AGENTICLEDGER_ASYNC_CAPTURE` | No | `off` | Persist captures on a background worker so storage never adds latency to the agent's call. Trade-off: reads become **eventually consistent** (a just-captured call may not be queryable for a brief moment). Recommended for high throughput. |

@@ -32,17 +32,21 @@ assign a nominal rate anyway (e.g. to compare against cloud pricing):
 AGENTICLEDGER_PRICING='{"qwen": [0.0, 0.0], "llama": [0.0, 0.0]}'
 ```
 
-## Free replay
+## Free replay — including your captured Claude calls
 
-LM Studio doesn't check API keys, so replay works with any placeholder:
+LM Studio doesn't check API keys, so a replay target works with any
+placeholder:
 
 ```bash
-AGENTICLEDGER_REPLAY_API_KEY=lm-studio
+AGENTICLEDGER_REPLAY_OPENAI_URL=http://localhost:1234
+AGENTICLEDGER_REPLAY_OPENAI_KEY=lm-studio
 ```
 
-Now any captured call can be re-executed against your local model at zero
-cost — open a call in the dashboard, hit ↻ Replay, and swap the model name
-for any model loaded in LM Studio.
+Now ↻ Replay on **any** captured call — even ones captured from Claude —
+re-executes it on your local model at zero cost: the ledger translates the
+conversation (tool calls, schemas, system prompt) into the OpenAI wire
+format LM Studio speaks. Type the name of any model you have loaded and
+compare its answer, speed, and $0 cost against the original side by side.
 
 ## Local models that query their own ledger
 

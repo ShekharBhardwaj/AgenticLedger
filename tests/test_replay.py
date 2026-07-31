@@ -153,3 +153,149 @@ def test_replay_preserves_block_form_system(proxy):
     body = client.upstream.last_json()
     assert body["system"] == blocks
     assert all(m["role"] != "system" for m in body["messages"])
+
+
+# ── Cross-provider replay ────────────────────────────────────────────────────
+
+from tests.conftest import UPSTREAM_URL  # noqa: E402
+
+
+def _wire_target(client, provider):
+    """Point a configured replay target's client at the test's mock upstream."""
+    client.app.state.replay_clients[provider] = httpx.AsyncClient(
+        transport=httpx.MockTransport(client.upstream), base_url=UPSTREAM_URL,
+    )
+
+
+def test_translator_anthropic_to_openai_round_trip():
+    from agenticledger.proxy.replay import build_cross_request
+    record = {
+        "provider": "anthropic",
+        "max_tokens": 512,
+        "temperature": 0.2,
+        "tools": [{"name": "bash", "description": "run", "input_schema":
+                   {"type": "object", "properties": {"cmd": {"type": "string"}}}}],
+        "messages": [
+            {"role": "system", "content": [{"type": "text", "text": "Be terse."}]},
+            {"role": "user", "content": "list files"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "Running."},
+                {"type": "tool_use", "id": "tu1", "name": "bash", "input": {"cmd": "ls"}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu1", "content": "a.txt"},
+                {"type": "text", "text": "now summarize"},
+            ]},
+        ],
+    }
+    path, body = build_cross_request(record, "gpt-4o-mini", "openai")
+    assert path == "v1/chat/completions"
+    msgs = body["messages"]
+    assert msgs[0] == {"role": "system", "content": "Be terse."}
+    assert msgs[1] == {"role": "user", "content": "list files"}
+    assert msgs[2]["tool_calls"][0]["function"] == {"name": "bash", "arguments": '{"cmd": "ls"}'}
+    assert msgs[3] == {"role": "tool", "tool_call_id": "tu1", "content": "a.txt"}
+    assert msgs[4] == {"role": "user", "content": "now summarize"}
+    assert body["tools"][0]["function"]["parameters"]["properties"]["cmd"]["type"] == "string"
+    assert body["max_tokens"] == 512 and body["temperature"] == 0.2
+
+
+def test_translator_openai_to_anthropic_round_trip():
+    from agenticledger.proxy.replay import build_cross_request
+    record = {
+        "provider": "openai",
+        "tools": [{"type": "function", "function": {
+            "name": "search", "description": "find", "parameters": {"type": "object"}}}],
+        "messages": [
+            {"role": "system", "content": "Be terse."},
+            {"role": "user", "content": "find docs"},
+            {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "c1", "type": "function",
+                 "function": {"name": "search", "arguments": '{"q": "docs"}'}},
+                {"id": "c2", "type": "function",
+                 "function": {"name": "search", "arguments": '{"q": "more"}'}},
+            ]},
+            {"role": "tool", "tool_call_id": "c1", "content": "found A"},
+            {"role": "tool", "tool_call_id": "c2", "content": "found B"},
+            {"role": "user", "content": "summarize"},
+        ],
+    }
+    path, body = build_cross_request(record, "claude-haiku-4-5", "anthropic")
+    assert path == "v1/messages"
+    assert body["system"] == "Be terse."
+    msgs = body["messages"]
+    assert msgs[0] == {"role": "user", "content": "find docs"}
+    assert [b["type"] for b in msgs[1]["content"]] == ["tool_use", "tool_use"]
+    assert msgs[1]["content"][0]["input"] == {"q": "docs"}
+    # Both tool answers merged into ONE anthropic user turn.
+    assert [b["tool_use_id"] for b in msgs[2]["content"]] == ["c1", "c2"]
+    assert msgs[3] == {"role": "user", "content": "summarize"}
+    assert body["tools"][0]["input_schema"] == {"type": "object"}
+    assert body["max_tokens"] == 4096
+
+
+def test_translator_refuses_images():
+    import pytest as _pytest
+
+    from agenticledger.proxy.replay import NotTranslatable, build_cross_request
+    record = {"provider": "anthropic", "messages": [
+        {"role": "user", "content": [{"type": "image", "source": {}}]}]}
+    with _pytest.raises(NotTranslatable):
+        build_cross_request(record, "gpt-4o", "openai")
+
+
+def test_cross_replay_anthropic_capture_on_openai_target(proxy):
+    """The flagship path: a captured Claude call replayed on an OpenAI-style
+    target (exactly the LM Studio free-local shape)."""
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()),
+                   replay_targets={"openai": {"url": UPSTREAM_URL, "key": "lm-studio"}})
+    _wire_target(client, "openai")
+    resp = client.post("/v1/messages",
+                       json={"model": "claude-sonnet-4", "max_tokens": 128,
+                             "system": "Be terse.",
+                             "messages": [{"role": "user", "content": "hi"}]},
+                       headers={"x-agenticledger-session-id": "x-cap"})
+    action_id = resp.headers["x-agenticledger-action-id"]
+
+    client.upstream.set(lambda r: httpx.Response(200, json=openai_response(model="qwen3-local")))
+    out = client.post("/api/replay", json={"action_id": action_id, "model": "qwen3-local",
+                                           "provider": "openai"})
+    assert out.status_code == 200, out.text
+    sent = client.upstream.last_request
+    assert sent.url.path.endswith("/v1/chat/completions")
+    assert sent.headers["authorization"] == "Bearer lm-studio"
+    body = client.upstream.last_json()
+    assert body["model"] == "qwen3-local"
+    assert body["messages"][0] == {"role": "system", "content": "Be terse."}
+    data = out.json()
+    assert data["replay"]["provider"] == "openai"
+    # Stored as a real call under the target provider.
+    row = client.get(f"/session/replay-{action_id[:8]}").json()[0]
+    assert row["provider"] == "openai"
+    assert row["framework"] == "replay"
+
+
+def test_cross_replay_provider_inferred_from_model_name(proxy):
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()),
+                   replay_targets={"anthropic": {"url": UPSTREAM_URL, "key": "rk-a"}})
+    _wire_target(client, "anthropic")
+    action_id = _capture_one(client)
+
+    client.upstream.set(lambda r: httpx.Response(200, json=anthropic_response()))
+    out = client.post("/api/replay", json={"action_id": action_id,
+                                           "model": "claude-haiku-4-5"})
+    assert out.status_code == 200, out.text
+    sent = client.upstream.last_request
+    assert sent.url.path.endswith("/v1/messages")
+    assert sent.headers["x-api-key"] == "rk-a"
+    assert client.upstream.last_json()["system"] == "Be terse."
+
+
+def test_cross_replay_without_target_gets_actionable_409(proxy):
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()),
+                   replay_api_key="rk-same-provider-only")
+    action_id = _capture_one(client)
+    out = client.post("/api/replay", json={"action_id": action_id,
+                                           "model": "claude-haiku-4-5"})
+    assert out.status_code == 409
+    assert "AGENTICLEDGER_REPLAY_ANTHROPIC_KEY" in out.json()["error"]
