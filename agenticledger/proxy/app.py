@@ -455,15 +455,23 @@ def create_app(
     _auth_enabled = bool(_api_key)
 
     async def _authenticate(carrier) -> Optional[Principal]:
-        """Resolve a Principal from a request/websocket, or None if no valid credential."""
-        supplied_key = carrier.headers.get("x-agenticledger-api-key") or carrier.query_params.get("api_key")
-        if _api_key and supplied_key and hmac.compare_digest(supplied_key, _api_key):
-            return Principal(ROLE_ADMIN, "master")
-        # A minted token pasted where the master key goes (the dashboard's ⚿
-        # field) should still work — the server sorts out what the key is.
-        raw = _extract_token(carrier) or supplied_key
-        if raw:
-            row = await carrier.app.state.store.get_token_by_hash(hash_token(raw))
+        """Resolve a Principal from a request/websocket, or None if no valid credential.
+
+        Every credential channel (x-agenticledger-api-key header, ?api_key,
+        Bearer/x-agenticledger-token/?token) accepts every kind of key — the
+        server sorts out what it was handed. Asymmetry here caused real bugs:
+        minted tokens pasted into the dashboard's ⚿ field silently 401'd, and
+        the SPA's websocket sent the master key on the token channel."""
+        candidates = [c for c in (
+            carrier.headers.get("x-agenticledger-api-key"),
+            carrier.query_params.get("api_key"),
+            _extract_token(carrier),
+        ) if c]
+        for cand in candidates:
+            if _api_key and hmac.compare_digest(cand, _api_key):
+                return Principal(ROLE_ADMIN, "master")
+        for cand in candidates:
+            row = await carrier.app.state.store.get_token_by_hash(hash_token(cand))
             if row and _token_is_valid(row):
                 return Principal(row["role"], "token", row.get("token_id"), row.get("name"))
         return None
@@ -554,11 +562,15 @@ def create_app(
 
     # ── Dashboard ────────────────────────────────────────────────────────────
 
+    # Dashboard HTML shells are served without auth — they carry no ledger
+    # data (every number comes from the individually-gated /api endpoints),
+    # and the ⚿ key panel lives inside the page, so gating the shell would
+    # lock the door with the keyhole behind it (the login-page pattern).
+
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request) -> HTMLResponse:
         """The web app (React SPA) when its build is present; source checkouts
         without a Node build fall back to the classic embedded dashboard."""
-        await _require(request, ROLE_VIEWER)
         index = _SPA_DIR / "index.html"
         if index.is_file():
             return HTMLResponse(index.read_text(encoding="utf-8"))
@@ -566,7 +578,6 @@ def create_app(
 
     @app.get("/classic", response_class=HTMLResponse)
     async def classic_dashboard(request: Request) -> HTMLResponse:
-        await _require(request, ROLE_VIEWER)
         return HTMLResponse(get_dashboard_html())
 
     # ── Web app (React SPA — Loop Lens) ──────────────────────────────────────
@@ -576,7 +587,6 @@ def create_app(
 
     @app.get("/app", response_class=HTMLResponse)
     async def spa_index(request: Request) -> HTMLResponse:
-        await _require(request, ROLE_VIEWER)
         index = _SPA_DIR / "index.html"
         if not index.is_file():
             raise HTTPException(

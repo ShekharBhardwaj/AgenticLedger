@@ -50,6 +50,14 @@ function KeyPanel() {
   const [status, setStatus] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
   const stored = localStorage.getItem("agenticledger.key");
 
+  // A fresh browser on a keyed server would otherwise just see empty views —
+  // open the panel unprompted when the server wants a key we don't have
+  // (or the one we have has gone stale).
+  useEffect(() => {
+    whoami(stored).catch(() => setOpen(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     setValue(stored ?? "");
@@ -76,7 +84,8 @@ function KeyPanel() {
         const d = describeKey(w);
         if (d.tone === "warn") { setStatus(d); return; } // e.g. a team card — don't save it
         localStorage.setItem("agenticledger.key", key);
-        location.reload();
+        setStatus(d); // let the identity be seen ("Master key · …") before the app unlocks
+        setTimeout(() => location.reload(), 900);
       })
       .catch((e) => setStatus({ text: e.message, tone: "warn" }));
   };

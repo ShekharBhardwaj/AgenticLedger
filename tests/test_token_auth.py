@@ -271,3 +271,30 @@ def test_dashboard_header_carries_minted_tokens(proxy, monkeypatch):
     viewer = _mint(client, "pasted-into-dashboard", ROLE_VIEWER)
     resp = client.get("/api/sessions", headers={"x-agenticledger-api-key": viewer})
     assert resp.status_code == 200
+
+
+def test_dashboard_shell_public_but_data_locked(proxy, monkeypatch):
+    """Issue #31: the page with the ⚿ key panel must load WITHOUT a key —
+    otherwise a fresh browser can never enter one. The shells carry no
+    ledger data; every /api endpoint stays individually locked."""
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy()
+    for path in ("/", "/classic"):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert "text/html" in resp.headers["content-type"]
+    assert client.get("/app").status_code in (200, 404)  # 404 = SPA not built
+    assert client.get("/api/sessions").status_code == 401
+    assert client.get("/api/reports").status_code == 401
+
+
+def test_any_key_works_through_any_channel(proxy, monkeypatch):
+    """Master key via ?token= (what the SPA's websocket sends) and minted
+    tokens via ?api_key= — every channel accepts every kind of key."""
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy()
+    assert client.get("/api/sessions?token=master-key").status_code == 200
+    viewer = _mint(client, "channel-swap", ROLE_VIEWER)
+    assert client.get(f"/api/sessions?api_key={viewer}").status_code == 200
+    with client.websocket_connect("/ws?token=master-key"):
+        pass  # handshake accepted
