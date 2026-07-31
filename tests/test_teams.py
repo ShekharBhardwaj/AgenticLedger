@@ -28,9 +28,9 @@ def test_team_card_opens_relay_and_attributes(proxy, monkeypatch):
 
     # No key at all → still locked out.
     assert client.post("/v1/chat/completions", json=_CHAT).status_code == 401
-    # Wrong key → locked out.
+    # Wrong key → locked out with a FINAL 403, not a retry-inviting 401.
     assert client.post("/v1/chat/completions", json=_CHAT,
-                       headers={"x-agenticledger-ingest-key": "nope"}).status_code == 401
+                       headers={"x-agenticledger-ingest-key": "nope"}).status_code == 403
     # The team card opens the door…
     r = client.post("/v1/chat/completions", json=_CHAT,
                     headers={"x-agenticledger-ingest-key": card,
@@ -74,7 +74,7 @@ def test_viewer_token_is_not_a_team_card(proxy, monkeypatch):
     client = proxy(handler=_ok())
     viewer = client.post("/api/tokens", json={"name": "reader", "role": "viewer"}).json()["token"]
     assert client.post("/v1/chat/completions", json=_CHAT,
-                       headers={"x-agenticledger-ingest-key": viewer}).status_code == 401
+                       headers={"x-agenticledger-ingest-key": viewer}).status_code == 403
 
 
 def test_revoked_card_stops_working(proxy, monkeypatch):
@@ -87,7 +87,10 @@ def test_revoked_card_stops_working(proxy, monkeypatch):
     assert client.delete(f"/api/tokens/{resp['token_id']}").status_code == 200
     denied = client.post("/v1/chat/completions", json=_CHAT,
                          headers={"x-agenticledger-ingest-key": resp["token"]})
-    assert denied.status_code == 401
+    # 403, not 401: agents treat 401 as "refresh credentials and retry" and
+    # storm the proxy; a revoked card is dead forever, so the answer is final.
+    assert denied.status_code == 403
+    assert "revoked" in denied.json()["error"]["message"]
 
 
 def test_team_card_opens_otlp_gate(proxy, monkeypatch):
@@ -117,3 +120,52 @@ def test_reports_show_team_spend(proxy):
     teams = client.get("/api/reports?days=1").json()["teams"]
     assert teams and teams[0]["team"] == "research"
     assert teams[0]["cost_usd"] > 0
+
+
+# ── 0.7 fix round ─────────────────────────────────────────────────────────────
+
+def test_sessions_carry_team_and_error_count(proxy):
+    """#33/#34: session rows say whose they are and whether calls failed."""
+    client = proxy(handler=_ok())
+    card = _mint(client, "payments", budget=0.000001)
+    headers = {"x-agenticledger-ingest-key": card,
+               "x-agenticledger-session-id": "team-sess"}
+    assert client.post("/v1/chat/completions", json=_CHAT, headers=headers).status_code == 200
+    # Second call blows the microscopic budget → a 429 lands in the session.
+    assert client.post("/v1/chat/completions", json=_CHAT, headers=headers).status_code == 429
+    sess = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    row = sess["team-sess"]
+    assert row["team"] == "payments"
+    # The budget refusal is the ledger's own wall — counted as blocked (#45),
+    # never as an error.
+    assert row["error_count"] == 0
+    assert row["blocked_count"] == 1
+
+
+def test_team_report_carries_errors_and_budget(proxy):
+    """#35: the by-team table answers 'who ran dry?' at a glance."""
+    client = proxy(handler=_ok())
+    card = _mint(client, "growth", budget=0.000001)
+    headers = {"x-agenticledger-ingest-key": card,
+               "x-agenticledger-session-id": "growth-1"}
+    assert client.post("/v1/chat/completions", json=_CHAT, headers=headers).status_code == 200
+    assert client.post("/v1/chat/completions", json=_CHAT, headers=headers).status_code == 429
+    teams = {t["team"]: t for t in client.get("/api/reports?days=1").json()["teams"]}
+    row = teams["growth"]
+    assert row["error_count"] == 0
+    assert row["blocked_count"] == 1
+    assert row["budget_daily"] == 0.000001
+    assert row["over_budget"] is True
+    assert row["spent_today"] > 0
+
+
+def test_master_key_can_come_from_a_file(proxy, monkeypatch, tmp_path):
+    """#32: NAME_FILE variants keep keys out of shell history."""
+    keyfile = tmp_path / "master.key"
+    keyfile.write_text("file-master\n")
+    monkeypatch.delenv("AGENTICLEDGER_API_KEY", raising=False)
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY_FILE", str(keyfile))
+    client = proxy()
+    assert client.get("/api/sessions").status_code == 401
+    assert client.get("/api/sessions",
+                      headers={"x-agenticledger-api-key": "file-master"}).status_code == 200

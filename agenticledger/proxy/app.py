@@ -49,6 +49,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Optional
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -66,7 +67,6 @@ from .auth import (
     role_satisfies,
     valid_role,
 )
-from .dashboard import get_dashboard_html
 from .detect import detect_agent
 from .export import build_export, render_html_report
 from .loops import DEFAULT_REPEAT_THRESHOLD, DEFAULT_RUN_GAP_SECONDS, LoopTracker, is_utility_call
@@ -144,6 +144,22 @@ def _extract_token(carrier) -> Optional[str]:
     if authz.lower().startswith("bearer "):
         return authz[7:].strip() or None
     return carrier.headers.get("x-agenticledger-token") or carrier.query_params.get("token")
+
+
+def _secret_env(name: str) -> Optional[str]:
+    """NAME from the environment, or the stripped contents of the file named
+    by NAME_FILE — the Docker/Kubernetes secrets pattern, so keys never have
+    to be typed on a command line and land in shell history."""
+    val = os.environ.get(name)
+    if val:
+        return val
+    path = os.environ.get(f"{name}_FILE")
+    if path:
+        try:
+            return Path(path).read_text(encoding="utf-8").strip() or None
+        except OSError:
+            logger.warning("Could not read %s_FILE at %s", name, path)
+    return None
 
 
 def _token_is_valid(row: dict) -> bool:
@@ -444,11 +460,11 @@ def create_app(
             except Exception:
                 _record_capture_drop(app, job.action_id)
 
-    _api_key = os.environ.get("AGENTICLEDGER_API_KEY")
+    _api_key = _secret_env("AGENTICLEDGER_API_KEY")
     # Optional proxy-ingest key. When set, the proxy refuses to forward a request
     # unless it carries a matching x-agenticledger-ingest-key — closing the open relay.
     # When unset the proxy forwards anything (zero-config dev UX); __main__ warns loudly.
-    _ingest_key = os.environ.get("AGENTICLEDGER_INGEST_KEY")
+    _ingest_key = _secret_env("AGENTICLEDGER_INGEST_KEY")
     # Read/management endpoints enforce auth only when a master key is configured.
     # The master key grants admin (and is the bootstrap for minting tokens); API
     # tokens grant their own role. When unset, access is open (dev UX) and __main__ warns.
@@ -569,21 +585,21 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request) -> HTMLResponse:
-        """The web app (React SPA) when its build is present; source checkouts
-        without a Node build fall back to the classic embedded dashboard."""
+        """The web app (React SPA). Wheel and Docker installs always ship the
+        build; a source checkout without one gets told how to make it."""
         index = _SPA_DIR / "index.html"
         if index.is_file():
             return HTMLResponse(index.read_text(encoding="utf-8"))
-        return HTMLResponse(get_dashboard_html())
-
-    @app.get("/classic", response_class=HTMLResponse)
-    async def classic_dashboard(request: Request) -> HTMLResponse:
-        return HTMLResponse(get_dashboard_html())
+        raise HTTPException(
+            status_code=404,
+            detail="Web app not built — run `npm run build` in dashboard-app/ "
+                   "(PyPI and Docker installs include it).",
+        )
 
     # ── Web app (React SPA — Loop Lens) ──────────────────────────────────────
     # Built from dashboard-app/ into agenticledger/proxy/static/ and shipped in
     # the wheel. When the assets are missing (e.g. a source checkout without a
-    # Node build), /app explains itself and the classic dashboard still works.
+    # Node build), / and /app explain how to build them.
 
     @app.get("/app", response_class=HTMLResponse)
     async def spa_index(request: Request) -> HTMLResponse:
@@ -591,8 +607,8 @@ def create_app(
         if not index.is_file():
             raise HTTPException(
                 status_code=404,
-                detail="Web app not built — run `npm run build` in dashboard-app/, "
-                       "or use the classic dashboard at /",
+                detail="Web app not built — run `npm run build` in dashboard-app/ "
+                       "(PyPI and Docker installs include it).",
             )
         return HTMLResponse(index.read_text(encoding="utf-8"))
 
@@ -660,6 +676,47 @@ def create_app(
         await _audit(principal, request, "run_end", run_id, "runner exit signal")
         return JSONResponse({"run_id": run_id, "status": "ended"})
 
+    @app.get("/api/calls/{action_id}")
+    async def api_get_call(action_id: str, request: Request) -> JSONResponse:
+        """One call by id — lets the dashboard follow a replay's
+        parent_action_id back to the original call's session."""
+        await _require(request, ROLE_VIEWER)
+        row = await request.app.state.store.get(action_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="action_id not found")
+        return JSONResponse(row)
+
+    @app.get("/api/replay/targets")
+    async def api_replay_targets(request: Request) -> JSONResponse:
+        """Where replays can go — feeds the dashboard's destination dropdown
+        with real places instead of wire-format names."""
+        await _require(request, ROLE_VIEWER)
+        out = []
+        for prov, cfg in (replay_targets or {}).items():
+            host = urlparse(cfg["url"]).netloc or cfg["url"]
+            out.append({"provider": prov, "host": host,
+                        "local": host.split(":")[0] in ("localhost", "127.0.0.1")})
+        return JSONResponse({"targets": out, "same_provider": bool(replay_api_key)})
+
+    @app.get("/api/replay/models")
+    async def api_replay_models(request: Request, provider: str = "") -> JSONResponse:
+        """Ask a replay target what models it serves (GET /v1/models), so the
+        dashboard can offer the names actually loaded in e.g. LM Studio."""
+        await _require(request, ROLE_VIEWER)
+        target = (replay_targets or {}).get(provider)
+        if not target:
+            raise HTTPException(status_code=404, detail=f"no replay target for {provider!r}")
+        client = request.app.state.replay_clients[provider]
+        try:
+            resp = await client.get(
+                "/v1/models", headers=replay_auth_headers(provider, target["key"]))
+            data = resp.json()
+        except Exception:
+            return JSONResponse({"models": []})
+        models = [m.get("id") for m in (data.get("data") or [])
+                  if isinstance(m, dict) and m.get("id")]
+        return JSONResponse({"models": models})
+
     @app.post("/api/replay")
     async def api_replay(request: Request) -> JSONResponse:
         """Re-execute a captured call using the proxy's replay credentials —
@@ -689,8 +746,17 @@ def create_app(
 
         source_provider = original.get("provider")
         model = str(payload.get("model") or original["model_id"]).strip()
-        provider = (str(payload.get("provider") or "").strip()
-                    or infer_provider(model) or source_provider)
+        provider = str(payload.get("provider") or "").strip() or infer_provider(model)
+        if not provider:
+            # Unrecognized model name — usually a local one. If the capture's
+            # own provider has no way to replay but exactly one target is
+            # configured, that target is obviously where this goes.
+            targets = replay_targets or {}
+            source_can_replay = source_provider in targets or bool(replay_api_key)
+            if not source_can_replay and len(targets) == 1:
+                provider = next(iter(targets))
+            else:
+                provider = source_provider
 
         # Pick the wire format and the door to knock on.
         try:
@@ -709,7 +775,8 @@ def create_app(
             client, key = request.app.state.client, replay_api_key
         else:
             return JSONResponse(
-                {"error": f"No replay target for {provider!r} — set "
+                {"error": f"No replay target for {provider!r} — pick a provider in "
+                          "the replay panel's dropdown, or set "
                           f"AGENTICLEDGER_REPLAY_{provider.upper()}_KEY (and _URL for a "
                           "local server like LM Studio, where any key works)."},
                 status_code=409,
@@ -722,7 +789,14 @@ def create_app(
                 headers=replay_auth_headers(provider, key),
             )
         except Exception as exc:
-            return JSONResponse({"error": f"Upstream unreachable: {exc}"}, status_code=502)
+            where = target["url"] if target else str(client.base_url)
+            local = any(h in where for h in ("localhost", "127.0.0.1"))
+            hint = " Is the local server running? (LM Studio: Developer tab → Start Server.)" if local else ""
+            return JSONResponse(
+                {"error": f"Couldn't reach the {provider} replay target at {where} "
+                          f"({exc}).{hint}"},
+                status_code=502,
+            )
         latency_ms = (time.time() - start) * 1000
         if upstream.status_code != 200:
             payload = {"error": "Upstream rejected the replay",
@@ -824,8 +898,27 @@ def create_app(
         tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
         raw = await request.app.state.store.get_report_aggregates(
             time.time() - days * 86400, tz_offset_minutes=tz_offset_minutes)
+        teams = raw.get("teams") or []
+        if teams:
+            # Answer "who ran dry?" at a glance: pair each team's row with its
+            # card's daily allowance and what it has spent TODAY (budgets are
+            # daily-UTC, independent of the report window).
+            budgets = await request.app.state.store.get_team_budgets()
+            if budgets:
+                day_start = (datetime.datetime.now(datetime.timezone.utc)
+                             .replace(hour=0, minute=0, second=0, microsecond=0)
+                             .timestamp())
+                for row in teams:
+                    allowance = budgets.get(row.get("team"))
+                    if allowance is None:
+                        continue
+                    spent = await request.app.state.store.get_team_cost(
+                        row["team"], day_start)
+                    row["budget_daily"] = allowance
+                    row["spent_today"] = round(spent, 4)
+                    row["over_budget"] = spent >= allowance
         return JSONResponse(build_report(raw["daily"], raw["models"], raw["agents"], days,
-                                         teams=raw.get("teams")))
+                                         teams=teams))
 
     @app.get("/api/sessions/{session_id}/tools")
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:
@@ -1029,14 +1122,24 @@ def create_app(
 
     async def _check_ingest_gate(request: Request) -> Optional[JSONResponse]:
         supplied = request.headers.get("x-agenticledger-ingest-key")
-        if supplied and not (_ingest_key and hmac.compare_digest(supplied, _ingest_key)):
+        if supplied:
+            if _ingest_key and hmac.compare_digest(supplied, _ingest_key):
+                return None
             card = await request.app.state.store.get_token_by_hash(hash_token(supplied))
             if card and _token_is_valid(card) and card.get("role") == ROLE_INGEST:
                 return None
-        if _ingest_key and (not supplied or not hmac.compare_digest(supplied, _ingest_key)):
+            # Same rule as the relay: a presented-but-dead credential gets a
+            # final 403 (401 invites credential-refresh retry bursts).
+            return JSONResponse(
+                {"error": {"type": "permission_error",
+                           "message": "This Agentic Ledger ingest key or team card "
+                                      "is invalid or has been revoked."}},
+                status_code=403,
+            )
+        if _ingest_key:
             return JSONResponse(
                 {"error": {"type": "unauthorized",
-                           "message": "Missing or invalid x-agenticledger-ingest-key."}},
+                           "message": "Missing x-agenticledger-ingest-key."}},
                 status_code=401,
             )
         return None
@@ -1152,19 +1255,25 @@ def create_app(
             if card and _token_is_valid(card) and card.get("role") == ROLE_INGEST:
                 team_name = card.get("name")
                 team_budget = card.get("budget_daily")
-            elif _ingest_key:
+            else:
+                # A key was presented and it is neither the shared key nor a
+                # live card. 403, not 401: 401 means "authenticate again" and
+                # sends agents into credential-refresh retry bursts; 403 is
+                # final. Enforced even when the relay is otherwise open — a
+                # revoked card must not silently pass as anonymous traffic.
                 return JSONResponse(
                     {"error": {
-                        "type": "unauthorized",
-                        "message": "Missing or invalid x-agenticledger-ingest-key.",
+                        "type": "permission_error",
+                        "message": "This Agentic Ledger ingest key or team card "
+                                   "is invalid or has been revoked.",
                     }},
-                    status_code=401,
+                    status_code=403,
                 )
         elif _ingest_key and not supplied_ingest:
             return JSONResponse(
                 {"error": {
                     "type": "unauthorized",
-                    "message": "Missing or invalid x-agenticledger-ingest-key.",
+                    "message": "Missing x-agenticledger-ingest-key.",
                 }},
                 status_code=401,
             )
@@ -1259,9 +1368,13 @@ def create_app(
                         canonical_req = normalize_request(body_json, path)
                         blocked_resp = _empty_response(0)
                         apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
+                        # "blocked:" prefix (like "partial:") marks this as the
+                        # ledger's own refusal, not an upstream failure — so
+                        # reports can count walls separately from breakage.
                         await request.app.state.store.save(
                             action_id, canonical_req, blocked_resp,
-                            status_code=budget_status, error_detail=budget_error, **meta,
+                            status_code=budget_status,
+                            error_detail=f"blocked: {budget_error}", **meta,
                         )
                         await broadcaster.broadcast({
                             "type": "call",

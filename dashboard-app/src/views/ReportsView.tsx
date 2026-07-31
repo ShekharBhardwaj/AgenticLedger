@@ -10,6 +10,7 @@ interface DailyRow {
   cache_read_tokens: number;
   cache_write_tokens: number;
   error_calls: number;
+  blocked_calls: number;
 }
 
 interface ModelRow {
@@ -23,6 +24,7 @@ interface ModelRow {
   cache_write_tokens: number;
   cache_savings_usd: number;
   error_calls: number;
+  blocked_calls: number;
   p50_latency_ms: number | null;
   p95_latency_ms: number | null;
   p99_latency_ms: number | null;
@@ -33,6 +35,11 @@ interface TeamRow {
   call_count: number;
   cost_usd: number;
   session_count: number;
+  error_count: number;
+  blocked_count: number;
+  budget_daily?: number;
+  spent_today?: number;
+  over_budget?: boolean;
 }
 
 interface AgentRow {
@@ -41,6 +48,7 @@ interface AgentRow {
   cost_usd: number;
   session_count: number;
   error_calls: number;
+  blocked_calls: number;
   p50_latency_ms: number | null;
   p95_latency_ms: number | null;
   p99_latency_ms: number | null;
@@ -61,12 +69,24 @@ function ErrorCell({ n }: { n: number }) {
   return <td style={{ color: n ? "var(--red)" : undefined }}>{n || "—"}</td>;
 }
 
+/** The ledger's own refusals (budget walls) — amber, not red: enforcement
+ *  working is not the agent failing. */
+function BlockedCell({ n }: { n: number }) {
+  return (
+    <td style={{ color: n ? "var(--amber)" : undefined }}
+        title="calls the ledger refused on purpose (over budget) — not failures">
+      {n || "—"}
+    </td>
+  );
+}
+
 interface Report {
   days: number;
   totals: {
     total_cost_usd: number;
     call_count: number;
     error_calls: number;
+    blocked_calls: number;
     tokens_in: number;
     tokens_out: number;
     cache_read_tokens: number;
@@ -135,6 +155,10 @@ export default function ReportsView() {
             {t.error_calls > 0 && (
               <span style={{ color: "var(--red)", fontSize: 13 }}> ({t.error_calls} err)</span>
             )}
+            {t.blocked_calls > 0 && (
+              <span style={{ color: "var(--amber)", fontSize: 13 }}
+                    title="refused by the ledger's budget walls — not failures"> ({t.blocked_calls} blocked)</span>
+            )}
           </div>
           <div className="l">calls</div>
         </div>
@@ -179,7 +203,9 @@ export default function ReportsView() {
       <table className="rtable">
         <thead>
           <tr>
-            <th>model</th><th>calls</th><th>errors</th><th>latency p50/p95/p99</th>
+            <th>model</th><th>calls</th><th>errors</th>
+            <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
+            <th>latency p50/p95/p99</th>
             <th>tokens in / out</th>
             <th title="prompt-cache tokens: reads are billed at a fraction of the input rate, writes at a premium">cache r / w</th>
             <th title="effect of caching on your bill: minus = money saved vs paying full input rates, plus = caching cost extra">cache Δ</th>
@@ -192,6 +218,7 @@ export default function ReportsView() {
               <td className="mono">{m.model_id}</td>
               <td>{fmtNum(m.call_count)}</td>
               <ErrorCell n={m.error_calls} />
+              <BlockedCell n={m.blocked_calls} />
               <LatencyCell r={m} />
               <td>{fmtNum(m.tokens_in)} / {fmtNum(m.tokens_out)}</td>
               <td>{fmtNum(m.cache_read_tokens)} / {fmtNum(m.cache_write_tokens)}</td>
@@ -215,15 +242,30 @@ export default function ReportsView() {
           <div className="section-title">By team</div>
           <table className="rtable">
             <thead>
-              <tr><th>team</th><th>calls</th><th>sessions</th><th>cost</th></tr>
+              <tr>
+                <th>team</th><th>calls</th><th>errors</th>
+                <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
+                <th>sessions</th><th>cost</th>
+                <th title="today's spend against the team card's daily allowance">allowance</th>
+              </tr>
             </thead>
             <tbody>
               {report.teams.map((t2) => (
                 <tr key={t2.team}>
                   <td className="mono">{t2.team}</td>
                   <td>{fmtNum(t2.call_count)}</td>
+                  <ErrorCell n={t2.error_count} />
+                  <BlockedCell n={t2.blocked_count} />
                   <td>{fmtNum(t2.session_count)}</td>
                   <td>{fmtUsd(t2.cost_usd)}</td>
+                  <td>
+                    {t2.budget_daily == null ? "—" : (
+                      <span style={{ color: t2.over_budget ? "var(--amber)" : undefined }}>
+                        {fmtUsd(t2.spent_today ?? 0)} / {fmtUsd(t2.budget_daily)} today
+                        {t2.over_budget ? " · blocked" : ""}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -236,6 +278,7 @@ export default function ReportsView() {
         <thead>
           <tr>
             <th>agent</th><th>calls</th><th>errors</th>
+            <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
             <th>latency p50/p95/p99</th><th>sessions</th><th>cost</th>
           </tr>
         </thead>
@@ -245,6 +288,7 @@ export default function ReportsView() {
               <td className="mono">{a.agent_name}</td>
               <td>{fmtNum(a.call_count)}</td>
               <ErrorCell n={a.error_calls} />
+              <BlockedCell n={a.blocked_calls} />
               <LatencyCell r={a} />
               <td>{fmtNum(a.session_count)}</td>
               <td>{fmtUsd(a.cost_usd)}</td>

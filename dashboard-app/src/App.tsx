@@ -158,9 +158,6 @@ export default function App() {
           <button className={`tab ${tab === "reports" ? "active" : ""}`} onClick={() => setTab("reports")}>
             Reports
           </button>
-          <a className="tab" href="/classic" title="The original single-file dashboard">
-            Classic
-          </a>
         </div>
         <span className="spacer" />
         <KeyPanel />

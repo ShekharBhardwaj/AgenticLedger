@@ -73,6 +73,7 @@ def build_report(
         "total_cost_usd": sum(float(r.get("cost_usd") or 0) for r in daily),
         "call_count": sum(int(r.get("call_count") or 0) for r in daily),
         "error_calls": sum(int(r.get("error_calls") or 0) for r in daily),
+        "blocked_calls": sum(int(r.get("blocked_calls") or 0) for r in daily),
         "tokens_in": sum(int(r.get("tokens_in") or 0) for r in daily),
         "tokens_out": sum(int(r.get("tokens_out") or 0) for r in daily),
         "cache_read_tokens": sum(int(r.get("cache_read_tokens") or 0) for r in daily),
@@ -90,7 +91,8 @@ def digest_text(report: dict[str, Any], hours: int = 24) -> str:
     lines = [
         f"*Agentic Ledger — last {hours}h*",
         f"Spend: ${t['total_cost_usd']:.2f} across {t['call_count']} calls"
-        + (f" ({t['error_calls']} errored)" if t["error_calls"] else ""),
+        + (f" ({t['error_calls']} errored)" if t["error_calls"] else "")
+        + (f" ({t['blocked_calls']} blocked by budget)" if t.get("blocked_calls") else ""),
         f"Tokens: {t['tokens_in']:,} in / {t['tokens_out']:,} out",
     ]
     if t["cache_read_tokens"] or t["cache_write_tokens"]:

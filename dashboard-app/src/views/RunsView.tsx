@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  Iteration, liveUpdates, Run,
+  Iteration, liveUpdates, Run, runStatusInfo,
 } from "../api";
 import CompareView from "./CompareView";
 import WhatIf from "./WhatIf";
@@ -113,7 +113,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               ⇆
             </button>
             <div className="card-title">
-              {r.run_id} <span className={`badge ${r.status}`}>{r.status}</span>
+              {r.run_id} <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
             </div>
             <div className="card-sub">
               <span>{fmtAgo(r.last_call_at)}</span>
@@ -145,7 +145,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
           <>
             <h2 className="page-title">
               {detail.run_id}{" "}
-              <span className={`badge ${detail.status}`}>{detail.status}</span>
+              <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{detail.status}</span>
             </h2>
             <div className="muted">
               started {fmtTime(detail.started_at)} · last call {fmtTime(detail.last_call_at)}

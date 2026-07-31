@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed & improved (0.7 walkthrough findings)
+- **Blocked is not broken.** Calls the ledger refuses on purpose (budget
+  walls) are now counted as *blocked* (amber) everywhere, never as errors
+  (red) — reports, session cards, call badges. A healthy wall no longer
+  makes a healthy agent look sick.
+- **Dead cards answer 403, not 401.** A revoked or invalid team card gets a
+  final "no" instead of a retry-inviting "authenticate again" — no more
+  agent retry bursts after revocation. Missing keys still get 401.
+- **Sessions say whose they are and how they're doing**: team badge, red
+  tile + "N failed", amber "N blocked" on every session card.
+- **By-team report answers "who ran dry?"**: errors and blocked columns
+  plus each team's spend-today against its card's daily allowance.
+- **Replay panel redesigned**: destination first (labeled by where it goes —
+  "local — localhost:1234", not a wire-format name), then a model box that
+  lists what the destination actually serves (local servers are asked via
+  /v1/models), remembered across panels. Unrecognized model names route to
+  your only configured target automatically.
+- **Replays wear their lineage**: purple session tiles, a replay badge, and
+  "↩ Open original" jumping back to the call that was re-run.
+- **Errors name the address they couldn't reach** ("is LM Studio running?"),
+  and a call whose reply was all tool calls says so instead of showing an
+  empty response box.
+- **Keys can come from files**: every AGENTICLEDGER_*_KEY accepts a _FILE
+  variant (Docker-secrets pattern) so secrets stay out of shell history.
+- **Run badges explain themselves**: hover "complete" vs "ended" for the
+  plain-words difference (declared victory vs just stopped).
+
+### Removed
+- **The classic dashboard.** /classic and the embedded single-file
+  dashboard are gone; the web app has been the real dashboard since 0.3.
+  A source checkout without a Node build now gets build instructions at /.
+
 ### Added
 - **Cross-provider replay.** ↻ Replay now crosses providers: a captured
   Claude call can re-execute on an OpenAI-format model and vice versa —

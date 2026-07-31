@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  interactionTags, liveUpdates, post, ReplayResult, Session, toolNames,
+  getCall, interactionTags, liveUpdates, post, ReplayResult, replayModels,
+  replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
@@ -11,12 +12,48 @@ function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens
   return parts.length ? " · " + parts.join(" · ") : "";
 }
 
+const DEST_KEY = "agenticledger.replay.dest";
+
 function ReplayPanel({ call }: { call: Call }) {
   const [model, setModel] = useState(call.model_id);
-  const [provider, setProvider] = useState("auto");
+  // Destination first: where the replay runs, remembered across panels —
+  // a user's replay target rarely changes.
+  const [provider, setProvider] = useState(localStorage.getItem(DEST_KEY) ?? "auto");
+  const [targets, setTargets] = useState<ReplayTarget[]>([]);
+  const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ReplayResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    replayTargets().then((r) => setTargets(r.targets)).catch(() => {});
+  }, []);
+
+  // Ask a local destination what models it actually has loaded, and offer
+  // them — nobody should have to type "qwen/qwen3.6-35b-a3b" from memory.
+  useEffect(() => {
+    const t = targets.find((x) => x.provider === provider);
+    if (!t) { setModels([]); return; }
+    replayModels(provider)
+      .then((r) => {
+        setModels(r.models);
+        if (t.local && r.models.length > 0) {
+          // On a local destination the original cloud model name is never
+          // right — offer the first loaded model instead.
+          setModel((cur) => (cur === call.model_id ? r.models[0] : cur));
+        }
+      })
+      .catch(() => setModels([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, targets]);
+
+  const pickDest = (v: string) => {
+    setProvider(v);
+    localStorage.setItem(DEST_KEY, v);
+  };
+
+  const destLabel = (t: ReplayTarget) =>
+    t.local ? `local — ${t.host}` : `${t.provider} — ${t.host}`;
 
   const run = () => {
     setBusy(true);
@@ -34,28 +71,37 @@ function ReplayPanel({ call }: { call: Call }) {
   return (
     <div className="replay-panel">
       <div className="replay-controls">
-        <input
-          className="replay-model"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          title="Model to replay on — any provider; the wire format is translated automatically"
-        />
         <select
           className="replay-provider"
           value={provider}
-          onChange={(e) => setProvider(e.target.value)}
-          title="Where to send it — auto recognizes gpt-*/claude-* names; pick openai for a local model behind an OpenAI-style server (LM Studio)"
+          onChange={(e) => pickDest(e.target.value)}
+          title="Where the replay runs. auto recognizes gpt-*/claude-* names and otherwise uses your only configured target."
         >
           <option value="auto">auto</option>
-          <option value="openai">openai</option>
-          <option value="anthropic">anthropic</option>
+          {targets.map((t) => (
+            <option key={t.provider} value={t.provider}>{destLabel(t)}</option>
+          ))}
+          {!targets.some((t) => t.provider === "openai") && <option value="openai">openai</option>}
+          {!targets.some((t) => t.provider === "anthropic") && <option value="anthropic">anthropic</option>}
         </select>
+        <input
+          className="replay-model"
+          value={model}
+          list={models.length > 0 ? `replay-models-${call.action_id}` : undefined}
+          onChange={(e) => setModel(e.target.value)}
+          title="Model to replay on — the wire format is translated automatically"
+        />
+        {models.length > 0 && (
+          <datalist id={`replay-models-${call.action_id}`}>
+            {models.map((m) => <option key={m} value={m} />)}
+          </datalist>
+        )}
         <button className="link-btn" disabled={busy} onClick={run}>
           {busy ? "Replaying…" : "Run replay"}
         </button>
         <span className="muted">
-          re-sends this exact call — type any model: gpt-*, claude-*, or a local
-          one (pick openai + an LM Studio target). Cloud replays cost real tokens.
+          re-sends this exact call where you point it — a local destination is
+          free; cloud replays cost real tokens.
         </span>
       </div>
       {error && <div className="replay-error">{error}</div>}
@@ -90,11 +136,19 @@ import WhatIf from "./WhatIf";
 
 type Mode = "calls" | "flow" | "trace";
 
-function CallCard({ call }: { call: Call }) {
+function CallCard({ call, onOpenSession }: { call: Call; onOpenSession?: (sid: string) => void }) {
   const [open, setOpen] = useState(false);
   const [replaying, setReplaying] = useState(false);
-  const failed = (call.status_code ?? 200) !== 200;
+  const blocked = call.error_detail?.startsWith("blocked:") ?? false;
+  const failed = !blocked && (call.status_code ?? 200) !== 200;
   const tools = toolNames(call);
+  const openOriginal = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!call.parent_action_id || !onOpenSession) return;
+    getCall(call.parent_action_id)
+      .then((orig) => { if (orig.session_id) onOpenSession(orig.session_id); })
+      .catch(() => {});
+  };
   return (
     <div className="card call-card">
       <div className="call-head" onClick={() => setOpen(!open)}>
@@ -105,6 +159,11 @@ function CallCard({ call }: { call: Call }) {
           </span>
         ))}
         {failed && <span className="badge error">{call.status_code}</span>}
+        {blocked && (
+          <span className="badge blocked" title={call.error_detail ?? undefined}>
+            blocked
+          </span>
+        )}
         {call.error_detail?.startsWith("partial:") && (
           <span className="badge fw" title={call.error_detail}>partial</span>
         )}
@@ -153,11 +212,22 @@ function CallCard({ call }: { call: Call }) {
               {replaying ? "Hide replay" : "↻ Replay this call"}
             </button>
           )}
+          {call.framework === "replay" && call.parent_action_id && onOpenSession && (
+            <button className="link-btn" title="jump to the call this replay re-ran"
+                    onClick={openOriginal}>
+              ↩ Open original
+            </button>
+          )}
           {replaying && <ReplayPanel call={call} />}
           {call.error_detail && (<><h4>Error</h4><pre>{call.error_detail}</pre></>)}
           {call.system_prompt && (<><h4>System prompt</h4><pre>{call.system_prompt}</pre></>)}
           {call.thinking && (<><h4>Thinking</h4><pre>{call.thinking}</pre></>)}
-          {call.content && (<><h4>Response</h4><pre>{call.content}</pre></>)}
+          {call.content?.trim() ? (
+            <><h4>Response</h4><pre>{call.content}</pre></>
+          ) : call.tool_calls && call.tool_calls.length > 0 ? (
+            <><h4>Response</h4>
+              <div className="muted">(no text — the model answered with tool calls below)</div></>
+          ) : null}
           {call.tool_calls && (
             <><h4>Tool calls</h4><pre>{JSON.stringify(call.tool_calls, null, 2)}</pre></>
           )}
@@ -226,7 +296,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
         {sessions.map((s) => (
           <div
             key={s.session_id}
-            className={`card ${selected === s.session_id ? "selected" : ""}`}
+            className={`card ${selected === s.session_id ? "selected" : ""} ${s.session_id.startsWith("replay-") ? "replay" : ""} ${(s.error_count ?? 0) > 0 ? "has-errors" : ""}`}
             onClick={() => { setQuery(""); setSelected(s.session_id); }}
           >
             <button
@@ -252,7 +322,17 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               <span>{fmtAgo(s.started_at)}</span>
               <span>{s.call_count} calls</span>
               <span>{fmtUsd(s.total_cost_usd)}</span>
+              {s.session_id.startsWith("replay-") && (
+                <span className="badge replay" title="a re-run of a captured call">replay</span>
+              )}
               {s.agent_name && <span className="badge fw">{s.agent_name}</span>}
+              {s.team && <span className="badge team" title="team card that made these calls">{s.team}</span>}
+              {(s.error_count ?? 0) > 0 && (
+                <span className="badge error" title="calls that actually failed">{s.error_count} failed</span>
+              )}
+              {(s.blocked_count ?? 0) > 0 && (
+                <span className="badge blocked" title="calls the ledger refused on purpose (over budget)">{s.blocked_count} blocked</span>
+              )}
             </div>
           </div>
         ))}
@@ -278,7 +358,10 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             {results !== null ? "No matches." : "Select a session to inspect its calls."}
           </div>
         ) : results !== null || mode === "calls" ? (
-          shown.map((c) => <CallCard key={c.action_id} call={c} />)
+          shown.map((c) => (
+            <CallCard key={c.action_id} call={c}
+                      onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />
+          ))
         ) : mode === "flow" ? (
           <FlowView calls={calls} />
         ) : (

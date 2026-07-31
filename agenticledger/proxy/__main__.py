@@ -72,6 +72,11 @@ Reads config from environment variables:
   Pricing overrides (merged over the built-in table at startup):
     AGENTICLEDGER_PRICING               Inline JSON — e.g. '{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'
     AGENTICLEDGER_PRICING_FILE          Path to a JSON file with the same format
+
+  Secrets from files (keeps keys out of shell history — the Docker-secrets
+  pattern): every key above also accepts a _FILE variant naming a file whose
+  contents are the key. AGENTICLEDGER_API_KEY_FILE, AGENTICLEDGER_INGEST_KEY_FILE,
+  AGENTICLEDGER_REPLAY_API_KEY_FILE, AGENTICLEDGER_REPLAY_OPENAI_KEY_FILE, …
 """
 
 import logging
@@ -81,7 +86,7 @@ import sys
 import uvicorn
 
 from .alerts import AlertConfig
-from .app import create_app
+from .app import _secret_env, create_app
 from .otel import init_otel
 from .ratelimit import RateLimitConfig
 from .redact import build_redactor
@@ -160,17 +165,17 @@ app = create_app(
     loop_run_gap_seconds=float(os.environ.get("AGENTICLEDGER_LOOP_RUN_GAP_SECONDS", "900")),
     completion_promise=os.environ.get("AGENTICLEDGER_COMPLETION_PROMISE") or None,
     digest_hour=int(os.environ["AGENTICLEDGER_DIGEST_HOUR"]) if os.environ.get("AGENTICLEDGER_DIGEST_HOUR") else None,
-    replay_api_key=os.environ.get("AGENTICLEDGER_REPLAY_API_KEY") or None,
+    replay_api_key=_secret_env("AGENTICLEDGER_REPLAY_API_KEY"),
     replay_targets={
         prov: {
             "url": os.environ.get(f"AGENTICLEDGER_REPLAY_{prov.upper()}_URL", default_url),
-            "key": os.environ[f"AGENTICLEDGER_REPLAY_{prov.upper()}_KEY"],
+            "key": _secret_env(f"AGENTICLEDGER_REPLAY_{prov.upper()}_KEY"),
         }
         for prov, default_url in (
             ("openai", "https://api.openai.com"),
             ("anthropic", "https://api.anthropic.com"),
         )
-        if os.environ.get(f"AGENTICLEDGER_REPLAY_{prov.upper()}_KEY")
+        if _secret_env(f"AGENTICLEDGER_REPLAY_{prov.upper()}_KEY")
     } or None,
 )
 

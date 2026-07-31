@@ -23,6 +23,27 @@ export interface WhoAmI {
   dashboard: boolean;     // can this key open the dashboard?
 }
 
+export interface ReplayTarget {
+  provider: string;
+  host: string;
+  local: boolean;
+}
+
+/** Where replays can go — feeds the replay panel's destination dropdown. */
+export function replayTargets(): Promise<{ targets: ReplayTarget[]; same_provider: boolean }> {
+  return get("/api/replay/targets");
+}
+
+/** Models a replay target actually serves (e.g. what's loaded in LM Studio). */
+export function replayModels(provider: string): Promise<{ models: string[] }> {
+  return get(`/api/replay/models?provider=${encodeURIComponent(provider)}`);
+}
+
+/** One call by id — used to follow a replay back to its original session. */
+export function getCall(actionId: string): Promise<Call> {
+  return get(`/api/calls/${encodeURIComponent(actionId)}`);
+}
+
 /** Ask the server what a key is — used by the ⚿ panel before saving. */
 export async function whoami(key: string | null): Promise<WhoAmI> {
   const h: Record<string, string> = key ? { "x-agenticledger-api-key": key } : {};
@@ -114,6 +135,17 @@ export interface Run {
   status: "running" | "flagged" | "complete" | "ended";
 }
 
+/** Plain-words tooltip for a run's status badge. */
+export function runStatusInfo(status: string): string {
+  switch (status) {
+    case "running": return "calls are still arriving";
+    case "complete": return "the run declared victory — its completion promise (its own \"I'm done\" signal) was seen";
+    case "ended": return "the run stopped (runner exited or calls went quiet) — no claim about success either way";
+    case "flagged": return "loop-pathology flags were raised — open the run to see which calls";
+    default: return status;
+  }
+}
+
 export interface Iteration {
   iteration: number | null;
   call_count: number;
@@ -140,6 +172,9 @@ export interface Session {
   agent_name: string | null;
   user_id: string | null;
   environment: string | null;
+  team: string | null;
+  error_count: number | null;
+  blocked_count: number | null;
 }
 
 export interface Call {
@@ -173,6 +208,7 @@ export interface Call {
   step_index: number | null;
   turn_index: number | null;
   run_id: string | null;
+  team: string | null;
   iteration: number | null;
   loop_flags: string | null;
   tools: { name?: string; function?: { name?: string } }[] | null;

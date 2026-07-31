@@ -299,3 +299,61 @@ def test_cross_replay_without_target_gets_actionable_409(proxy):
                                            "model": "claude-haiku-4-5"})
     assert out.status_code == 409
     assert "AGENTICLEDGER_REPLAY_ANTHROPIC_KEY" in out.json()["error"]
+
+
+# ── 0.7 fix round ─────────────────────────────────────────────────────────────
+
+def test_auto_routes_unknown_model_to_sole_target(proxy):
+    """#37: unrecognized model name + the capture's provider can't replay +
+    exactly one target configured → it obviously goes there."""
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()),
+                   replay_targets={"openai": {"url": UPSTREAM_URL, "key": "lm-studio"}})
+    _wire_target(client, "openai")
+    resp = client.post("/v1/messages",
+                       json={"model": "claude-sonnet-4", "max_tokens": 64,
+                             "messages": [{"role": "user", "content": "hi"}]},
+                       headers={"x-agenticledger-session-id": "auto-cap"})
+    action_id = resp.headers["x-agenticledger-action-id"]
+
+    client.upstream.set(lambda r: httpx.Response(200, json=openai_response(model="qwen-local")))
+    r = client.post("/api/replay", json={"action_id": action_id, "model": "qwen3.6-35b-a3b"})
+    assert r.status_code == 200, r.text
+    assert r.json()["replay"]["provider"] == "openai"
+    assert client.upstream.last_request.url.path == "/v1/chat/completions"
+
+
+def test_replay_targets_endpoint_names_destinations(proxy):
+    """#38: the dashboard can ask where replays can go."""
+    client = proxy(replay_targets={
+        "openai": {"url": "http://localhost:1234", "key": "lm-studio"}})
+    body = client.get("/api/replay/targets").json()
+    assert body["targets"] == [
+        {"provider": "openai", "host": "localhost:1234", "local": True}]
+    assert body["same_provider"] is False
+
+
+def test_replay_models_endpoint_lists_target_models(proxy):
+    """#40: the model box can offer what the target actually serves."""
+    def handler(r):
+        if r.url.path == "/v1/models" and r.method == "GET":
+            return httpx.Response(200, json={"data": [
+                {"id": "qwen/qwen3.6-35b-a3b"}, {"id": "embed-mini"}]})
+        return httpx.Response(200, json=openai_response())
+    client = proxy(handler=handler,
+                   replay_targets={"openai": {"url": UPSTREAM_URL, "key": "lm-studio"}})
+    _wire_target(client, "openai")
+    body = client.get("/api/replay/models?provider=openai").json()
+    assert body["models"] == ["qwen/qwen3.6-35b-a3b", "embed-mini"]
+    assert client.get("/api/replay/models?provider=anthropic").status_code == 404
+
+
+def test_get_call_by_id(proxy):
+    """#43: a replay's parent_action_id can be resolved back to its session."""
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
+    resp = client.post("/v1/chat/completions",
+                       json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+                       headers={"x-agenticledger-session-id": "orig-sess"})
+    action_id = resp.headers["x-agenticledger-action-id"]
+    row = client.get(f"/api/calls/{action_id}").json()
+    assert row["session_id"] == "orig-sess"
+    assert client.get("/api/calls/00000000-0000-0000-0000-000000000000").status_code == 404

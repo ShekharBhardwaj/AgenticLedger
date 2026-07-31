@@ -224,6 +224,12 @@ class Store(ABC):
     async def get_team_cost(self, team: str, since_ts: float) -> float: ...
 
     @abstractmethod
+    async def get_team_budgets(self) -> dict[str, float]:
+        """team name → daily allowance, from live (unrevoked) team cards that
+        carry one. A team with several cards gets the strictest (smallest)."""
+        ...
+
+    @abstractmethod
     async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
         """Token/cost columns for every call in a scope — scope is one of
         'session_id', 'run_id', 'action_id'. Input to cost what-if."""
@@ -559,7 +565,13 @@ class _SqliteStore(Store):
                 MAX(model_id)    AS model_id,
                 MAX(agent_name)  AS agent_name,
                 MAX(user_id)     AS user_id,
-                MAX(environment) AS environment
+                MAX(environment) AS environment,
+                MAX(team)        AS team,
+                SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
+                         AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                         THEN 1 ELSE 0 END) AS error_count,
+                SUM(CASE WHEN error_detail LIKE 'blocked:%'
+                         THEN 1 ELSE 0 END) AS blocked_count
             FROM llm_calls
             WHERE session_id IS NOT NULL
             GROUP BY session_id
@@ -617,6 +629,15 @@ class _SqliteStore(Store):
             row = await cur.fetchone()
         return float(row[0]) if row else 0.0
 
+    async def get_team_budgets(self) -> dict[str, float]:
+        async with self._db.execute(
+            "SELECT name, MIN(budget_daily) AS budget FROM api_tokens "
+            "WHERE role = 'ingest' AND revoked_at IS NULL AND budget_daily IS NOT NULL "
+            "GROUP BY name",
+        ) as cur:
+            rows = await cur.fetchall()
+        return {r["name"]: float(r["budget"]) for r in rows}
+
     async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
         if scope not in ("session_id", "run_id", "action_id"):
             raise ValueError(f"invalid what-if scope: {scope!r}")
@@ -669,7 +690,8 @@ class _SqliteStore(Store):
                 SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                 SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                 SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
+                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY day ORDER BY day
             """,
@@ -687,7 +709,8 @@ class _SqliteStore(Store):
                 SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                 SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                 SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
+                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY model_id, provider ORDER BY cost_usd DESC
             """,
@@ -701,7 +724,8 @@ class _SqliteStore(Store):
                 COUNT(*)                               AS call_count,
                 SUM(COALESCE(cost_usd, 0))             AS cost_usd,
                 COUNT(DISTINCT session_id)             AS session_count,
-                SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
+                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY cost_usd DESC
             """,
@@ -727,7 +751,12 @@ class _SqliteStore(Store):
             """
             SELECT team, COUNT(*) AS call_count,
                    SUM(COALESCE(cost_usd, 0)) AS cost_usd,
-                   COUNT(DISTINCT session_id) AS session_count
+                   COUNT(DISTINCT session_id) AS session_count,
+                   SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
+                            AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                            THEN 1 ELSE 0 END) AS error_count,
+                   SUM(CASE WHEN error_detail LIKE 'blocked:%'
+                            THEN 1 ELSE 0 END) AS blocked_count
             FROM llm_calls WHERE timestamp >= ? AND team IS NOT NULL
             GROUP BY team ORDER BY cost_usd DESC
             """,
@@ -1134,7 +1163,13 @@ class _PostgresStore(Store):
                     MAX(model_id)               AS model_id,
                     MAX(agent_name)             AS agent_name,
                     MAX(user_id)                AS user_id,
-                    MAX(environment)            AS environment
+                    MAX(environment)            AS environment,
+                    MAX(team)                   AS team,
+                    SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
+                             AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                             THEN 1 ELSE 0 END) AS error_count,
+                    SUM(CASE WHEN error_detail LIKE 'blocked:%'
+                             THEN 1 ELSE 0 END) AS blocked_count
                 FROM llm_calls
                 WHERE session_id IS NOT NULL
                 GROUP BY session_id
@@ -1197,6 +1232,15 @@ class _PostgresStore(Store):
             )
         return float(val or 0)
 
+    async def get_team_budgets(self) -> dict[str, float]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT name, MIN(budget_daily) AS budget FROM api_tokens "
+                "WHERE role = 'ingest' AND revoked_at IS NULL AND budget_daily IS NOT NULL "
+                "GROUP BY name",
+            )
+        return {r["name"]: float(r["budget"]) for r in rows}
+
     async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
         if scope not in ("session_id", "run_id", "action_id"):
             raise ValueError(f"invalid what-if scope: {scope!r}")
@@ -1255,7 +1299,8 @@ class _PostgresStore(Store):
                     SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                     SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                     SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                    SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls
+                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
                 FROM llm_calls WHERE timestamp >= $1
                 GROUP BY day ORDER BY day
                 """,
@@ -1272,7 +1317,8 @@ class _PostgresStore(Store):
                     SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                     SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                     SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                    SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls,
+                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls,
                     percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
                     percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
                     percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p99_latency_ms
@@ -1288,7 +1334,8 @@ class _PostgresStore(Store):
                     COUNT(*)                               AS call_count,
                     SUM(COALESCE(cost_usd, 0))             AS cost_usd,
                     COUNT(DISTINCT session_id)             AS session_count,
-                    SUM(CASE WHEN status_code != 200 THEN 1 ELSE 0 END) AS error_calls,
+                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls,
                     percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
                     percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
                     percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p99_latency_ms
@@ -1302,7 +1349,12 @@ class _PostgresStore(Store):
                 """
                 SELECT team, COUNT(*) AS call_count,
                        SUM(COALESCE(cost_usd, 0)) AS cost_usd,
-                       COUNT(DISTINCT session_id) AS session_count
+                       COUNT(DISTINCT session_id) AS session_count,
+                       SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
+                                AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                                THEN 1 ELSE 0 END) AS error_count,
+                       SUM(CASE WHEN error_detail LIKE 'blocked:%'
+                                THEN 1 ELSE 0 END) AS blocked_count
                 FROM llm_calls WHERE timestamp >= $1 AND team IS NOT NULL
                 GROUP BY team ORDER BY 3 DESC
                 """,

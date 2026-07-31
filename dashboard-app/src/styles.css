@@ -192,6 +192,13 @@ mark.w-del { background: rgba(229, 72, 77, 0.38); color: inherit; border-radius:
 .badge.flagged  { background: rgba(210,153,34,.18); color: var(--amber); }
 .badge.error    { background: rgba(248,81,73,.15);  color: var(--red); }
 .badge.fw       { background: var(--bg-hover); color: var(--text-dim); font-family: var(--mono); font-weight: 500; }
+.badge.team     { background: rgba(78,161,255,.15); color: var(--accent); font-family: var(--mono); font-weight: 500; }
+.badge.blocked  { background: rgba(210,153,34,.18); color: var(--amber); }
+.badge.replay   { background: rgba(163,113,247,.16); color: #b78af5; }
+
+/* Sidebar tints: replays are lineage (purple), real failures are red. */
+.sidebar .card.replay     { border-left: 2px solid rgba(163,113,247,.6); }
+.sidebar .card.has-errors { border-left: 2px solid var(--red); }
 
 /* Interaction-type indicators: who is talking to whom in this call. */
 .badge.proto      { font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; }

@@ -279,11 +279,10 @@ def test_dashboard_shell_public_but_data_locked(proxy, monkeypatch):
     ledger data; every /api endpoint stays individually locked."""
     monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
-    for path in ("/", "/classic"):
+    for path in ("/", "/app"):
         resp = client.get(path)
-        assert resp.status_code == 200, path
-        assert "text/html" in resp.headers["content-type"]
-    assert client.get("/app").status_code in (200, 404)  # 404 = SPA not built
+        assert resp.status_code in (200, 404), path  # 404 = SPA not built
+        assert resp.status_code != 401, path
     assert client.get("/api/sessions").status_code == 401
     assert client.get("/api/reports").status_code == 401
 

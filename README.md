@@ -145,11 +145,6 @@ The web app updates live via WebSocket as calls come in. No refresh needed.
 - **Reports** — where the money goes: spend per day, model mix with **latency p50/p95/p99** and error rates, per-agent totals, and **cache savings** — what your prompt-cache traffic would have cost at full input rates versus what it actually cost (signed: caching that costs more than it saves shows in red)
 - **Search** — full-text across prompts, outputs, and agents
 
-The classic single-file dashboard remains at `http://localhost:8000/classic`:
-
-- **Calls tab** — every LLM call with full prompt, system prompt, tool calls, tool results, output, tokens, cost, latency, and errors
-- **Flow tab** — visual DAG of your multi-agent system. Each agent is a node with aggregated cost, latency, and call count. Edges represent handoffs. Click a node to highlight its calls.
-- **Trace tab** — Gantt/waterfall timeline showing every call as a horizontal bar on a shared time axis. Parallel calls appear side-by-side at the same position — no instrumentation required. Works purely from timestamps. Click any bar to jump to the full call detail. Budget warnings show as an amber border on the bar without hiding the agent colour.
 - **Search** — full-text search across all sessions by prompt, output, agent name, or user ID
 
 ---
@@ -283,6 +278,9 @@ Every LLM call is stored with:
 | `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent and per-team totals |
 | `GET` | `/api/whatif?model=...&run_id=...` | Reprice a run/session/call's captured tokens on another model — pure math, zero API calls |
 | `POST` | `/api/tokens` | Mint scoped API tokens — including `role: ingest` team cards with `budget_daily` |
+| `GET` | `/api/calls/{action_id}` | One call by id — follow a replay's parent back to its original |
+| `GET` | `/api/replay/targets` | Configured replay destinations (feeds the dashboard's dropdown) |
+| `GET` | `/api/replay/models` | Models a replay target actually serves (`?provider=`) |
 | `GET` | `/api/whoami` | What is the key I'm holding? Name, role, and team (for team cards) — the dashboard's ⚿ panel uses this |
 | `POST` | `/api/replay` | Re-execute a captured call — same provider or translated to the other one (`model` + optional `provider`); result stored linked to the original |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
@@ -386,6 +384,7 @@ Once connected, you can ask your assistant things like:
 | `AGENTICLEDGER_REPLAY_API_KEY` | No | _(none)_ | Key for same-provider replay through the proxy's own upstream — the proxy never stores agent credentials, so re-execution needs its own. |
 | `AGENTICLEDGER_REPLAY_OPENAI_KEY` / `_URL` | No | _(none)_ / provider API | Cross-provider replay target: replay **any** capture on OpenAI-format models. Point `_URL` at LM Studio (`http://localhost:1234`, any key) and replaying your captured Claude calls on a local model is **free**. |
 | `AGENTICLEDGER_REPLAY_ANTHROPIC_KEY` / `_URL` | No | _(none)_ / provider API | Cross-provider replay target for Claude models. |
+| `AGENTICLEDGER_*_KEY_FILE` | No | _(none)_ | Every key above also reads from a file named by its `_FILE` variant — the Docker-secrets pattern; keeps keys out of shell history. |
 | `AGENTICLEDGER_EXPORT_HMAC_KEY` | No | _(none)_ | When set, compliance exports carry a tamper-evident keyed `hmac-sha256` integrity tag instead of a plain `sha256` checksum. |
 | `AGENTICLEDGER_EXTRA_PATHS` | No | _(none)_ | Comma-separated additional request paths to capture, e.g. `v1/responses,v1/custom`. Built-in paths (`v1/chat/completions`, `v1/messages`, `v1/responses`, plus `v1/messages/count_tokens` recorded as a free call) are always captured. |
 | `AGENTICLEDGER_ASYNC_CAPTURE` | No | `off` | Persist captures on a background worker so storage never adds latency to the agent's call. Trade-off: reads become **eventually consistent** (a just-captured call may not be queryable for a brief moment). Recommended for high throughput. |
@@ -829,9 +828,9 @@ Anthropic's answer through unmodified; re-authenticate with `claude` →
 `/login`. Errored calls are still captured, so you'll see the 401 in the
 dashboard.
 
-**`/` shows the classic dashboard instead of the web app** — you're running
-from a source checkout without the web-app build. `cd dashboard-app && npm ci
-&& npm run build` and restart. PyPI and Docker installs always include the app.
+**`/` answers 404 "Web app not built"** — you're running from a source
+checkout without the web-app build. `cd dashboard-app && npm ci &&
+npm run build` and restart. PyPI and Docker installs always include the app.
 
 ---
 

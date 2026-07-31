@@ -35,7 +35,9 @@ def test_wrong_ingest_key_is_rejected(proxy, monkeypatch):
         "/v1/chat/completions", json=_CHAT,
         headers={"x-agenticledger-ingest-key": "nope"},
     )
-    assert resp.status_code == 401
+    # A presented-but-wrong key is 403 (final — no credential-refresh retry
+    # bursts), unlike the missing-key 401 above.
+    assert resp.status_code == 403
     assert client.upstream.requests == []
 
 
