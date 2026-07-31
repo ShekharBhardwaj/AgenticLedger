@@ -280,7 +280,9 @@ Every LLM call is stored with:
 | `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete`) — poll this from loop scripts |
 | `GET` | `/api/sessions/{session_id}/tools` | Derived tool executions — each tool call paired with its result, latency, and error status |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
-| `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent totals |
+| `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent and per-team totals |
+| `GET` | `/api/whatif?model=...&run_id=...` | Reprice a run/session/call's captured tokens on another model — pure math, zero API calls |
+| `POST` | `/api/tokens` | Mint scoped API tokens — including `role: ingest` team cards with `budget_daily` |
 | `POST` | `/api/replay` | Re-execute a captured call (optionally on a swapped same-provider model); result stored linked to the original. Needs `AGENTICLEDGER_REPLAY_API_KEY` |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |
@@ -652,6 +654,24 @@ Agentic Ledger fires a `POST` to your webhook URL when a threshold is breached. 
 | `budget_exceeded` | A budget limit is hit and `AGENTICLEDGER_BUDGET_ACTION` is `warn` or `both` |
 | `loop_flag` | The loop engine raised flags on a call (`repeat_tool_call`, `step_budget_exceeded`, `completion_promise`) |
 | `run_complete` | A run's completion promise was seen — the payload carries the full run summary (iterations, cost, tokens, flagged calls) |
+
+### Team cards — one proxy, many teams
+
+Think allowance cards: you keep the one real provider key, and hand each
+team a card of its own. Each card opens the proxy, stamps every call with
+the team's name, and can carry its own daily budget — when marketing hits
+$10, only marketing gets blocked (with an honest `Retry-After`).
+
+```bash
+curl -X POST http://localhost:8000/api/tokens \
+  -H "x-agenticledger-api-key: $ADMIN_KEY" -H 'content-type: application/json' \
+  -d '{"name": "marketing", "role": "ingest", "budget_daily": 10.00}'
+```
+
+The response shows the card once — the ledger stores only its hash. The
+team puts it in `x-agenticledger-ingest-key` instead of the shared key;
+Reports gains a by-team spend table; revoke a card with
+`DELETE /api/tokens/{token_id}` and only that team is affected.
 
 **Budgets vs alerts:**
 - **Budgets** (`AGENTICLEDGER_BUDGET_*`) — block the call before it reaches the LLM. Agent gets HTTP 429.

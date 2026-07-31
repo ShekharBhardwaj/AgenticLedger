@@ -17,6 +17,8 @@ Roles are hierarchical:
     viewer  → read captured data (dashboard, API, export, MCP read tools)
     editor  → viewer + delete sessions
     admin   → editor + manage API tokens
+    ingest  → proxy path only (a "team card": opens the relay, attributes the
+              team, and can carry its own daily budget) — grants NO read access
 """
 
 import hashlib
@@ -27,9 +29,11 @@ from typing import Optional
 ROLE_VIEWER = "viewer"
 ROLE_EDITOR = "editor"
 ROLE_ADMIN = "admin"
+ROLE_INGEST = "ingest"
 
-# Higher number = more privilege. role_satisfies() uses this ordering.
-_ROLE_LEVELS = {ROLE_VIEWER: 1, ROLE_EDITOR: 2, ROLE_ADMIN: 3}
+# Higher number = more privilege. role_satisfies() uses this ordering; ingest
+# sits at 0 so a team card satisfies no read/manage requirement.
+_ROLE_LEVELS = {ROLE_INGEST: 0, ROLE_VIEWER: 1, ROLE_EDITOR: 2, ROLE_ADMIN: 3}
 
 TOKEN_PREFIX = "agl_"
 

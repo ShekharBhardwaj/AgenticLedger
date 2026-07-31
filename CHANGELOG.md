@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Cost what-if** (`GET /api/whatif` + widgets in run and session views):
+  reprice any run, session, or call's captured token counts on another
+  model — "this run on haiku: $0.31 instead of $4.20" — pure arithmetic,
+  zero API calls, no key needed. Cache tokens repriced under the target
+  family's convention; clearly labeled an estimate.
+- **Team cards** (virtual keys): mint ingest-role tokens via
+  `POST /api/tokens` — each opens the proxy, attributes every call to its
+  team, and can carry its own daily budget enforced in-path with
+  `Retry-After`. Reports gains a by-team spend table. The shared
+  `AGENTICLEDGER_INGEST_KEY` keeps working unchanged; cards are stored
+  hashed and shown once.
+- **⚿ in the topbar** sets or clears the stored dashboard access key — no
+  more `?key=` URL trick.
+
 ## [0.6.1] - 2026-07-30
 
 Nineteen fixes across two rounds of a full hands-on user walkthrough —

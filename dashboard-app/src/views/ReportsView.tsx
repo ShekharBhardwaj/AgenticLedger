@@ -28,6 +28,13 @@ interface ModelRow {
   p99_latency_ms: number | null;
 }
 
+interface TeamRow {
+  team: string;
+  call_count: number;
+  cost_usd: number;
+  session_count: number;
+}
+
 interface AgentRow {
   agent_name: string;
   call_count: number;
@@ -69,6 +76,7 @@ interface Report {
   daily: DailyRow[];
   models: ModelRow[];
   agents: AgentRow[];
+  teams: TeamRow[];
 }
 
 const WINDOWS = [7, 30, 90];
@@ -201,6 +209,27 @@ export default function ReportsView() {
         what it actually cost. Minus is savings; plus means cache writes
         outweighed the reads.
       </div>
+
+      {report.teams.length > 0 && (
+        <>
+          <div className="section-title">By team</div>
+          <table className="rtable">
+            <thead>
+              <tr><th>team</th><th>calls</th><th>sessions</th><th>cost</th></tr>
+            </thead>
+            <tbody>
+              {report.teams.map((t2) => (
+                <tr key={t2.team}>
+                  <td className="mono">{t2.team}</td>
+                  <td>{fmtNum(t2.call_count)}</td>
+                  <td>{fmtNum(t2.session_count)}</td>
+                  <td>{fmtUsd(t2.cost_usd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
 
       <div className="section-title">By agent</div>
       <table className="rtable">

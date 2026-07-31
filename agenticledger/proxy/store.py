@@ -45,6 +45,7 @@ _MIGRATION_COLUMNS = [
     ("run_id",             "TEXT"),
     ("iteration",          "INTEGER"),
     ("loop_flags",         "TEXT"),   # JSON list of flags raised by THIS call
+    ("team",               "TEXT"),   # ingest-token (team card) attribution
 ]
 
 # Shared run-aggregation projection — one template so the backends can't
@@ -162,6 +163,7 @@ class Store(ABC):
         run_id: Optional[str] = None,
         iteration: Optional[int] = None,
         loop_flags: Optional[str] = None,
+        team: Optional[str] = None,
     ) -> None: ...
 
     @abstractmethod
@@ -219,6 +221,9 @@ class Store(ABC):
     async def get_user_cost(self, user_id: str, since_ts: float) -> float: ...
 
     @abstractmethod
+    async def get_team_cost(self, team: str, since_ts: float) -> float: ...
+
+    @abstractmethod
     async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
         """Token/cost columns for every call in a scope — scope is one of
         'session_id', 'run_id', 'action_id'. Input to cost what-if."""
@@ -261,6 +266,7 @@ class Store(ABC):
     async def create_token(
         self, token_id: str, name: str, token_hash: str, role: str,
         created_at: float, expires_at: Optional[float],
+        budget_daily: Optional[float] = None,
     ) -> None: ...
 
     @abstractmethod
@@ -350,6 +356,7 @@ class _SqliteStore(Store):
                 role       TEXT NOT NULL,
                 created_at REAL NOT NULL,
                 expires_at REAL,
+                budget_daily REAL,
                 revoked_at REAL
             )
         """)
@@ -390,6 +397,8 @@ class _SqliteStore(Store):
                 ended_at REAL NOT NULL
             )
         """)
+        with contextlib.suppress(Exception):
+            await db.execute("ALTER TABLE api_tokens ADD COLUMN budget_daily REAL")
         await db.commit()
         return cls(db)
 
@@ -399,7 +408,7 @@ class _SqliteStore(Store):
                    status_code=200, error_detail=None, framework=None,
                    thread_id=None, step_index=None, turn_index=None,
                    prev_action_id=None, run_id=None, iteration=None,
-                   loop_flags=None) -> None:
+                   loop_flags=None, team=None) -> None:
         await self._db.execute(
             """
             INSERT INTO llm_calls
@@ -412,8 +421,8 @@ class _SqliteStore(Store):
                  status_code, error_detail,
                  cache_read_tokens, cache_write_tokens, thinking, framework,
                  thread_id, step_index, turn_index, prev_action_id,
-                 run_id, iteration, loop_flags)
-            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?, ?,?,?,?, ?,?,?,?, ?,?,?)
+                 run_id, iteration, loop_flags, team)
+            VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?)
             """,
             (
                 action_id, session_id, req.timestamp, req.model_id, req.provider,
@@ -430,7 +439,7 @@ class _SqliteStore(Store):
                 resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
                 framework,
                 thread_id, step_index, turn_index, prev_action_id,
-                run_id, iteration, loop_flags,
+                run_id, iteration, loop_flags, team,
             ),
         )
         await self._db.commit()
@@ -600,6 +609,14 @@ class _SqliteStore(Store):
             row = await cur.fetchone()
         return float(row[0]) if row else 0.0
 
+    async def get_team_cost(self, team: str, since_ts: float) -> float:
+        async with self._db.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE team = ? AND timestamp >= ? AND status_code = 200",
+            (team, since_ts),
+        ) as cur:
+            row = await cur.fetchone()
+        return float(row[0]) if row else 0.0
+
     async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
         if scope not in ("session_id", "run_id", "action_id"):
             raise ValueError(f"invalid what-if scope: {scope!r}")
@@ -706,7 +723,18 @@ class _SqliteStore(Store):
                 agent_lat.setdefault(r["agent_name"], []).append(float(r["latency_ms"]))
         _attach_percentiles(models, "model_id", model_lat)
         _attach_percentiles(agents, "agent_name", agent_lat)
-        return {"daily": daily, "models": models, "agents": agents}
+        async with self._db.execute(
+            """
+            SELECT team, COUNT(*) AS call_count,
+                   SUM(COALESCE(cost_usd, 0)) AS cost_usd,
+                   COUNT(DISTINCT session_id) AS session_count
+            FROM llm_calls WHERE timestamp >= ? AND team IS NOT NULL
+            GROUP BY team ORDER BY cost_usd DESC
+            """,
+            (since_ts,),
+        ) as cur:
+            teams = [dict(r) for r in await cur.fetchall()]
+        return {"daily": daily, "models": models, "agents": agents, "teams": teams}
 
     async def delete_session(self, session_id: str) -> int:
         async with self._db.execute(
@@ -719,11 +747,11 @@ class _SqliteStore(Store):
     async def ping(self) -> None:
         await self._db.execute("SELECT 1")
 
-    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at) -> None:
+    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at, budget_daily=None) -> None:
         await self._db.execute(
-            "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at) "
-            "VALUES (?,?,?,?,?,?)",
-            (token_id, name, token_hash, role, created_at, expires_at),
+            "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at, budget_daily) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (token_id, name, token_hash, role, created_at, expires_at, budget_daily),
         )
         await self._db.commit()
 
@@ -893,6 +921,7 @@ class _PostgresStore(Store):
                     role       TEXT NOT NULL,
                     created_at DOUBLE PRECISION NOT NULL,
                     expires_at DOUBLE PRECISION,
+                    budget_daily DOUBLE PRECISION,
                     revoked_at DOUBLE PRECISION
                 )
             """)
@@ -933,6 +962,8 @@ class _PostgresStore(Store):
                     ended_at DOUBLE PRECISION NOT NULL
                 )
             """)
+            await conn.execute(
+                "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS budget_daily DOUBLE PRECISION")
         return cls(pool)
 
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
@@ -941,7 +972,7 @@ class _PostgresStore(Store):
                    status_code=200, error_detail=None, framework=None,
                    thread_id=None, step_index=None, turn_index=None,
                    prev_action_id=None, run_id=None, iteration=None,
-                   loop_flags=None) -> None:
+                   loop_flags=None, team=None) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """
@@ -955,7 +986,7 @@ class _PostgresStore(Store):
                      status_code, error_detail,
                      cache_read_tokens, cache_write_tokens, thinking, framework,
                      thread_id, step_index, turn_index, prev_action_id,
-                     run_id, iteration, loop_flags)
+                     run_id, iteration, loop_flags, team)
                 VALUES
                     ($1,$2,to_timestamp($3),$4,$5,
                      $6::jsonb,$7::jsonb,$8,$9::jsonb,$10,
@@ -966,7 +997,7 @@ class _PostgresStore(Store):
                      $26,$27,
                      $28,$29,$30,$31,
                      $32,$33,$34,$35,
-                     $36,$37,$38)
+                     $36,$37,$38,$39)
                 """,
                 uuid.UUID(action_id),
                 session_id,
@@ -984,7 +1015,7 @@ class _PostgresStore(Store):
                 resp.cache_read_tokens, resp.cache_write_tokens, resp.thinking,
                 framework,
                 thread_id, step_index, turn_index, prev_action_id,
-                run_id, iteration, loop_flags,
+                run_id, iteration, loop_flags, team,
             )
 
     async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -1156,6 +1187,16 @@ class _PostgresStore(Store):
             )
         return float(val or 0)
 
+    async def get_team_cost(self, team: str, since_ts: float) -> float:
+        import datetime as _dt
+        since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
+        async with self._pool.acquire() as conn:
+            val = await conn.fetchval(
+                "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE team = $1 AND timestamp >= $2 AND status_code = 200",
+                team, since,
+            )
+        return float(val or 0)
+
     async def get_token_rows(self, scope: str, value: str) -> list[dict[str, Any]]:
         if scope not in ("session_id", "run_id", "action_id"):
             raise ValueError(f"invalid what-if scope: {scope!r}")
@@ -1256,14 +1297,25 @@ class _PostgresStore(Store):
                 """,
                 since,
             )]
+        async with self._pool.acquire() as conn:
+            teams = [dict(r) for r in await conn.fetch(
+                """
+                SELECT team, COUNT(*) AS call_count,
+                       SUM(COALESCE(cost_usd, 0)) AS cost_usd,
+                       COUNT(DISTINCT session_id) AS session_count
+                FROM llm_calls WHERE timestamp >= $1 AND team IS NOT NULL
+                GROUP BY team ORDER BY 3 DESC
+                """,
+                since,
+            )]
         # asyncpg returns Decimal/float mixes — normalize numerics so JSON
         # encoding never trips.
-        for rows in (daily, models, agents):
+        for rows in (daily, models, agents, teams):
             for r in rows:
                 for key in ("cost_usd", "p50_latency_ms", "p95_latency_ms", "p99_latency_ms"):
                     if r.get(key) is not None:
                         r[key] = round(float(r[key]), 1) if key.endswith("_ms") else float(r[key])
-        return {"daily": daily, "models": models, "agents": agents}
+        return {"daily": daily, "models": models, "agents": agents, "teams": teams}
 
     async def delete_session(self, session_id: str) -> int:
         async with self._pool.acquire() as conn:
@@ -1276,12 +1328,12 @@ class _PostgresStore(Store):
         async with self._pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
 
-    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at) -> None:
+    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at, budget_daily=None) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at) "
-                "VALUES ($1,$2,$3,$4,$5,$6)",
-                token_id, name, token_hash, role, created_at, expires_at,
+                "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at, budget_daily) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7)",
+                token_id, name, token_hash, role, created_at, expires_at, budget_daily,
             )
 
     async def get_token_by_hash(self, token_hash: str) -> Optional[dict[str, Any]]:

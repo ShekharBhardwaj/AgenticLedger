@@ -58,6 +58,7 @@ from .alerts import AlertConfig, check_and_fire
 from .auth import (
     ROLE_ADMIN,
     ROLE_EDITOR,
+    ROLE_INGEST,
     ROLE_VIEWER,
     Principal,
     generate_token,
@@ -765,7 +766,8 @@ def create_app(
         tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
         raw = await request.app.state.store.get_report_aggregates(
             time.time() - days * 86400, tz_offset_minutes=tz_offset_minutes)
-        return JSONResponse(build_report(raw["daily"], raw["models"], raw["agents"], days))
+        return JSONResponse(build_report(raw["daily"], raw["models"], raw["agents"], days,
+                                         teams=raw.get("teams")))
 
     @app.get("/api/sessions/{session_id}/tools")
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:
@@ -838,20 +840,31 @@ def create_app(
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
         if not valid_role(role):
-            raise HTTPException(status_code=400, detail=f"invalid role: {role!r} (viewer|editor|admin)")
+            raise HTTPException(status_code=400, detail=f"invalid role: {role!r} (viewer|editor|admin|ingest)")
+        budget_daily = body.get("budget_daily")
+        if budget_daily is not None:
+            if role != ROLE_INGEST:
+                raise HTTPException(status_code=400,
+                                    detail="budget_daily applies to ingest tokens (team cards)")
+            try:
+                budget_daily = float(budget_daily)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="budget_daily must be a number") from None
+            if budget_daily <= 0:
+                raise HTTPException(status_code=400, detail="budget_daily must be positive")
         expires_in_days = body.get("expires_in_days")
         created_at = time.time()
         expires_at = created_at + float(expires_in_days) * 86400 if expires_in_days else None
         raw, token_hash = generate_token()
         token_id = str(uuid.uuid4())
         await request.app.state.store.create_token(
-            token_id, name, token_hash, role, created_at, expires_at
+            token_id, name, token_hash, role, created_at, expires_at, budget_daily
         )
         await _audit(principal, request, "create_token", token_id, f"role={role} name={name}")
         # The raw token is returned exactly once; only its hash is stored.
         return JSONResponse({
             "token_id": token_id, "name": name, "role": role,
-            "token": raw, "expires_at": expires_at,
+            "token": raw, "expires_at": expires_at, "budget_daily": budget_daily,
             "note": "Store this token now — it is shown only once.",
         }, status_code=201)
 
@@ -935,15 +948,18 @@ def create_app(
     # upstream. GenAI spans become ledger calls; logs/metrics are acked so
     # exporters don't buffer and retry forever.
 
-    def _check_ingest_gate(request: Request) -> Optional[JSONResponse]:
-        if _ingest_key:
-            supplied = request.headers.get("x-agenticledger-ingest-key")
-            if not supplied or not hmac.compare_digest(supplied, _ingest_key):
-                return JSONResponse(
-                    {"error": {"type": "unauthorized",
-                               "message": "Missing or invalid x-agenticledger-ingest-key."}},
-                    status_code=401,
-                )
+    async def _check_ingest_gate(request: Request) -> Optional[JSONResponse]:
+        supplied = request.headers.get("x-agenticledger-ingest-key")
+        if supplied and not (_ingest_key and hmac.compare_digest(supplied, _ingest_key)):
+            card = await request.app.state.store.get_token_by_hash(hash_token(supplied))
+            if card and _token_is_valid(card) and card.get("role") == ROLE_INGEST:
+                return None
+        if _ingest_key and (not supplied or not hmac.compare_digest(supplied, _ingest_key)):
+            return JSONResponse(
+                {"error": {"type": "unauthorized",
+                           "message": "Missing or invalid x-agenticledger-ingest-key."}},
+                status_code=401,
+            )
         return None
 
     def _otlp_ack(request: Request) -> Response:
@@ -984,7 +1000,7 @@ def create_app(
 
     @app.post("/v1/traces")
     async def otlp_traces(request: Request) -> Response:
-        denied = _check_ingest_gate(request)
+        denied = await _check_ingest_gate(request)
         if denied:
             return denied
         payload = await _otlp_payload(request, "traces")
@@ -1022,7 +1038,7 @@ def create_app(
     async def otlp_logs(request: Request) -> Response:
         """Tool-result events (e.g. Claude Code's on-machine audit trail)
         become tool_executions rows; everything else is acknowledged."""
-        denied = _check_ingest_gate(request)
+        denied = await _check_ingest_gate(request)
         if denied:
             return denied
         with suppress(Exception):
@@ -1036,7 +1052,7 @@ def create_app(
 
     @app.post("/v1/metrics")
     async def otlp_metrics_ack(request: Request) -> Response:
-        denied = _check_ingest_gate(request)
+        denied = await _check_ingest_gate(request)
         if denied:
             return denied
         return _otlp_ack(request)
@@ -1045,10 +1061,19 @@ def create_app(
 
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def proxy(request: Request, path: str) -> Response:
-        # Proxy-ingest auth: gate forwarding behind a dedicated key when configured.
-        if _ingest_key:
-            supplied = request.headers.get("x-agenticledger-ingest-key")
-            if not supplied or not hmac.compare_digest(supplied, _ingest_key):
+        # Proxy-ingest auth: the shared env key or a team card (an
+        # ingest-role token) opens the door. A team card additionally
+        # attributes every call to its team and can carry its own daily
+        # budget — the allowance-card model.
+        team_name: Optional[str] = None
+        team_budget: Optional[float] = None
+        supplied_ingest = request.headers.get("x-agenticledger-ingest-key")
+        if supplied_ingest and not (_ingest_key and hmac.compare_digest(supplied_ingest, _ingest_key)):
+            card = await request.app.state.store.get_token_by_hash(hash_token(supplied_ingest))
+            if card and _token_is_valid(card) and card.get("role") == ROLE_INGEST:
+                team_name = card.get("name")
+                team_budget = card.get("budget_daily")
+            elif _ingest_key:
                 return JSONResponse(
                     {"error": {
                         "type": "unauthorized",
@@ -1056,6 +1081,14 @@ def create_app(
                     }},
                     status_code=401,
                 )
+        elif _ingest_key and not supplied_ingest:
+            return JSONResponse(
+                {"error": {
+                    "type": "unauthorized",
+                    "message": "Missing or invalid x-agenticledger-ingest-key.",
+                }},
+                status_code=401,
+            )
 
         # Path-segment run attribution: /r/<run_id>/<iteration>/<real path>.
         # For clients that can only set a base URL and no custom headers —
@@ -1086,6 +1119,7 @@ def create_app(
 
         action_id = str(uuid.uuid4()) if is_llm_path else None
         meta = _extract_meta(request, body_json)
+        meta["team"] = team_name
         if path_run_id and not meta.get("run_id"):
             meta["run_id"] = path_run_id
             if meta.get("iteration") is None:
@@ -1126,11 +1160,13 @@ def create_app(
         # Fail open: if the store is unavailable the agent must not be blocked.
         # Budget enforcement resumes automatically once the store recovers.
         _budget_warning: Optional[str] = None  # set in warn mode; carried into actual save
-        if is_llm_path and not is_count_tokens and (budget_session is not None or budget_agent is not None or budget_daily is not None or budget_user is not None):
+        if is_llm_path and not is_count_tokens and (budget_session is not None or budget_agent is not None or budget_daily is not None or budget_user is not None or team_budget is not None):
             try:
                 budget_error, budget_retry_after = await _check_budgets(
                     request.app.state.store, meta,
                     budget_session, budget_agent, budget_daily, budget_user,
+                    budget_team=(team_name, team_budget)
+                    if team_name and team_budget is not None else None,
                 )
             except Exception:
                 logger.warning("Budget check failed — allowing call through", exc_info=True)
@@ -1345,6 +1381,7 @@ async def _check_budgets(
     budget_agent: Optional[float],
     budget_daily: Optional[float],
     budget_user: Optional[float] = None,
+    budget_team: Optional[tuple[str, float]] = None,
 ) -> tuple[Optional[str], Optional[int]]:
     """(error message, Retry-After seconds) if a budget is exceeded, else
     (None, None). Daily windows carry the seconds until UTC midnight;
@@ -1379,6 +1416,17 @@ async def _check_budgets(
             return (
                 f"User daily budget of ${budget_user:.4f} exceeded "
                 f"(current spend: ${spent:.4f}). User: {user_id}",
+                _seconds_to_utc_midnight(),
+            )
+
+    if budget_team is not None:
+        team, cap = budget_team
+        since = _today_start_ts()
+        spent = await store.get_team_cost(team, since)
+        if spent >= cap:
+            return (
+                f"Team daily budget of ${cap:.4f} exceeded "
+                f"(current spend: ${spent:.4f}). Team: {team}",
                 _seconds_to_utc_midnight(),
             )
 

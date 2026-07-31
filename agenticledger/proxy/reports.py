@@ -57,6 +57,7 @@ def build_report(
     models: list[dict[str, Any]],
     agents: list[dict[str, Any]],
     days: int,
+    teams: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Assemble the /api/reports payload from the store's raw aggregates."""
     for row in models:
@@ -78,7 +79,8 @@ def build_report(
         "cache_write_tokens": sum(int(r.get("cache_write_tokens") or 0) for r in daily),
         "cache_savings_usd": sum(float(r.get("cache_savings_usd") or 0) for r in models),
     }
-    return {"days": days, "totals": totals, "daily": daily, "models": models, "agents": agents}
+    return {"days": days, "totals": totals, "daily": daily, "models": models,
+            "agents": agents, "teams": teams or []}
 
 
 def digest_text(report: dict[str, Any], hours: int = 24) -> str:
