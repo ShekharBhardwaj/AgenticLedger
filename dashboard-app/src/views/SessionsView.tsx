@@ -5,6 +5,7 @@ import {
   replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
 import { LabelEditor, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import ProviderMark from "./ProviderMark";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
   const parts: string[] = [];
@@ -154,6 +155,7 @@ function CallCard({ call, onOpenSession }: { call: Call; onOpenSession?: (sid: s
   return (
     <div className="card call-card">
       <div className="call-head" onClick={() => setOpen(!open)}>
+        <ProviderMark provider={call.provider} model={call.model_id} />
         <span className="model">{call.model_id}</span>
         {interactionTags(call).map(({ tag, label }) => (
           <span key={tag} className={`badge proto ${tag.toLowerCase()}`} title={label}>

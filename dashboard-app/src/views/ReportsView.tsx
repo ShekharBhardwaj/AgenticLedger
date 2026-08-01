@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { fmtNum, fmtUsd, get, liveUpdates } from "../api";
+import ProviderMark from "./ProviderMark";
 
 interface DailyRow {
   day: string;
@@ -215,7 +216,10 @@ export default function ReportsView() {
         <tbody>
           {report.models.map((m) => (
             <tr key={`${m.model_id}|${m.provider}`}>
-              <td className="mono">{m.model_id}</td>
+              <td className="mono model-cell">
+                <ProviderMark provider={m.provider} model={m.model_id} />
+                {m.model_id}
+              </td>
               <td>{fmtNum(m.call_count)}</td>
               <ErrorCell n={m.error_calls} />
               <BlockedCell n={m.blocked_calls} />

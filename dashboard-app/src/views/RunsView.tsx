@@ -6,6 +6,7 @@ import {
 } from "../api";
 import CompareView from "./CompareView";
 import { LabelEditor, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import ProviderMark from "./ProviderMark";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
 
@@ -144,7 +145,12 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               <span>{r.iterations ?? "?"} iterations</span>
               <span>{r.call_count} calls</span>
               <span>{fmtUsd(r.total_cost_usd)}</span>
-              {r.models && <span className="mono">{r.models}</span>}
+              {r.models && (
+                <span className="mono model-cell">
+                  <ProviderMark model={r.models.split(",")[0]} />
+                  {r.models}
+                </span>
+              )}
               {r.framework && <span className="badge fw">{r.framework}</span>}
               {r.project && <span className="badge fw" title="project">{r.project}</span>}
             </div>
