@@ -78,6 +78,11 @@ export function startBatchReplay(body: {
   return post("/api/replay/batch", body);
 }
 
+export function listReplayJobs(scope: string, refId: string):
+    Promise<{ jobs: { job_id: string; status: string }[] }> {
+  return get(`/api/replay/jobs?scope=${scope}&ref_id=${encodeURIComponent(refId)}`);
+}
+
 export function getReplayJob(jobId: string): Promise<BatchJob> {
   return get(`/api/replay/jobs/${encodeURIComponent(jobId)}`);
 }

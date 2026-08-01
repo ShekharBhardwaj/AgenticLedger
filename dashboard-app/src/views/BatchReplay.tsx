@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  BatchJob, fmtUsd, getReplayJob, replayModels, replayTargets, ReplayTarget,
-  startBatchReplay,
+  BatchJob, fmtUsd, getReplayJob, listReplayJobs, replayModels, replayTargets,
+  ReplayTarget, startBatchReplay,
 } from "../api";
 
 /** 0.8 flagship — test-drive another model on the whole journey.
@@ -25,6 +25,15 @@ export default function BatchReplay({ scope, refId, onOpenSession }: {
   useEffect(() => {
     if (!open) return;
     replayTargets().then((r) => setTargets(r.targets)).catch(() => {});
+    // A finished report card survives panel closes and page reloads: pick up
+    // the most recent job for this run/session and show it again.
+    listReplayJobs(scope, refId)
+      .then((r) => {
+        const last = r.jobs[r.jobs.length - 1];
+        if (last && !job) poll(last.job_id);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -181,8 +190,14 @@ export default function BatchReplay({ scope, refId, onOpenSession }: {
               {st.reason && <div className="muted">{st.reason}</div>}
               {st.status === "ok" && (
                 <div className="replay-grid">
-                  <pre>{st.original_content ?? "(no text)"}</pre>
-                  <pre>{st.replay_content ?? "(no text)"}</pre>
+                  <div>
+                    <div className="muted mono">{st.original_model} (original — really ran)</div>
+                    <pre>{st.original_content ?? "(no text — answered with tool calls)"}</pre>
+                  </div>
+                  <div>
+                    <div className="muted mono">{job!.model} (replay — answer only, nothing executed)</div>
+                    <pre>{st.replay_content ?? "(no text — answered with tool calls)"}</pre>
+                  </div>
                 </div>
               )}
             </div>

@@ -1188,6 +1188,22 @@ def create_app(
                              "replay_session_id": job["replay_session_id"]},
                             status_code=202)
 
+    @app.get("/api/replay/jobs")
+    async def api_replay_jobs(request: Request, scope: str = "",
+                              ref_id: str = "") -> JSONResponse:
+        """Most recent batch job for a run/session — lets the panel reopen a
+        finished report card instead of losing it to a page reload."""
+        await _require(request, ROLE_VIEWER)
+        jobs = list(getattr(request.app.state, "replay_jobs", {}).values())
+        if scope:
+            jobs = [j for j in jobs if j["scope"] == scope]
+        if ref_id:
+            jobs = [j for j in jobs if j["ref_id"] == ref_id]
+        return JSONResponse({"jobs": [
+            {k: j[k] for k in ("job_id", "scope", "ref_id", "model", "provider",
+                               "status", "done", "total")}
+            for j in jobs]})
+
     @app.get("/api/replay/jobs/{job_id}")
     async def api_replay_job(job_id: str, request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)

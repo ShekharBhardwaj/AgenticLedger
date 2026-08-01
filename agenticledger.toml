@@ -26,8 +26,8 @@ upstream_url = "https://api.anthropic.com"
 # Same-provider replay through the proxy's own upstream:
 # api_key_file = "~/.agenticledger/replay.key"
 # Cross-provider / free local replay (LM Studio):
-# openai_url = "http://localhost:1234"
-# openai_key = "lm-studio"
+openai_url = "http://localhost:1234"
+openai_key = "lm-studio"
 
 [env]
 # Escape hatch: any other AGENTICLEDGER_* variable, verbatim.

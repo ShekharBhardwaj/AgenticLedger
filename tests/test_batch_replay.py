@@ -123,3 +123,21 @@ def test_batch_marks_fumbles_when_tools_diverge(proxy):
     assert job["report"]["matched"] == 0
     assert len(job["report"]["fumbles"]) == 1
     assert job["steps"][0]["score"]["tool_verdict"] == "orig-only"
+
+
+def test_report_cards_are_reopenable(proxy):
+    """Closing the panel or reloading the page must not lose a finished
+    report card — the jobs list lets the panel re-attach."""
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()),
+                   replay_targets={"openai": {"url": UPSTREAM_URL, "key": "k"}})
+    _wire_target(client, "openai")
+    _seed_run(client, n=2)
+    client.upstream.set(lambda r: httpx.Response(200, json=openai_response()))
+    started = client.post("/api/replay/batch",
+                          json={"session_id": "batch-sess", "model": "gpt-4o"}).json()
+    _wait_job(client, started["job_id"])
+
+    listed = client.get("/api/replay/jobs?scope=session&ref_id=batch-sess").json()["jobs"]
+    assert [j["job_id"] for j in listed] == [started["job_id"]]
+    assert listed[0]["status"] == "done"
+    assert client.get("/api/replay/jobs?scope=run&ref_id=batch-sess").json()["jobs"] == []
