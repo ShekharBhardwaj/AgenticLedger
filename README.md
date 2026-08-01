@@ -687,8 +687,12 @@ curl -X POST http://localhost:8000/api/tokens \
 
 The response shows the card once — the ledger stores only its hash. The
 team puts it in `x-agenticledger-ingest-key` instead of the shared key;
-Reports gains a by-team spend table; revoke a card with
-`DELETE /api/tokens/{token_id}` and only that team is affected.
+Reports gains a by-team table with errors, blocks, and spend-today against
+each card's allowance. Revoke a card with `DELETE /api/tokens/{token_id}`
+and only that team is affected — from that instant the card gets a final
+**403** ("the answer is no"), which agents accept without retry storms.
+Paste a card into the dashboard's ⚿ panel by mistake and it tells you, in
+plain words, that cards open the relay, not the dashboard.
 
 **Budgets vs alerts:**
 - **Budgets** (`AGENTICLEDGER_BUDGET_*`) — block the call before it reaches the LLM. Agent gets HTTP 429.
