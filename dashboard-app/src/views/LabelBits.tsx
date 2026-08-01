@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { setLabel } from "../api";
+import { createProject, setLabel } from "../api";
 
 /** #47 — shared label controls for session and run cards: a ★ pin that
  *  keeps things findable, and a ✎ editor for the human name + project.
@@ -63,25 +63,70 @@ export function LabelEditor({ scope, refId, label, project, projects, onSaved, o
 
 export const STARRED = "__starred__";
 
-/** Filter dropdown: two built-in views (everything, everything starred)
- *  followed by the projects the user named. Hidden only when there is
- *  nothing to filter by yet. */
-export function ProjectFilter({ projects, value, onChange, hasPinned }: {
+/** Filter dropdown (two built-in views, then the user's projects) plus a
+ *  "+ project" creator: name it now, optionally bind it to an app id so
+ *  matching work — past and future — files itself. */
+export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps, onCreated }: {
   projects: string[]; value: string; onChange: (v: string) => void;
-  hasPinned?: boolean;
+  hasPinned?: boolean; knownApps?: string[]; onCreated?: () => void;
 }) {
-  if (projects.length === 0 && !hasPinned) return null;
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [appId, setAppId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const save = () => {
+    createProject(name.trim(), appId.trim() || undefined)
+      .then(() => {
+        setCreating(false); setName(""); setAppId(""); setError(null);
+        onCreated?.();
+      })
+      .catch((e) => setError(e.message));
+  };
+
   return (
-    <select
-      className="project-filter"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      title="Narrow the list: everything, everything starred, or one project"
-    >
-      <option value="">all projects</option>
-      <option value={STARRED}>★ all starred</option>
-      {projects.map((p) => <option key={p} value={p}>{p}</option>)}
-    </select>
+    <div className="project-filter-row">
+      {(projects.length > 0 || hasPinned) && (
+        <select
+          className="project-filter"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          title="Narrow the list: everything, everything starred, or one project"
+        >
+          <option value="">all projects</option>
+          <option value={STARRED}>★ all starred</option>
+          {projects.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+      )}
+      {!creating ? (
+        <button className="link-btn project-new" style={{ marginTop: 0 }}
+                title="Create a project — optionally bound to an app id so its sessions file themselves"
+                onClick={() => setCreating(true)}>
+          + project
+        </button>
+      ) : (
+        <div className="label-edit" style={{ width: "100%" }}>
+          <input autoFocus placeholder="project name…" value={name}
+                 onChange={(e) => setName(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) save();
+                                     if (e.key === "Escape") setCreating(false); }} />
+          <input placeholder="auto-file app id (optional)" value={appId}
+                 list="al-known-apps"
+                 title="Sessions and runs carrying this app id file themselves under the project — including ones already captured"
+                 onChange={(e) => setAppId(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) save();
+                                     if (e.key === "Escape") setCreating(false); }} />
+          <datalist id="al-known-apps">
+            {(knownApps ?? []).map((a) => <option key={a} value={a} />)}
+          </datalist>
+          {error && <div className="key-status warn">{error}</div>}
+          <div className="key-actions">
+            <button className="link-btn" disabled={!name.trim()} onClick={save}>Create</button>
+            <button className="link-btn" onClick={() => setCreating(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

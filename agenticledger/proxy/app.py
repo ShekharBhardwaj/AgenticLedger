@@ -648,12 +648,23 @@ def create_app(
 
     # ── API ──────────────────────────────────────────────────────────────────
 
-    def _annotate_labels(rows: list, labels: dict, key: str) -> list:
+    def _annotate_labels(rows: list, labels: dict, key: str,
+                         rules: Optional[dict] = None) -> list:
         for r in rows:
             lab = labels.get(r.get(key)) or {}
             r["label"] = lab.get("name")
             r["pinned"] = bool(lab.get("pinned"))
             r["project"] = lab.get("project")
+            r["project_auto"] = False
+            # Auto-filing: a hand-assigned project always wins; otherwise a
+            # session/run whose app matches a declared project's binding
+            # files itself — computed here at read time, so it applies
+            # retroactively and un-applies if the binding changes.
+            if r["project"] is None and rules:
+                auto = rules.get(r.get("app_id") or "")
+                if auto:
+                    r["project"] = auto
+                    r["project_auto"] = True
         return rows
 
     @app.get("/api/sessions")
@@ -662,7 +673,8 @@ def create_app(
         store = request.app.state.store
         sessions = await store.list_sessions()
         return JSONResponse(_annotate_labels(
-            sessions, await store.get_labels("session"), "session_id"))
+            sessions, await store.get_labels("session"), "session_id",
+            await store.get_project_rules()))
 
     @app.get("/api/runs")
     async def api_runs(request: Request) -> JSONResponse:
@@ -670,7 +682,8 @@ def create_app(
         store = request.app.state.store
         runs = await store.list_runs()
         ended = await store.get_run_end_markers([r["run_id"] for r in runs])
-        runs = _annotate_labels(runs, await store.get_labels("run"), "run_id")
+        runs = _annotate_labels(runs, await store.get_labels("run"), "run_id",
+                                await store.get_project_rules())
         return JSONResponse([
             _with_run_status(r, loop_run_gap_seconds, explicitly_ended=r["run_id"] in ended)
             for r in runs
@@ -720,7 +733,36 @@ def create_app(
     @app.get("/api/projects")
     async def api_projects(request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
-        return JSONResponse({"projects": await request.app.state.store.list_projects()})
+        store = request.app.state.store
+        rules = await store.get_project_rules()
+        bound = {proj: app_id for app_id, proj in rules.items()}
+        return JSONResponse({
+            "projects": await store.list_projects(),
+            "bindings": bound,   # project → app id it auto-files from
+        })
+
+    @app.post("/api/projects")
+    async def api_create_project(request: Request) -> JSONResponse:
+        """Declare a project before anything is filed under it — optionally
+        bound to an app id so matching sessions and runs file themselves."""
+        principal = await _require(request, ROLE_EDITOR)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        name = str(payload.get("name") or "").strip()
+        if not name or len(name) > 60:
+            raise HTTPException(status_code=400,
+                                detail="name must be 1-60 characters")
+        app_id = payload.get("app_id")
+        if app_id is not None and (not isinstance(app_id, str) or len(app_id) > 120):
+            raise HTTPException(status_code=400, detail="app_id must be a short string")
+        await request.app.state.store.set_label(
+            "project", name, name=(app_id.strip() if app_id else None))
+        await _audit(principal, request, "create_project", name,
+                     f"app_id={app_id or '—'}")
+        return JSONResponse({"project": name, "app_id": app_id or None},
+                            status_code=201)
 
     @app.get("/api/settings")
     async def api_settings(request: Request) -> JSONResponse:
@@ -1349,11 +1391,13 @@ def create_app(
         # By-project rollup: sessions carry their project in the labels
         # table, so join per-session totals with labels here and aggregate.
         labels = await request.app.state.store.get_labels("session")
+        rules = await request.app.state.store.get_project_rules()
         projects: dict = {}
-        if any(lab.get("project") for lab in labels.values()):
+        if rules or any(lab.get("project") for lab in labels.values()):
             for st in await request.app.state.store.get_session_totals(
                     time.time() - days * 86400):
-                project = (labels.get(st["session_id"]) or {}).get("project")
+                project = ((labels.get(st["session_id"]) or {}).get("project")
+                           or rules.get(st.get("app_id") or ""))
                 if not project:
                     continue
                 agg = projects.setdefault(project, {

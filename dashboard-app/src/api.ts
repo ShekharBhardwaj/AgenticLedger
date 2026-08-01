@@ -158,8 +158,16 @@ export function setLabel(
   return put(`/api/labels/${scope}/${encodeURIComponent(refId)}`, fields);
 }
 
-export function listProjects(): Promise<{ projects: string[] }> {
+export function listProjects(): Promise<{
+  projects: string[]; bindings: Record<string, string>;
+}> {
   return get("/api/projects");
+}
+
+/** Declare a project — optionally bound to an app id so matching sessions
+ *  and runs file themselves, past and future. */
+export function createProject(name: string, appId?: string): Promise<unknown> {
+  return post("/api/projects", { name, ...(appId ? { app_id: appId } : {}) });
 }
 
 export async function post<T>(path: string, body: unknown): Promise<T> {
@@ -228,6 +236,8 @@ export interface Run {
   label: string | null;
   pinned: boolean;
   project: string | null;
+  project_auto: boolean;
+  app_id: string | null;
 }
 
 /** Plain-words tooltip for a run's status badge. */
@@ -273,6 +283,8 @@ export interface Session {
   label: string | null;
   pinned: boolean;
   project: string | null;
+  project_auto: boolean;
+  app_id: string | null;
 }
 
 export interface Call {

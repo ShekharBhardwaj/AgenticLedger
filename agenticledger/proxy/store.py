@@ -63,6 +63,7 @@ _RUN_AGGREGATE_COLUMNS_BASE = """
                 SUM(COALESCE(tokens_in, 0))   AS total_tokens_in,
                 SUM(COALESCE(tokens_out, 0))  AS total_tokens_out,
                 MAX(framework)                AS framework,
+                MAX(app_id)                   AS app_id,
                 {models_agg}                  AS models,
                 SUM(CASE WHEN loop_flags LIKE '%repeat_tool_call%' OR loop_flags LIKE '%step_budget_exceeded%' THEN 1 ELSE 0 END) AS flagged_calls,
                 MAX(CASE WHEN loop_flags LIKE '%completion_promise%' THEN 1 ELSE 0 END) AS promise_seen
@@ -262,7 +263,13 @@ class Store(ABC):
 
     @abstractmethod
     async def list_projects(self) -> list[str]:
-        """Distinct project names across both scopes, alphabetical."""
+        """Distinct project names — filed-under names plus declared
+        (possibly still empty) projects, alphabetical."""
+        ...
+
+    @abstractmethod
+    async def get_project_rules(self) -> dict[str, str]:
+        """app_id → project for declared projects bound to an app."""
         ...
 
     @abstractmethod
@@ -608,6 +615,7 @@ class _SqliteStore(Store):
                 MAX(user_id)     AS user_id,
                 MAX(environment) AS environment,
                 MAX(team)        AS team,
+                MAX(app_id)      AS app_id,
                 SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                          AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                          THEN 1 ELSE 0 END) AS error_count,
@@ -695,7 +703,7 @@ class _SqliteStore(Store):
     async def get_session_totals(self, since_ts: float) -> list[dict[str, Any]]:
         async with self._db.execute(
             """
-            SELECT session_id, COUNT(*) AS call_count,
+            SELECT session_id, MAX(app_id) AS app_id, COUNT(*) AS call_count,
                    SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                    SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                             AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
@@ -756,10 +764,22 @@ class _SqliteStore(Store):
 
     async def list_projects(self) -> list[str]:
         async with self._db.execute(
-            "SELECT DISTINCT project FROM labels WHERE project IS NOT NULL ORDER BY project",
+            "SELECT DISTINCT project AS p FROM labels WHERE project IS NOT NULL "
+            "UNION SELECT DISTINCT ref_id AS p FROM labels WHERE scope = 'project' "
+            "ORDER BY p",
         ) as cur:
             rows = await cur.fetchall()
-        return [r["project"] for r in rows]
+        return [r["p"] for r in rows]
+
+    async def get_project_rules(self) -> dict[str, str]:
+        """app_id → project, from declared projects bound to an app. A
+        declared project's marker row lives in labels with scope='project',
+        ref_id=<project name>, and the bound app id in the name column."""
+        async with self._db.execute(
+            "SELECT ref_id, name FROM labels WHERE scope = 'project' AND name IS NOT NULL",
+        ) as cur:
+            rows = await cur.fetchall()
+        return {r["name"]: r["ref_id"] for r in rows}
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         await self._db.execute(
@@ -1286,6 +1306,7 @@ class _PostgresStore(Store):
                     MAX(user_id)                AS user_id,
                     MAX(environment)            AS environment,
                     MAX(team)                   AS team,
+                    MAX(app_id)                 AS app_id,
                     SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                              AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                              THEN 1 ELSE 0 END) AS error_count,
@@ -1382,7 +1403,7 @@ class _PostgresStore(Store):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT session_id::text, COUNT(*) AS call_count,
+                SELECT session_id::text, MAX(app_id) AS app_id, COUNT(*) AS call_count,
                        SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                        SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                                 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
@@ -1440,8 +1461,16 @@ class _PostgresStore(Store):
     async def list_projects(self) -> list[str]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT DISTINCT project FROM labels WHERE project IS NOT NULL ORDER BY project")
-        return [r["project"] for r in rows]
+                "SELECT DISTINCT project AS p FROM labels WHERE project IS NOT NULL "
+                "UNION SELECT DISTINCT ref_id AS p FROM labels WHERE scope = 'project' "
+                "ORDER BY p")
+        return [r["p"] for r in rows]
+
+    async def get_project_rules(self) -> dict[str, str]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT ref_id, name FROM labels WHERE scope = 'project' AND name IS NOT NULL")
+        return {r["name"]: r["ref_id"] for r in rows}
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         async with self._pool.acquire() as conn:

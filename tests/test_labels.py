@@ -86,3 +86,61 @@ def test_reports_break_down_by_project(proxy):
     assert row["session_count"] == 2 and row["call_count"] == 2
     assert row["cost_usd"] > 0
     assert "unfiled" not in str(report["projects"])  # unfiled sessions stay out
+
+
+# ── Declared projects + auto-filing (0.8) ─────────────────────────────────────
+
+def _capture_app(client, session_id, app_id):
+    assert client.post("/v1/chat/completions",
+                       json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+                       headers={"x-agenticledger-session-id": session_id,
+                                "x-agenticledger-app-id": app_id}).status_code == 200
+
+
+def test_empty_project_exists_before_anything_is_filed(proxy):
+    client = proxy(handler=_ok())
+    assert client.post("/api/projects", json={"name": "Q3 rewrite"}).status_code == 201
+    body = client.get("/api/projects").json()
+    assert "Q3 rewrite" in body["projects"]
+    assert body["bindings"] == {}
+
+
+def test_app_bound_project_files_sessions_automatically_and_retroactively(proxy):
+    client = proxy(handler=_ok())
+    _capture_app(client, "bmad-s1", "bmad-test")     # captured BEFORE the project
+    client.post("/api/projects", json={"name": "BMAD TEST", "app_id": "bmad-test"})
+    _capture_app(client, "bmad-s2", "bmad-test")     # and after
+    _capture_app(client, "other", "some-other-app")
+
+    rows = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    assert rows["bmad-s1"]["project"] == "BMAD TEST"   # retroactive
+    assert rows["bmad-s1"]["project_auto"] is True
+    assert rows["bmad-s2"]["project"] == "BMAD TEST"
+    assert rows["other"]["project"] is None
+
+    report = client.get("/api/reports?days=1").json()
+    proj = {p["project"]: p for p in report["projects"]}["BMAD TEST"]
+    assert proj["session_count"] == 2
+
+
+def test_hand_assignment_beats_the_auto_rule(proxy):
+    client = proxy(handler=_ok())
+    client.post("/api/projects", json={"name": "Auto", "app_id": "app-x"})
+    _capture_app(client, "s-owned", "app-x")
+    client.put("/api/labels/session/s-owned", json={"project": "Hand Picked"})
+    row = {s["session_id"]: s for s in client.get("/api/sessions").json()}["s-owned"]
+    assert row["project"] == "Hand Picked"
+    assert row["project_auto"] is False
+
+
+def test_project_creation_validates(proxy, monkeypatch):
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy(handler=_ok())
+    assert client.post("/api/projects", json={"name": ""},
+                       headers=MASTER).status_code == 400
+    assert client.post("/api/projects", json={"name": "x" * 80},
+                       headers=MASTER).status_code == 400
+    viewer = client.post("/api/tokens", json={"name": "v", "role": "viewer"},
+                         headers=MASTER).json()["token"]
+    assert client.post("/api/projects", json={"name": "np"},
+                       headers={"Authorization": f"Bearer {viewer}"}).status_code == 403

@@ -106,7 +106,9 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
           </div>
         )}
         <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
-                       hasPinned={runs.some((x) => x.pinned)} />
+                       hasPinned={runs.some((x) => x.pinned)}
+                       knownApps={[...new Set(runs.map((x) => x.app_id).filter(Boolean))] as string[]}
+                       onCreated={refresh} />
         {pinnedFirst(runs.filter((r) => matchesFilter(r, projectFilter))).map((r) => (
           <div
             key={r.run_id}
@@ -153,7 +155,14 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                 </span>
               )}
               {r.framework && <span className="badge fw">{r.framework}</span>}
-              {r.project && <span className="badge fw" title="project">{r.project}</span>}
+              {r.project && (
+                <span className="badge fw"
+                      title={r.project_auto
+                        ? "filed automatically — this run's app matches the project's binding"
+                        : "project"}>
+                  {r.project}{r.project_auto ? " ·auto" : ""}
+                </span>
+              )}
             </div>
           </div>
         ))}

@@ -223,10 +223,15 @@ body {
 }
 .label-edit input:focus { outline: none; border-color: var(--accent); }
 .project-filter {
-  width: 100%; margin-bottom: 12px; padding: 7px 10px; font-size: 13px;
+  flex: 1; padding: 7px 10px; font-size: 13px;
   background: var(--bg-input); color: var(--text);
   border: 1px solid var(--border); border-radius: 8px;
 }
+.project-filter-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.project-new { white-space: nowrap; }
 
 /* Run comparison */
 .card-cmp {

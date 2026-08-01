@@ -447,7 +447,9 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
           onChange={(e) => setQuery(e.target.value)}
         />
         <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
-                       hasPinned={sessions.some((x) => x.pinned)} />
+                       hasPinned={sessions.some((x) => x.pinned)}
+                       knownApps={[...new Set(sessions.map((x) => x.app_id).filter(Boolean))] as string[]}
+                       onCreated={refresh} />
         {pinnedFirst(sessions.filter((s) => matchesFilter(s, projectFilter))).map((s) => (
           <div
             key={s.session_id}
@@ -501,7 +503,14 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               )}
               {s.agent_name && <span className="badge fw">{s.agent_name}</span>}
               {s.team && <span className="badge team" title="team card that made these calls">{s.team}</span>}
-              {s.project && <span className="badge fw" title="project">{s.project}</span>}
+              {s.project && (
+                <span className="badge fw"
+                      title={s.project_auto
+                        ? `filed automatically — this session's app matches the project's binding; assign a project by hand (✎) to override`
+                        : "project"}>
+                  {s.project}{s.project_auto ? " ·auto" : ""}
+                </span>
+              )}
               {(s.error_count ?? 0) > 0 && (
                 <span className="badge error" title="calls that actually failed">{s.error_count} failed</span>
               )}

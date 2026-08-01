@@ -30,6 +30,15 @@ fixed and re-verified in the same session it was found.
   overnight auth fix" instead of `cc-73a26366`), a ★ pin that keeps them at
   the top, and a project they can be filed under, with a project filter over
   both lists. `PUT /api/labels/{scope}/{id}`, `GET /api/projects`.
+- **Projects can exist first — and fill themselves.** "+ project" (or
+  `POST /api/projects`) declares a project before anything is filed under
+  it, optionally bound to an app id: sessions and runs carrying that app
+  tag file themselves under the project — including everything already
+  captured, since the match is computed when you look, not stamped at
+  capture. A hand-assigned project always beats the rule; auto-filed chips
+  say `·auto` and explain themselves on hover. `agenticledger connect`
+  already writes the app tag, so a connected framework can land in its
+  project from the first call.
 - **Settings page** (`GET /api/settings` + ⚙ in the dashboard): what the
   proxy is actually running with — config file in effect, upstream, budgets,
   capture and retention, replay targets — each row labeled with where its
