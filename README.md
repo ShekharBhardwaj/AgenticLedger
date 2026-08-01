@@ -36,7 +36,21 @@ Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any L
 
 **Step 1 — Start the proxy**
 
-With Docker (recommended, no Python required):
+One config file, three commands, no terminal held hostage:
+
+```bash
+pip install -U agentic-ledger
+agenticledger init      # writes a commented agenticledger.toml — edit it
+agenticledger start     # runs in the background; terminal freed
+```
+
+`agenticledger start` prints the dashboard URL and gives your terminal
+back — closing the window doesn't stop it. `agenticledger status` tells
+you it's up and healthy, `agenticledger logs` shows what it's doing,
+`agenticledger stop` shuts it down. See [Configuration](#configuration)
+for what goes in the file.
+
+Or with Docker (no Python required):
 ```bash
 docker run -p 8000:8000 \
   -e AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com \
@@ -49,25 +63,12 @@ docker run -p 8000:8000 \
 > deployment (TLS, auth keys, redaction, verification)? See the
 > [deployment guide](docs/deployment.md).
 
-> **Using Anthropic / Claude?** Set the upstream to Anthropic instead:
-> `AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com`. The proxy fronts
+> **Using Anthropic / Claude?** Set the upstream to Anthropic instead
+> (`upstream_url` in the config file, or
+> `AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com`). The proxy fronts
 > one provider at a time — run a second instance on another port to cover
 > both. Any OpenAI-compatible gateway URL (LiteLLM, OpenRouter, ...) works
 > the same way.
-
-Or the comfortable way — one config file, three commands, no terminal held
-hostage:
-
-```bash
-pip install -U agentic-ledger
-agenticledger init      # writes a commented agenticledger.toml — edit it
-agenticledger start     # runs in the background; terminal freed
-```
-
-`agenticledger status` tells you it's up and healthy, `agenticledger logs`
-shows what it's doing, `agenticledger stop` shuts it down. Environment
-variables always override the file, so everything below still works — and
-containers keep using `agenticledger serve` (foreground) unchanged.
 
 Or with docker compose (SQLite by default — see `docker-compose.yml`):
 ```bash
@@ -161,6 +162,51 @@ The web app updates live via WebSocket as calls come in. No refresh needed.
 - **Search** — full-text across prompts, outputs, and agents
 
 - **Search** — full-text search across all sessions by prompt, output, agent name, or user ID
+
+---
+
+## Configuration
+
+`agenticledger init` writes `agenticledger.toml` with every option
+commented. Uncomment what you need — a working setup looks like this:
+
+```toml
+[proxy]
+port = 8000
+upstream_url = "https://api.anthropic.com"
+db = "sqlite:///agenticledger.db"
+
+[keys]
+# Prefer *_file: the file's contents are the key, so no secret lives in
+# this file or your shell history (chmod 600 the key file).
+api_key_file = "~/.agenticledger/api.key"       # dashboard/admin access
+ingest_key_file = "~/.agenticledger/ingest.key" # closes the open relay
+
+[budgets]
+daily = 25.0          # whole-ledger daily ceiling, USD
+session = 5.0         # per-session ceiling
+
+[replay]
+# Free local replay via LM Studio (any key works there):
+openai_url = "http://localhost:1234"
+openai_key = "lm-studio"
+```
+
+Three rules:
+
+1. **The file is found in this order:** `AGENTICLEDGER_CONFIG`, then
+   `./agenticledger.toml` (the folder you start from), then
+   `~/.agenticledger/config.toml`. First match wins; the startup banner
+   names the file in effect.
+2. **Anything typed in the command beats the file.** Env vars override
+   per-setting (`AGENTICLEDGER_PORT=9000 agenticledger start` uses 9000
+   for that run without touching the file) — which is also why Docker and
+   CI setups configured by env vars are unaffected.
+3. **Changes apply on restart** (`agenticledger stop` then `start`).
+
+Every setting in the [environment-variable reference](#configuration-reference)
+below has a config-file home; an `[env]` section passes any other
+`AGENTICLEDGER_*` variable through verbatim.
 
 ---
 
@@ -382,7 +428,11 @@ Once connected, you can ask your assistant things like:
 
 ---
 
-## Configuration
+## Configuration reference
+
+Every variable below can also live in `agenticledger.toml` — see
+[Configuration](#configuration) for the file, the search order, and the
+env-always-wins rule.
 
 ### Environment variables
 
