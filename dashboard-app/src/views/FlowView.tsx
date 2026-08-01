@@ -15,6 +15,7 @@ interface Edge {
   to: string;
   count: number;
   back: boolean;
+  inferred: boolean;
 }
 
 /** Agent-level flow DAG built from handoff metadata: nodes aggregate cost,
@@ -38,6 +39,20 @@ export default function FlowView({ calls }: { calls: Call[] }) {
       const key = `${c.handoff_from}→${c.handoff_to}`;
       edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1);
     }
+  }
+
+  // Inferred handoffs: explicit handoff metadata is rare — most agent
+  // changes are detected (claude-code invokes a BMAD skill and the next
+  // call is bmad:spec). One conversation must not render as islands, so a
+  // change of agent between consecutive calls becomes a dotted edge.
+  const inferredKeys = new Set<string>();
+  for (let i = 1; i < calls.length; i++) {
+    const prev = calls[i - 1].agent_name ?? "unattributed";
+    const cur = calls[i].agent_name ?? "unattributed";
+    if (prev === cur) continue;
+    const key = `${prev}→${cur}`;
+    if (!edgeCount.has(key)) inferredKeys.add(key);
+    edgeCount.set(key, (edgeCount.get(key) ?? 0) + (inferredKeys.has(key) ? 1 : 0));
   }
   if (nodes.size === 0) return <div className="empty">No calls in this session.</div>;
 
@@ -94,7 +109,7 @@ export default function FlowView({ calls }: { calls: Call[] }) {
 
   const edges: Edge[] = [...edgeCount.entries()].map(([key, count]) => {
     const [from, to] = key.split("→");
-    return { from, to, count, back: back.has(key) };
+    return { from, to, count, back: back.has(key), inferred: inferredKeys.has(key) };
   });
 
   return (
@@ -127,10 +142,15 @@ export default function FlowView({ calls }: { calls: Call[] }) {
           }
           return (
             <g key={`${e.from}→${e.to}`}>
+              <title>{e.inferred
+                ? `${e.from} → ${e.to} — inferred from call order (the agent changed between consecutive calls)`
+                : `${e.from} → ${e.to} — explicit handoff`}</title>
               <line
                 x1={px(a) + BOX_W} y1={py(a) + BOX_H / 2}
                 x2={px(b) - 3} y2={py(b) + BOX_H / 2}
-                stroke="var(--text-dim)" strokeWidth="1.4" markerEnd="url(#arrow)"
+                stroke="var(--text-dim)" strokeWidth="1.4"
+                strokeDasharray={e.inferred ? "2 4" : undefined}
+                markerEnd="url(#arrow)"
               />
               {e.count > 1 && (
                 <text
