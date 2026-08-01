@@ -649,23 +649,35 @@ def create_app(
     # ── API ──────────────────────────────────────────────────────────────────
 
     def _annotate_labels(rows: list, labels: dict, key: str,
-                         rules: Optional[dict] = None) -> list:
+                         rules: Optional[dict] = None,
+                         run_projects: Optional[dict] = None) -> list:
         for r in rows:
             lab = labels.get(r.get(key)) or {}
             r["label"] = lab.get("name")
             r["pinned"] = bool(lab.get("pinned"))
             r["project"] = lab.get("project")
             r["project_auto"] = False
-            # Auto-filing: a hand-assigned project always wins; otherwise a
-            # session/run whose app matches a declared project's binding
-            # files itself — computed here at read time, so it applies
-            # retroactively and un-applies if the binding changes.
-            if r["project"] is None and rules:
-                auto = rules.get(r.get("app_id") or "")
+            # Auto-filing, weakest-to-strongest: a session inherits its
+            # run's project (filing a loop files its sessions), an app
+            # binding files matching work, and a hand-assigned project on
+            # the row itself always wins. Computed at read time, so it
+            # applies retroactively and un-applies when rules change.
+            if r["project"] is None:
+                auto = None
+                if rules:
+                    auto = rules.get(r.get("app_id") or "")
+                if auto is None and run_projects:
+                    auto = run_projects.get(r.get("run_id") or "")
                 if auto:
                     r["project"] = auto
                     r["project_auto"] = True
         return rows
+
+    async def _run_project_map(store) -> dict:
+        """run_id → explicitly assigned project, for session inheritance."""
+        return {rid: lab["project"]
+                for rid, lab in (await store.get_labels("run")).items()
+                if lab.get("project")}
 
     @app.get("/api/sessions")
     async def api_sessions(request: Request) -> JSONResponse:
@@ -674,7 +686,8 @@ def create_app(
         sessions = await store.list_sessions()
         return JSONResponse(_annotate_labels(
             sessions, await store.get_labels("session"), "session_id",
-            await store.get_project_rules()))
+            await store.get_project_rules(),
+            await _run_project_map(store)))
 
     @app.get("/api/runs")
     async def api_runs(request: Request) -> JSONResponse:
@@ -1451,12 +1464,14 @@ def create_app(
         # table, so join per-session totals with labels here and aggregate.
         labels = await request.app.state.store.get_labels("session")
         rules = await request.app.state.store.get_project_rules()
+        run_projects = await _run_project_map(request.app.state.store)
         projects: dict = {}
-        if rules or any(lab.get("project") for lab in labels.values()):
+        if rules or run_projects or any(lab.get("project") for lab in labels.values()):
             for st in await request.app.state.store.get_session_totals(
                     time.time() - days * 86400):
                 project = ((labels.get(st["session_id"]) or {}).get("project")
-                           or rules.get(st.get("app_id") or ""))
+                           or rules.get(st.get("app_id") or "")
+                           or run_projects.get(st.get("run_id") or ""))
                 if not project:
                     continue
                 agg = projects.setdefault(project, {

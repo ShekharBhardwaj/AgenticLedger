@@ -202,3 +202,35 @@ def test_project_delete_rename_validation(proxy, monkeypatch):
                          headers=MASTER).json()["token"]
     assert client.delete("/api/projects/x",
                          headers={"Authorization": f"Bearer {viewer}"}).status_code == 403
+
+
+def test_filing_a_run_files_its_sessions(proxy):
+    """The user's question made this a rule: a loop filed into a project
+    takes its sessions with it — in the sidebar AND in Reports — losing
+    only to a session's own explicit label."""
+    client = proxy(handler=_ok())
+    for i in range(2):
+        client.post("/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+                    headers={"x-agenticledger-session-id": f"iter-{i}",
+                             "x-agenticledger-run-id": "the-loop"})
+    client.post("/v1/chat/completions",
+                json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+                headers={"x-agenticledger-session-id": "unrelated"})
+    client.put("/api/labels/run/the-loop", json={"project": "Loop Project"})
+
+    rows = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    assert rows["iter-0"]["project"] == "Loop Project"
+    assert rows["iter-0"]["project_auto"] is True
+    assert rows["iter-1"]["project"] == "Loop Project"
+    assert rows["unrelated"]["project"] is None
+
+    report = client.get("/api/reports?days=1").json()
+    proj = {p["project"]: p for p in report["projects"]}["Loop Project"]
+    assert proj["session_count"] == 2       # the run's cost reaches its project
+
+    # A session's own label still wins over inheritance.
+    client.put("/api/labels/session/iter-1", json={"project": "Special"})
+    rows = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    assert rows["iter-1"]["project"] == "Special"
+    assert rows["iter-0"]["project"] == "Loop Project"

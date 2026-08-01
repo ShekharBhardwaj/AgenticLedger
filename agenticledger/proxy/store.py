@@ -629,6 +629,7 @@ class _SqliteStore(Store):
                 MAX(environment) AS environment,
                 MAX(team)        AS team,
                 MAX(app_id)      AS app_id,
+                MAX(run_id)      AS run_id,
                 SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                          AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                          THEN 1 ELSE 0 END) AS error_count,
@@ -716,7 +717,8 @@ class _SqliteStore(Store):
     async def get_session_totals(self, since_ts: float) -> list[dict[str, Any]]:
         async with self._db.execute(
             """
-            SELECT session_id, MAX(app_id) AS app_id, COUNT(*) AS call_count,
+            SELECT session_id, MAX(app_id) AS app_id, MAX(run_id) AS run_id,
+                   COUNT(*) AS call_count,
                    SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                    SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                             AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
@@ -1339,6 +1341,7 @@ class _PostgresStore(Store):
                     MAX(environment)            AS environment,
                     MAX(team)                   AS team,
                     MAX(app_id)                 AS app_id,
+                    MAX(run_id)                 AS run_id,
                     SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                              AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                              THEN 1 ELSE 0 END) AS error_count,
@@ -1435,7 +1438,8 @@ class _PostgresStore(Store):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT session_id::text, MAX(app_id) AS app_id, COUNT(*) AS call_count,
+                SELECT session_id::text, MAX(app_id) AS app_id,
+                       MAX(run_id) AS run_id, COUNT(*) AS call_count,
                        SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                        SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
                                 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
