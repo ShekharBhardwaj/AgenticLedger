@@ -59,7 +59,7 @@ fixed and re-verified in the same session it was found.
 - **Sessions grew a header** (human name, always-visible copyable id, team
   and project chips, live totals), **calls grew numbers and honest token
   figures** (full input including cache reads/writes, split on hover — no
-  more "2 → 352 tok" next to a \$0.34 price), the call list reads
+  more "2 → 352 tok" next to a $0.34 price), the call list reads
   newest-first, and Reports gained a **By-project** table.
 - **Provider marks**: every model carries a small colour chip — clay
   Anthropic, teal OpenAI, purple for anything running locally (detected
