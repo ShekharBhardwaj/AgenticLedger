@@ -203,7 +203,9 @@ function SessionHeader({ session, sessionId, calls, onOpenSession }: {
   );
 }
 
-function CallCard({ call, onOpenSession }: { call: Call; onOpenSession?: (sid: string) => void }) {
+function CallCard({ call, num, onOpenSession }: {
+  call: Call; num?: number; onOpenSession?: (sid: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const blocked = call.error_detail?.startsWith("blocked:") ?? false;
@@ -219,6 +221,11 @@ function CallCard({ call, onOpenSession }: { call: Call; onOpenSession?: (sid: s
   return (
     <div className="card call-card">
       <div className="call-head" onClick={() => setOpen(!open)}>
+        {num != null && (
+          <span className="call-num" title="call number within this session, in time order — the report card uses the same numbers">
+            #{num}
+          </span>
+        )}
         <ProviderMark provider={call.provider} model={call.model_id} />
         <span className="model">{call.model_id}</span>
         {interactionTags(call).map(({ tag, label }) => (
@@ -459,6 +466,10 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             />
             <WhatIf params={`session_id=${encodeURIComponent(selected)}`} />
             <BatchReplay scope="session" refId={selected}
+                         numberOf={(aid) => {
+                           const i = calls.findIndex((c) => c.action_id === aid);
+                           return i >= 0 ? i + 1 : null;
+                         }}
                          onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />
           </>
         )}
@@ -485,6 +496,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
           // true chronological order.
           (results !== null ? shown : [...shown].reverse()).map((c) => (
             <CallCard key={c.action_id} call={c}
+                      num={results !== null ? undefined : calls.indexOf(c) + 1}
                       onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />
           ))
         ) : mode === "flow" ? (

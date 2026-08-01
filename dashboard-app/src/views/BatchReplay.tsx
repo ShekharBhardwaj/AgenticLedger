@@ -7,9 +7,10 @@ import {
 /** 0.8 flagship — test-drive another model on the whole journey.
  *  Each step re-sends the ORIGINAL captured inputs and grades the answer:
  *  an honest moment-by-moment comparison, not a pretend re-run. */
-export default function BatchReplay({ scope, refId, onOpenSession }: {
+export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
   scope: "run" | "session"; refId: string;
   onOpenSession?: (sid: string) => void;
+  numberOf?: (originalActionId: string) => number | null;
 }) {
   const [open, setOpen] = useState(false);
   const [targets, setTargets] = useState<ReplayTarget[]>([]);
@@ -134,7 +135,8 @@ export default function BatchReplay({ scope, refId, onOpenSession }: {
 
       {report && (
         <div className="report-card">
-          <div className="report-headline">
+          <div className="report-headline"
+               title="a 'moment' is one recorded call, re-asked to the stand-in with its original inputs; it matches when the stand-in answered and reached for the same tools the original used">
             {report.matched} / {report.replayed} moments matched
             {report.failed > 0 && <span className="rc-failed"> · {report.failed} failed</span>}
             {report.skipped > 0 && (
@@ -142,6 +144,11 @@ export default function BatchReplay({ scope, refId, onOpenSession }: {
                 {" "}· {report.skipped} not replayable
               </span>
             )}
+          </div>
+          <div className="muted" style={{ maxWidth: 720 }}>
+            {report.replayed} recorded calls were re-asked to {job!.model} with
+            their original inputs; at {report.matched} of them it made the same
+            move as the original. Nothing was executed.
           </div>
           <div className="muted">
             cost: {fmtUsd(report.replay_cost_usd)} on {job!.model} vs{" "}
@@ -172,7 +179,11 @@ export default function BatchReplay({ scope, refId, onOpenSession }: {
           {shown.map((st, i) => (
             <div key={st.original_action_id} className="fumble">
               <div className="fumble-head">
-                <span className="mono">step {job!.steps.indexOf(st) + 1}</span>
+                <span className="mono" title="the call this row grades — same number as in the Calls list">
+                  {numberOf?.(st.original_action_id)
+                    ? `call #${numberOf(st.original_action_id)}`
+                    : `step ${job!.steps.indexOf(st) + 1}`}
+                </span>
                 {st.status !== "ok" ? (
                   <span className="badge error">{st.status}</span>
                 ) : st.score?.match ? (
