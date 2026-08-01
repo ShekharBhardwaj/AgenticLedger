@@ -479,7 +479,11 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             {results !== null ? "No matches." : "Select a session to inspect its calls."}
           </div>
         ) : results !== null || mode === "calls" ? (
-          shown.map((c) => (
+          // Latest call on top for live watching. Search results already
+          // arrive newest-first; session calls arrive in conversation order,
+          // so flip them for display only — Flow, Trace, and replay keep
+          // true chronological order.
+          (results !== null ? shown : [...shown].reverse()).map((c) => (
             <CallCard key={c.action_id} call={c}
                       onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />
           ))
