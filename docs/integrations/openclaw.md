@@ -8,13 +8,27 @@ that leaves the machine, and a **hard spend cap**.
 
 ## Setup (config edit only — no OpenClaw code changes)
 
-Start the proxy in front of your provider:
+Start the proxy in front of your provider. For an always-on assistant you
+want the ledger always on too — so run it as a background service, not in a
+terminal that a closed window would kill:
 
 ```bash
-AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com \
-AGENTICLEDGER_BUDGET_DAILY=10.00 \
-python -m agenticledger.proxy
+agenticledger init
+agenticledger start        # survives the terminal closing
+agenticledger status       # is it up, and is the store healthy?
 ```
+
+```toml
+# agenticledger.toml
+[proxy]
+upstream_url = "https://api.anthropic.com"
+
+[budgets]
+daily = 10.0        # the hard cap OpenClaw doesn't have
+```
+
+(The old `AGENTICLEDGER_UPSTREAM_URL=... python -m agenticledger.proxy`
+command still works — env vars always beat the config file.)
 
 Then override the **native** provider's `baseUrl` in `~/.openclaw/openclaw.json`
 (overriding the native provider keeps OpenClaw's request shaping — prompt
@@ -62,9 +76,15 @@ Budgets are enforced **before** the call reaches the provider:
 
 Add loop guards for runaway tool cycles:
 
-```bash
-AGENTICLEDGER_LOOP_ACTION=block AGENTICLEDGER_LOOP_REPEAT_THRESHOLD=4
+```toml
+[env]
+AGENTICLEDGER_LOOP_ACTION = "block"
+AGENTICLEDGER_LOOP_REPEAT_THRESHOLD = "4"
 ```
+
+Calls stopped by a cap are recorded as **blocked** (amber), separately from
+real failures (red) — so a working spend cap never looks like a broken
+assistant in Reports.
 
 ## Watching an always-on agent
 
@@ -77,6 +97,22 @@ AGENTICLEDGER_LOOP_ACTION=block AGENTICLEDGER_LOOP_REPEAT_THRESHOLD=4
   2026 exposed-instance wave, "what did my agent send in the last 24h?" is
   answerable from `GET /export/{session_id}`. A token-spike alert
   (`AGENTICLEDGER_ALERT_COST_PER_CALL`) doubles as an exfiltration tripwire.
+
+## Cheaper heartbeats, proven before you switch
+
+Always-on means the boring traffic dominates the bill. Open a day's session
+in the dashboard, hit **⟳ Replay whole session**, and point it at a local
+model: every captured moment re-runs and you get one line — *"37 / 40
+moments matched · $0.00 vs $6.80"* — plus the handful of moments where the
+small model would have dropped a tool call. That's how you decide which
+OpenClaw agents can move to a local model without guessing.
+
+## Per-agent cards
+
+Rather than one shared ingest key across agents, mint a **team card** per
+OpenClaw agent (`role: ingest`, optional `budget_daily`) and put it in that
+agent's headers if your setup allows them. Each agent then carries its own
+allowance: the chatty one hitting its ceiling never silences the rest.
 
 Known OpenClaw caveat: custom-provider `baseUrl` propagation has an open
 issue (openclaw#2903) — the native-provider override above sidesteps it.

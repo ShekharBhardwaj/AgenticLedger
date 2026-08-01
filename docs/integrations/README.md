@@ -1,5 +1,13 @@
 # Integrations
 
+> **Starting the proxy.** Every guide below shows an inline
+> `AGENTICLEDGER_UPSTREAM_URL=... python -m agenticledger.proxy` command,
+> which still works exactly as written. The comfortable equivalent is
+> `agenticledger init` (writes a config file) then `agenticledger start`
+> (background — the terminal stays yours and closing it doesn't stop the
+> proxy). Environment variables always override the config file, so mix
+> freely. See the [Configuration section](../../README.md#configuration).
+
 One guide per framework. Two integration styles:
 
 - **Base URL (full capture):** the agent's traffic flows through the proxy —
