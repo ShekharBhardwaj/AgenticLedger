@@ -764,6 +764,65 @@ def create_app(
         return JSONResponse({"project": name, "app_id": app_id or None},
                             status_code=201)
 
+    async def _project_sessions(store, name: str) -> list[str]:
+        """Every session under a project: hand-filed labels plus app-rule
+        matches — the same resolution the views use."""
+        labels = await store.get_labels("session")
+        rules = await store.get_project_rules()
+        bound_apps = {app for app, proj in rules.items() if proj == name}
+        out = []
+        for srow in await store.list_sessions(limit=10_000):
+            sid = srow["session_id"]
+            explicit = (labels.get(sid) or {}).get("project")
+            if explicit == name or (explicit is None and srow.get("app_id") in bound_apps):
+                out.append(sid)
+        return out
+
+    @app.put("/api/projects/{name}")
+    async def api_rename_project(name: str, request: Request) -> JSONResponse:
+        """Rename a project everywhere — filed sessions and runs, the
+        declared marker, and its app binding all follow."""
+        principal = await _require(request, ROLE_EDITOR)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        new = str(payload.get("name") or "").strip()
+        if not new or len(new) > 60:
+            raise HTTPException(status_code=400, detail="name must be 1-60 characters")
+        store = request.app.state.store
+        if name not in await store.list_projects():
+            raise HTTPException(status_code=404, detail="project not found")
+        moved = await store.rename_project(name, new)
+        await _audit(principal, request, "rename_project", name, f"→ {new}")
+        return JSONResponse({"project": new, "moved_labels": moved})
+
+    @app.delete("/api/projects/{name}")
+    async def api_delete_project(name: str, request: Request,
+                                 purge: bool = False) -> JSONResponse:
+        """Delete a project. Default: the project vanishes, its sessions
+        survive unfiled. purge=true is the destructive form — every session
+        under the project (hand-filed or auto-filed) is deleted, calls and
+        all. The response says exactly what happened."""
+        principal = await _require(request, ROLE_EDITOR)
+        store = request.app.state.store
+        if name not in await store.list_projects():
+            raise HTTPException(status_code=404, detail="project not found")
+        deleted_sessions = 0
+        deleted_calls = 0
+        if purge:
+            for sid in await _project_sessions(store, name):
+                deleted_calls += await store.delete_session(sid)
+                deleted_sessions += 1
+        unfiled = await store.unfile_project(name)
+        await _audit(principal, request, "delete_project", name,
+                     f"purge={purge} sessions_deleted={deleted_sessions} "
+                     f"calls_deleted={deleted_calls} unfiled={unfiled}")
+        return JSONResponse({"project": name, "purged": purge,
+                             "sessions_deleted": deleted_sessions,
+                             "calls_deleted": deleted_calls,
+                             "labels_unfiled": unfiled})
+
     @app.get("/api/settings")
     async def api_settings(request: Request) -> JSONResponse:
         """What is this proxy actually running with? Read-only, admin-only,

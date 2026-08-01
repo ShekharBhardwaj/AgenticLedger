@@ -449,7 +449,8 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
         <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
                        hasPinned={sessions.some((x) => x.pinned)}
                        knownApps={[...new Set(sessions.map((x) => x.app_id).filter(Boolean))] as string[]}
-                       onCreated={refresh} />
+                       onCreated={refresh}
+                       sessionCount={sessions.filter((x) => matchesFilter(x, projectFilter)).length} />
         {pinnedFirst(sessions.filter((s) => matchesFilter(s, projectFilter))).map((s) => (
           <div
             key={s.session_id}

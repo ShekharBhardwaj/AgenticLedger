@@ -273,6 +273,19 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def rename_project(self, old: str, new: str) -> int:
+        """Rename everywhere: filed labels, the marker row, its binding.
+        Returns how many filed rows moved."""
+        ...
+
+    @abstractmethod
+    async def unfile_project(self, name: str) -> int:
+        """Remove the project as a concept: delete its marker (and binding)
+        and unfile everything labeled under it. Captured data survives.
+        Returns how many rows were unfiled."""
+        ...
+
+    @abstractmethod
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         """Record that a runner explicitly finished this run (idempotent)."""
         ...
@@ -780,6 +793,25 @@ class _SqliteStore(Store):
         ) as cur:
             rows = await cur.fetchall()
         return {r["name"]: r["ref_id"] for r in rows}
+
+    async def rename_project(self, old: str, new: str) -> int:
+        cur = await self._db.execute(
+            "UPDATE labels SET project = ? WHERE project = ?", (new, old))
+        moved = cur.rowcount
+        await self._db.execute(
+            "UPDATE OR REPLACE labels SET ref_id = ? WHERE scope = 'project' AND ref_id = ?",
+            (new, old))
+        await self._db.commit()
+        return moved
+
+    async def unfile_project(self, name: str) -> int:
+        cur = await self._db.execute(
+            "UPDATE labels SET project = NULL WHERE project = ?", (name,))
+        unfiled = cur.rowcount
+        await self._db.execute(
+            "DELETE FROM labels WHERE scope = 'project' AND ref_id = ?", (name,))
+        await self._db.commit()
+        return unfiled
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         await self._db.execute(
@@ -1471,6 +1503,25 @@ class _PostgresStore(Store):
             rows = await conn.fetch(
                 "SELECT ref_id, name FROM labels WHERE scope = 'project' AND name IS NOT NULL")
         return {r["name"]: r["ref_id"] for r in rows}
+
+    async def rename_project(self, old: str, new: str) -> int:
+        async with self._pool.acquire() as conn:
+            res = await conn.execute(
+                "UPDATE labels SET project = $1 WHERE project = $2", new, old)
+            await conn.execute(
+                "DELETE FROM labels WHERE scope = 'project' AND ref_id = $1", new)
+            await conn.execute(
+                "UPDATE labels SET ref_id = $1 WHERE scope = 'project' AND ref_id = $2",
+                new, old)
+        return int(res.split()[-1] or 0)
+
+    async def unfile_project(self, name: str) -> int:
+        async with self._pool.acquire() as conn:
+            res = await conn.execute(
+                "UPDATE labels SET project = NULL WHERE project = $1", name)
+            await conn.execute(
+                "DELETE FROM labels WHERE scope = 'project' AND ref_id = $1", name)
+        return int(res.split()[-1] or 0)
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         async with self._pool.acquire() as conn:

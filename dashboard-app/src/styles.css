@@ -232,6 +232,10 @@ body {
   margin-bottom: 12px;
 }
 .project-new { white-space: nowrap; }
+.project-purge {
+  background: rgba(248, 81, 73, 0.12); color: var(--red);
+  border-color: rgba(248, 81, 73, 0.35);
+}
 
 /* Run comparison */
 .card-cmp {

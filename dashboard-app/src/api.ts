@@ -170,6 +170,29 @@ export function createProject(name: string, appId?: string): Promise<unknown> {
   return post("/api/projects", { name, ...(appId ? { app_id: appId } : {}) });
 }
 
+export function renameProject(oldName: string, newName: string): Promise<unknown> {
+  return put(`/api/projects/${encodeURIComponent(oldName)}`, { name: newName });
+}
+
+/** purge=false: the project vanishes, its sessions survive unfiled.
+ *  purge=true: everything under the project is deleted, calls and all. */
+export function deleteProject(name: string, purge: boolean): Promise<{
+  sessions_deleted: number; calls_deleted: number;
+}> {
+  return delWithBody(`/api/projects/${encodeURIComponent(name)}?purge=${purge}`);
+}
+
+async function delWithBody<T>(path: string): Promise<T> {
+  const resp = await fetch(path, { method: "DELETE", headers: headers() });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = (data as { error?: string; detail?: string }).error
+      ?? (data as { detail?: string }).detail ?? `${resp.status}`;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
 export async function post<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(path, {
     method: "POST",

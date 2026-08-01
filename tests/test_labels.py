@@ -144,3 +144,61 @@ def test_project_creation_validates(proxy, monkeypatch):
                          headers=MASTER).json()["token"]
     assert client.post("/api/projects", json={"name": "np"},
                        headers={"Authorization": f"Bearer {viewer}"}).status_code == 403
+
+
+def test_rename_project_moves_everything(proxy):
+    client = proxy(handler=_ok())
+    client.post("/api/projects", json={"name": "Old Name", "app_id": "app-r"})
+    _capture_app(client, "r-auto", "app-r")
+    _capture_app(client, "r-hand", "other-app")
+    client.put("/api/labels/session/r-hand", json={"project": "Old Name"})
+
+    assert client.put("/api/projects/Old%20Name",
+                      json={"name": "New Name"}).status_code == 200
+    rows = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    assert rows["r-hand"]["project"] == "New Name"           # filed label moved
+    assert rows["r-auto"]["project"] == "New Name"           # binding followed
+    assert rows["r-auto"]["project_auto"] is True
+    body = client.get("/api/projects").json()
+    assert "New Name" in body["projects"] and "Old Name" not in body["projects"]
+
+
+def test_delete_project_default_keeps_the_evidence(proxy):
+    client = proxy(handler=_ok())
+    client.post("/api/projects", json={"name": "Doomed", "app_id": "app-d"})
+    _capture_app(client, "d-1", "app-d")
+    resp = client.delete("/api/projects/Doomed").json()
+    assert resp["purged"] is False and resp["sessions_deleted"] == 0
+    rows = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    assert "d-1" in rows                       # session survives
+    assert rows["d-1"]["project"] is None      # just unfiled
+    assert "Doomed" not in client.get("/api/projects").json()["projects"]
+
+
+def test_delete_project_purge_takes_everything_under_it(proxy):
+    client = proxy(handler=_ok())
+    client.post("/api/projects", json={"name": "Purged", "app_id": "app-p"})
+    _capture_app(client, "p-auto", "app-p")               # auto-filed
+    _capture_app(client, "p-hand", "elsewhere")
+    client.put("/api/labels/session/p-hand", json={"project": "Purged"})
+    _capture_app(client, "bystander", "unrelated")
+
+    resp = client.delete("/api/projects/Purged?purge=true").json()
+    assert resp["purged"] is True and resp["sessions_deleted"] == 2
+    assert resp["calls_deleted"] >= 2
+    ids = {s["session_id"] for s in client.get("/api/sessions").json()}
+    assert "p-auto" not in ids and "p-hand" not in ids
+    assert "bystander" in ids                              # untouched
+    assert "Purged" not in client.get("/api/projects").json()["projects"]
+
+
+def test_project_delete_rename_validation(proxy, monkeypatch):
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy(handler=_ok())
+    assert client.delete("/api/projects/nope", headers=MASTER).status_code == 404
+    assert client.put("/api/projects/nope", json={"name": "x"},
+                      headers=MASTER).status_code == 404
+    viewer = client.post("/api/tokens", json={"name": "v", "role": "viewer"},
+                         headers=MASTER).json()["token"]
+    assert client.delete("/api/projects/x",
+                         headers={"Authorization": f"Bearer {viewer}"}).status_code == 403

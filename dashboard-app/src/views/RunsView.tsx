@@ -108,7 +108,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
         <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
                        hasPinned={runs.some((x) => x.pinned)}
                        knownApps={[...new Set(runs.map((x) => x.app_id).filter(Boolean))] as string[]}
-                       onCreated={refresh} />
+                       onCreated={refresh}
+                       sessionCount={runs.filter((x) => matchesFilter(x, projectFilter)).length} />
         {pinnedFirst(runs.filter((r) => matchesFilter(r, projectFilter))).map((r) => (
           <div
             key={r.run_id}
