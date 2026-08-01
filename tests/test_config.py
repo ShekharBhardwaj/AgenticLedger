@@ -6,7 +6,13 @@ import sys
 
 import pytest
 
-from agenticledger.config import TEMPLATE, apply_config, find_config, init_config
+from agenticledger.config import (
+    TEMPLATE,
+    apply_config,
+    find_config,
+    get_value,
+    init_config,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -182,3 +188,44 @@ def test_settings_page_is_admin_only_and_masks_secrets(proxy, monkeypatch, tmp_p
     assert "[proxy] upstream_url" in upstream["set_with"]
     assert "AGENTICLEDGER_UPSTREAM_URL" in upstream["set_with"]
     assert all(r["means"] for r in body["rows"])
+
+
+def test_config_set_get_unset_roundtrip(tmp_path):
+    """`agenticledger config set` edits the file in place, reusing the
+    template's own commented line instead of duplicating the key."""
+    from agenticledger.cli import main
+
+    target = tmp_path / "agenticledger.toml"
+    init_config(str(target))
+    assert main(["config", "set", "proxy.upstream_url", "https://api.anthropic.com"]) == 0
+    text = target.read_text()
+    assert text.count("upstream_url") == 1          # reused the commented line
+    assert 'upstream_url = "https://api.anthropic.com"' in text
+    assert "# Uncomment what you need" in text      # comments survived
+    assert get_value("proxy.upstream_url") == "https://api.anthropic.com"
+
+    # Numbers and booleans land unquoted so TOML types stay right.
+    main(["config", "set", "budgets.daily", "25"])
+    assert apply_config() and os.environ["AGENTICLEDGER_BUDGET_DAILY"] == "25"
+
+    assert main(["config", "unset", "proxy.upstream_url"]) == 0
+    assert get_value("proxy.upstream_url") is None
+
+
+def test_config_rejects_unknown_keys_with_a_useful_message(tmp_path):
+    from agenticledger.cli import main
+
+    init_config(str(tmp_path / "agenticledger.toml"))
+    for bad in ("upstream_url", "proxy.warp_speed", "nonsense.key"):
+        with pytest.raises(SystemExit) as exc:
+            main(["config", "set", bad, "x"])
+        assert "Known" in str(exc.value) or "section.key" in str(exc.value)
+
+
+def test_config_set_creates_the_file_when_missing(tmp_path, monkeypatch):
+    from agenticledger.cli import main
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["config", "set", "proxy.port", "9001"]) == 0
+    assert (tmp_path / "agenticledger.toml").is_file()
+    assert get_value("proxy.port") == "9001"

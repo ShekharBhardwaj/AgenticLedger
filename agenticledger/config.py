@@ -162,6 +162,91 @@ def _plain(value: Any) -> str:
     return str(value)
 
 
+def _split_key(dotted: str) -> tuple[str, str]:
+    if "." not in dotted:
+        raise SystemExit(
+            f"Use section.key — e.g. proxy.upstream_url, not {dotted!r}.\n"
+            f"Known sections: {', '.join(_KEY_MAP)}")
+    section, _, key = dotted.partition(".")
+    if section not in _KEY_MAP and section != "env":
+        raise SystemExit(f"Unknown section {section!r}. "
+                         f"Known sections: {', '.join(_KEY_MAP)}, env")
+    if section != "env" and key not in _KEY_MAP[section]:
+        known = ", ".join(_KEY_MAP[section])
+        raise SystemExit(f"Unknown key {key!r} in [{section}]. Known: {known}")
+    return section, key
+
+
+def _toml_value(raw: str) -> str:
+    """Render a shell-supplied value as TOML: numbers and booleans bare,
+    everything else quoted."""
+    low = raw.strip().lower()
+    if low in ("true", "false"):
+        return low
+    try:
+        float(raw)
+        return raw.strip()
+    except ValueError:
+        return '"' + raw.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+def set_value(dotted: str, value: Optional[str], path: Optional[str] = None) -> Path:
+    """Set (or with value=None, comment out) one key, editing the file in
+    place so the template's comments survive — a commented-out line for the
+    same key is uncommented and reused rather than duplicated."""
+    section, key = _split_key(dotted)
+    target = Path(path).expanduser() if path else (find_config() or Path("agenticledger.toml"))
+    if not target.is_file():
+        init_config(str(target))
+    lines = target.read_text(encoding="utf-8").splitlines()
+
+    new_line = f"{key} = {_toml_value(value)}" if value is not None else None
+    in_section = False
+    section_start = -1
+    last_in_section = -1
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_section = stripped == f"[{section}]"
+            if in_section:
+                section_start = i
+            continue
+        if not in_section:
+            continue
+        last_in_section = i
+        # Match the key whether it is live or still commented out.
+        bare = stripped.lstrip("#").strip()
+        if bare.split("=")[0].strip() == key:
+            if new_line is None:
+                lines[i] = f"# {bare}" if not stripped.startswith("#") else line
+            else:
+                lines[i] = new_line
+            target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return target
+
+    if new_line is None:
+        return target  # nothing to unset
+    if section_start < 0:
+        lines += ["", f"[{section}]", new_line]
+    else:
+        insert_at = (last_in_section + 1) if last_in_section > section_start else (section_start + 1)
+        lines.insert(insert_at, new_line)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return target
+
+
+def get_value(dotted: str, path: Optional[str] = None) -> Optional[str]:
+    """The value currently in the file (not the effective value — the
+    settings page and `status` speak for what is actually running)."""
+    section, key = _split_key(dotted)
+    target = Path(path).expanduser() if path else find_config()
+    if target is None or not target.is_file():
+        return None
+    data = tomllib.loads(target.read_text(encoding="utf-8"))
+    val = (data.get(section) or {}).get(key)
+    return None if val is None else str(val)
+
+
 def init_config(path: str = "agenticledger.toml") -> Path:
     """Write the commented template. Refuses to overwrite an existing file."""
     target = Path(path).expanduser()

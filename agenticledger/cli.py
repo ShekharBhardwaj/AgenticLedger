@@ -177,6 +177,21 @@ def main(argv: Optional[list] = None) -> int:
              "subprocess configs; reads the ledger DB via AGENTICLEDGER_DSN).",
     )
 
+    cfg_p = sub.add_parser(
+        "config",
+        help="Read or change one setting in agenticledger.toml — "
+             "e.g. agenticledger config set proxy.upstream_url https://api.anthropic.com",
+    )
+    cfg_sub = cfg_p.add_subparsers(dest="config_action")
+    cfg_set = cfg_sub.add_parser("set", help="Set one key (section.key value)")
+    cfg_set.add_argument("key")
+    cfg_set.add_argument("value")
+    cfg_get = cfg_sub.add_parser("get", help="Show one key's value in the file")
+    cfg_get.add_argument("key")
+    cfg_unset = cfg_sub.add_parser("unset", help="Comment a key out again")
+    cfg_unset.add_argument("key")
+    cfg_sub.add_parser("path", help="Which config file is in effect")
+
     init_p = sub.add_parser(
         "init",
         help="Write a commented agenticledger.toml — one config file instead "
@@ -205,6 +220,25 @@ def main(argv: Optional[list] = None) -> int:
     if args.subcommand == "mcp":
         from agenticledger.mcp_stdio import main as mcp_main
         return mcp_main()
+    if args.subcommand == "config":
+        from agenticledger.config import find_config, get_value, set_value
+        action = getattr(args, "config_action", None)
+        if action == "path":
+            found = find_config()
+            print(found or "no config file yet — run: agenticledger init")
+            return 0 if found else 1
+        if action == "get":
+            val = get_value(args.key)
+            print(val if val is not None else "(not set in the file)")
+            return 0
+        if action in ("set", "unset"):
+            target = set_value(args.key, args.value if action == "set" else None)
+            what = f"{args.key} = {args.value}" if action == "set" else f"{args.key} (unset)"
+            print(f"{target}: {what}")
+            print("Restart to apply: agenticledger stop && agenticledger start")
+            return 0
+        cfg_p.print_help()
+        return 2
     if args.subcommand == "init":
         from agenticledger.config import init_config
         target = init_config(args.path)
