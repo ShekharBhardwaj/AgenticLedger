@@ -84,9 +84,13 @@ _TOOLS = [
     {
         "name": "get_session",
         "description": (
-            "Retrieve all LLM calls in an agent run in chronological order. "
-            "Use this to reconstruct the full decision chain — every prompt, "
-            "tool call, and model response the agent made during a session."
+            "Retrieve the LLM calls of an agent session in chronological "
+            "order. By default each call is a compact summary (index, model, "
+            "status, error reason, tokens, cost, latency, tool names, sizes) "
+            "— sessions can be megabytes, so full prompt/response bodies are "
+            "returned only with include_messages=true, and single calls are "
+            "better fetched via the explain tool using the action_id from a "
+            "summary row."
         ),
         "inputSchema": {
             "type": "object",
@@ -94,7 +98,12 @@ _TOOLS = [
                 "session_id": {
                     "type": "string",
                     "description": "The session ID passed via x-agenticledger-session-id.",
-                }
+                },
+                "include_messages": {
+                    "type": "boolean",
+                    "description": "Return full message bodies for every call. "
+                                   "Default false; can be very large.",
+                },
             },
             "required": ["session_id"],
         },
@@ -196,6 +205,43 @@ async def handle_mcp(request: Request) -> JSONResponse:
     return JSONResponse(response if response is not None else {})
 
 
+def _call_summary(index: int, r: dict) -> dict:
+    """One call as a model-friendly row: everything about the call except
+    the conversation itself, plus the sizes of what was withheld — so the
+    reader knows what a follow-up explain(action_id) would return."""
+    tools = r.get("tool_calls") or []
+    tool_names = [t.get("name") for t in tools if isinstance(t, dict) and t.get("name")]
+    def _size(v) -> int:
+        try:
+            return len(v) if isinstance(v, str) else len(json.dumps(v)) if v else 0
+        except (TypeError, ValueError):
+            return 0
+    return {
+        "index": index,
+        "action_id": r.get("action_id"),
+        "timestamp": r.get("timestamp"),
+        "model_id": r.get("model_id"),
+        "status_code": r.get("status_code"),
+        "error_detail": r.get("error_detail"),
+        "tokens_in": r.get("tokens_in"),
+        "tokens_out": r.get("tokens_out"),
+        "cache_read_tokens": r.get("cache_read_tokens"),
+        "cache_write_tokens": r.get("cache_write_tokens"),
+        "cost_usd": r.get("cost_usd"),
+        "latency_ms": r.get("latency_ms"),
+        "agent_name": r.get("agent_name"),
+        "framework": r.get("framework"),
+        "run_id": r.get("run_id"),
+        "iteration": r.get("iteration"),
+        "loop_flags": r.get("loop_flags"),
+        "tool_names": tool_names,
+        "content_preview": (r.get("content") or "")[:200] or None,
+        "withheld_bytes": {"messages": _size(r.get("messages")),
+                           "content": _size(r.get("content")),
+                           "system_prompt": _size(r.get("system_prompt"))},
+    }
+
+
 async def dispatch_message(body: dict, store) -> Any:
     """Transport-neutral JSON-RPC dispatch — shared by the HTTP endpoint and
     the stdio server (`agenticledger mcp`). Returns a response dict, or None
@@ -248,9 +294,11 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         records = await store.get_session(session_id)
         if not records:
             return (_err(id_, -32602, f"No records found for session_id {session_id!r}"))
+        if not args.get("include_messages"):
+            records = [_call_summary(i + 1, r) for i, r in enumerate(records)]
         return (_ok(id_, _text_content(json.dumps(records, indent=2, default=str))))
 
-    if name == "search":
+    if name == "search":  # noqa: SIM114 — kept adjacent to get_session
         query = args.get("query", "").strip()
         if not query:
             return (_err(id_, -32602, "query is required"))

@@ -197,7 +197,8 @@ def test_explain_unknown_action_id_is_invalid_params(proxy):
 # ── tools/call: get_session ───────────────────────────────────────────────────
 
 def test_get_session_returns_ordered_records(proxy):
-    """get_session(session_id) returns the calls for that session in time order."""
+    """get_session(session_id) returns the calls in time order — compact
+    summaries by default, full records on include_messages=true."""
     client = proxy()
     a1 = _capture(client, content="first", session="s-chain")
     a2 = _capture(client, content="second", session="s-chain")
@@ -205,7 +206,15 @@ def test_get_session_returns_ordered_records(proxy):
     assert status == 200
     records = json.loads(_text(body["result"]))
     assert [r["action_id"] for r in records] == [a1, a2]
-    assert [r["content"] for r in records] == ["first", "second"]
+    assert [r["index"] for r in records] == [1, 2]
+    assert [r["content_preview"] for r in records] == ["first", "second"]
+    assert "messages" not in records[0]                     # summaries by default
+
+    status, body = _call_tool(client, "get_session",
+                              {"session_id": "s-chain", "include_messages": True})
+    full = json.loads(_text(body["result"]))
+    assert [r["content"] for r in full] == ["first", "second"]
+    assert full[0]["messages"]                              # opt-in firehose
 
 
 def test_get_session_missing_id_is_invalid_params(proxy):
@@ -355,3 +364,33 @@ def test_mcp_run_tools(proxy):
     status, body = _rpc(client, "tools/call",
                         {"name": "get_run_status", "arguments": {"run_id": "nope"}})
     assert "error" in body
+
+
+def test_get_session_defaults_to_summaries_not_megabytes(proxy):
+    """A session tool that dumps full transcripts into a model's context is
+    hostile — found live when a real MCP client met a 1.6MB session.
+    Default rows carry everything ABOUT each call plus the sizes of what
+    was withheld; include_messages=true opts into the firehose."""
+    big = "x" * 50_000
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
+    for i in range(3):
+        client.post("/v1/chat/completions",
+                    json={"model": "gpt-4o",
+                          "messages": [{"role": "user", "content": big + str(i)}]},
+                    headers={"x-agenticledger-session-id": "fat-sess"})
+
+    def call(args):
+        resp = client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+            "params": {"name": "get_session", "arguments": args}})
+        return resp.json()["result"]["content"][0]["text"]
+
+    slim = call({"session_id": "fat-sess"})
+    assert len(slim) < 20_000                      # summaries, not transcripts
+    rows = json.loads(slim)
+    assert rows[0]["index"] == 1
+    assert rows[0]["withheld_bytes"]["messages"] > 50_000
+    assert "content_preview" in rows[0] and "action_id" in rows[0]
+
+    fat = call({"session_id": "fat-sess", "include_messages": True})
+    assert len(fat) > 150_000                      # the opt-in firehose
