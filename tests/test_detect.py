@@ -163,3 +163,65 @@ def test_bmad_on_claude_code_host_wins_framework():
     assert meta["framework"] == "bmad"
     assert meta["agent_name"] == "bmad:sm"
     assert meta["session_id"] == _CC_UUID  # session inference still works
+
+
+# ── BMAD v6: personas ship as host-tool skills ───────────────────────────────
+
+def _cc(messages):
+    return {"user-agent": "claude-cli/2.1.220"}, {"messages": messages}
+
+
+def test_bmad_v6_skill_invocation_names_the_persona():
+    """The strongest signal BMAD v6 leaves: a Skill tool call naming the
+    persona that is actually running."""
+    headers, body = _cc([
+        {"role": "user", "content": "plan a clock CLI"},
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Skill",
+             "input": {"skill": "bmad-spec", "args": "plan a tiny feature"}}]},
+    ])
+    d = detect_agent(headers, body)
+    assert d["framework"] == "bmad"
+    assert d["agent_name"] == "bmad:spec"
+
+
+def test_bmad_v6_uses_the_latest_invocation():
+    """Each request carries the whole history; the persona in force is the
+    last one invoked, not the first."""
+    headers, body = _cc([
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "bmad-agent-analyst"}}]},
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "bmad-agent-dev"}}]},
+    ])
+    assert detect_agent(headers, body)["agent_name"] == "bmad:dev"
+
+
+def test_bmad_v6_skill_listing_tags_the_framework_without_a_persona():
+    headers, body = _cc([
+        {"role": "user", "content":
+            "<system-reminder>available skills: bmad-build, bmad-help, "
+            "bmad-agent-dev, bmad-prd</system-reminder> hello"},
+    ])
+    d = detect_agent(headers, body)
+    assert d["framework"] == "bmad" and d["agent_name"] == "bmad"
+
+
+def test_talking_about_bmad_is_not_running_bmad():
+    """A conversation that merely mentions BMAD must stay claude-code —
+    otherwise every support chat about the framework gets mislabelled."""
+    headers, body = _cc([
+        {"role": "user", "content": "should I try bmad-method for this project?"},
+        {"role": "assistant", "content": "BMAD is worth a look."},
+    ])
+    d = detect_agent(headers, body)
+    assert d["framework"] == "claude-code"
+    assert d["agent_name"] == "claude-code"
+
+
+def test_bmad_v4_system_prompt_personas_still_win():
+    headers = {"user-agent": "claude-cli/2.1.220"}
+    body = {"system": "You are the Scrum Master agent from bmad-core.",
+            "messages": [{"role": "user", "content": "next story"}]}
+    d = detect_agent(headers, body)
+    assert d["framework"] == "bmad" and d["agent_name"] == "bmad:sm"

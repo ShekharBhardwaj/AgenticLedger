@@ -7,7 +7,7 @@
 
 [proxy]
 # port = 8000
-# upstream_url = "https://api.openai.com"   # or https://api.anthropic.com, or LM Studio
+upstream_url = "https://api.anthropic.com"
 # db = "sqlite:///agenticledger.db"         # or postgresql://...
 # completion_promise = "COMPLETE"           # lets loops declare victory
 

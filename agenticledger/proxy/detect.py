@@ -11,6 +11,7 @@ prefixes and stable system-prompt prefixes, never exact strings — client
 fingerprints drift across releases.
 """
 
+import json
 import re
 from typing import Optional
 
@@ -30,7 +31,40 @@ _CC_SESSION_JSON_RE = re.compile(rf'"session_id"\s*:\s*"({_UUID_PAT})"')
 # its persona/skill markdown loaded into the system prompt. Markers are kept
 # as data so the community can extend them as BMAD evolves. Longest match
 # wins so "Test Architect" beats "Architect".
+# BMAD v4/v5 shipped personas as system prompts, so a marker there was
+# enough. v6 ships them as host-tool skills instead: nothing distinctive
+# reaches the system prompt, and the persona shows up as a skill
+# invocation in the conversation. Both generations are detected.
 _BMAD_MARKERS = ("bmad-core", "bmad-method", "bmad/bmm", "bmadclaw", "bmad ")
+
+# {"skill": "bmad-spec"} inside a tool call — the strongest signal there is,
+# and it names the persona that is actually running. The whole conversation
+# history rides along in each request, so the LAST invocation is the one in
+# force for this call.
+_BMAD_SKILL_CALL_RE = re.compile(r'"skill"\s*:\s*"(bmad-[a-z0-9_-]+)"', re.I)
+# The host tool lists installed skills to the model; two or more distinct
+# bmad-* skill names is a machine-generated listing, not someone chatting
+# about BMAD.
+_BMAD_SKILL_NAME_RE = re.compile(r'\bbmad-(?:agent-)?[a-z][a-z0-9-]{2,24}\b', re.I)
+
+
+def _bmad_persona_from_skill(skill: str) -> str:
+    """bmad-agent-dev → bmad:dev, bmad-spec → bmad:spec."""
+    name = skill.lower().removeprefix("bmad-").removeprefix("agent-")
+    return f"bmad:{name}" if name else "bmad"
+
+
+def _bmad_from_skills(body: dict) -> tuple[bool, Optional[str]]:
+    """(is_bmad, persona) from BMAD v6's skill traffic."""
+    try:
+        blob = json.dumps(body.get("messages") or "")
+    except (TypeError, ValueError):
+        return False, None
+    invocations = _BMAD_SKILL_CALL_RE.findall(blob)
+    if invocations:
+        return True, _bmad_persona_from_skill(invocations[-1])
+    names = {n.lower() for n in _BMAD_SKILL_NAME_RE.findall(blob)}
+    return (len(names) >= 2), None
 _BMAD_PERSONAS = [
     ("test architect", "bmad:qa"),
     ("scrum master", "bmad:sm"),
@@ -84,6 +118,14 @@ def detect_agent(headers, body: Optional[dict]) -> dict:
                 if marker in system_text:
                     agent_name = persona
                     break
+        else:
+            is_bmad, persona = _bmad_from_skills(body)
+            if is_bmad:
+                framework = "bmad"
+                # Before the first skill runs we know the project is BMAD but
+                # not which persona — say "bmad" rather than leaving the
+                # agent column blank.
+                agent_name = persona or "bmad"
 
     if agent_name is None and framework == "claude-code":
         # litellm is a client library, not an agent — only real agent

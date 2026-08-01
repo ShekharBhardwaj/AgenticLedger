@@ -57,12 +57,15 @@ gemini --telemetry --telemetry-otlp-endpoint=http://localhost:8000 \
 
 ## What you get automatically
 
-- **Persona detection.** BMAD persona prompts are fingerprinted from the
-  system prompt: calls are tagged `framework=bmad` with
-  `agent_name=bmad:sm`, `bmad:dev`, `bmad:qa`, `bmad:architect`,
-  `bmad:analyst`, `bmad:pm`, `bmad:po`, `bmad:ux`. The Flow view renders
-  SM → Dev → QA handoffs from these tags; per-persona budgets and rate
-  limits key off them.
+- **Persona detection.** Calls are tagged `framework=bmad` with the persona
+  that is actually running — `bmad:spec`, `bmad:dev`, `bmad:analyst`,
+  `bmad:architect`, `bmad:pm`, and so on. Both generations of BMAD are
+  recognised: v4/v5 shipped personas as system prompts, while **v6 ships
+  them as host-tool skills**, so the ledger reads the skill invocation
+  (`Skill → bmad-spec`) and uses the most recent one, since every request
+  carries the whole conversation. Before the first skill runs, calls are
+  tagged `bmad` without a persona. The Flow view renders handoffs from
+  these tags; per-persona budgets and rate limits key off them.
 - **Cost per story cycle.** Each fresh-context dev cycle appears as its own
   session (Claude Code sessions are auto-detected); repeated cycles against
   the same story prompt group into a run — see the Loop Lens at `/app`.
