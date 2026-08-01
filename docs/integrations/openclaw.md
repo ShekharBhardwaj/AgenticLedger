@@ -30,7 +30,21 @@ daily = 10.0        # the hard cap OpenClaw doesn't have
 (The old `AGENTICLEDGER_UPSTREAM_URL=... python -m agenticledger.proxy`
 command still works — env vars always beat the config file.)
 
-Then override the **native** provider's `baseUrl` in `~/.openclaw/openclaw.json`
+**The one-command way:**
+
+```bash
+agenticledger connect openclaw
+```
+
+That writes the provider override for you — it detects a Docker install
+from your config's `/home/node/...` workspace path and uses
+`host.docker.internal` automatically, derives the model list from the
+models your config already uses (OpenClaw's validator requires a
+`models` array of `{id, name}` objects, not just a `baseUrl`), routes
+attribution through the URL path since OpenClaw can't send headers, and
+backs up your config first. Then restart OpenClaw.
+
+**The manual way** — override the **native** provider's `baseUrl` in `~/.openclaw/openclaw.json`
 (overriding the native provider keeps OpenClaw's request shaping — prompt
 caching hints, service tiers — intact; defining a generic custom provider
 does not):
@@ -40,7 +54,11 @@ does not):
   models: {
     providers: {
       anthropic: {
-        baseUrl: "http://127.0.0.1:8000"
+        baseUrl: "http://127.0.0.1:8000/r/openclaw-main/1",
+        // OpenClaw's validator requires this array — id AND name:
+        models: [
+          { id: "claude-opus-5", name: "Claude Opus 5" },
+        ]
       }
     }
   }
@@ -126,6 +144,28 @@ Rather than one shared ingest key across agents, mint a **team card** per
 OpenClaw agent (`role: ingest`, optional `budget_daily`) and put it in that
 agent's headers if your setup allows them. Each agent then carries its own
 allowance: the chatty one hitting its ceiling never silences the rest.
+
+## Reviving an old install — the failure decoder
+
+An OpenClaw that has sat idle accumulates operational debt. The ledger
+captures every failed attempt with its reason, so read them like this:
+
+- **401 "API key is invalid"** — the stored key died. Beware two traps:
+  OpenClaw prefers its stored auth profile over `ANTHROPIC_API_KEY` in the
+  environment (remove `agents/main/agent/auth-profiles.json` to restore the
+  env fallback), and **never pipe a key into `openclaw models auth
+  paste-token`** — the interactive prompt echoes every character of the
+  secret into your terminal. Use an `--env-file` on `docker run` instead.
+- **404 "model: …"** — the configured model id has been retired since the
+  install (April model ids don't survive to August). Update
+  `agents.defaults.model.primary` and the provider's `models` array to
+  current ids.
+- **Silence** — the wiring never reached the ledger; the dashboard's empty
+  state walks the checklist (base URL, Docker's host.docker.internal,
+  upstream match).
+- **Pairing requests from IPs you don't recognize** (Cloudflare ranges are
+  relay traffic) — reject anything you can't explain before approving
+  operator scopes.
 
 Known OpenClaw caveat: custom-provider `baseUrl` propagation has an open
 issue (openclaw#2903) — the native-provider override above sidesteps it.

@@ -177,6 +177,16 @@ def main(argv: Optional[list] = None) -> int:
              "subprocess configs; reads the ledger DB via AGENTICLEDGER_DSN).",
     )
 
+    conn_p = sub.add_parser(
+        "connect",
+        help="Wire a framework to the ledger — writes its config for it "
+             "(claude-code, bmad, openclaw); no schema memorization.",
+    )
+    conn_p.add_argument("framework", choices=["claude-code", "bmad", "openclaw"])
+    conn_p.add_argument("--port", default=os.environ.get("AGENTICLEDGER_PORT", "8000"))
+    conn_p.add_argument("--app-id", default=None,
+                        help="App tag for captured calls (default: the framework name)")
+
     cfg_p = sub.add_parser(
         "config",
         help="Read or change one setting in agenticledger.toml — "
@@ -220,6 +230,9 @@ def main(argv: Optional[list] = None) -> int:
     if args.subcommand == "mcp":
         from agenticledger.mcp_stdio import main as mcp_main
         return mcp_main()
+    if args.subcommand == "connect":
+        from agenticledger.connect import connect as connect_fw
+        return connect_fw(args.framework, port=args.port, app_id=args.app_id)
     if args.subcommand == "config":
         from agenticledger.config import find_config, get_value, set_value
         action = getattr(args, "config_action", None)
