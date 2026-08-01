@@ -39,6 +39,49 @@ export function replayModels(provider: string): Promise<{ models: string[] }> {
   return get(`/api/replay/models?provider=${encodeURIComponent(provider)}`);
 }
 
+export interface BatchStep {
+  original_action_id: string;
+  original_model: string | null;
+  original_content: string | null;
+  original_cost_usd: number | null;
+  original_latency_ms: number | null;
+  status: "ok" | "failed" | "skipped";
+  reason?: string;
+  replay_action_id?: string;
+  replay_content?: string | null;
+  replay_cost_usd?: number | null;
+  replay_latency_ms?: number | null;
+  score?: { answered: boolean; tool_verdict: string; match: boolean;
+            orig_tools: string[]; replay_tools: string[] };
+}
+
+export interface BatchJob {
+  job_id: string;
+  scope: string;
+  ref_id: string;
+  model: string;
+  provider: string;
+  replay_session_id: string;
+  total: number;
+  done: number;
+  status: "running" | "done";
+  steps: BatchStep[];
+  report?: { replayed: number; matched: number; fumbles: string[];
+             skipped: number; failed: number;
+             original_cost_usd: number; replay_cost_usd: number };
+}
+
+/** Replay a whole run/session on another model — returns a job to poll. */
+export function startBatchReplay(body: {
+  run_id?: string; session_id?: string; model: string; provider?: string;
+}): Promise<{ job_id: string; total: number; replay_session_id: string }> {
+  return post("/api/replay/batch", body);
+}
+
+export function getReplayJob(jobId: string): Promise<BatchJob> {
+  return get(`/api/replay/jobs/${encodeURIComponent(jobId)}`);
+}
+
 /** One call by id — used to follow a replay back to its original session. */
 export function getCall(actionId: string): Promise<Call> {
   return get(`/api/calls/${encodeURIComponent(actionId)}`);

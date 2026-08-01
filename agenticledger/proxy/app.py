@@ -90,6 +90,7 @@ from .replay import (
     build_replay_request,
     replay_auth_headers,
     replayable_reason,
+    score_replay,
 )
 from .reports import build_report, digest_text, estimate_whatif
 from .store import Store
@@ -843,36 +844,15 @@ def create_app(
                   if isinstance(m, dict) and m.get("id")]
         return JSONResponse({"models": models})
 
-    @app.post("/api/replay")
-    async def api_replay(request: Request) -> JSONResponse:
-        """Re-execute a captured call using the proxy's replay credentials —
-        on the original provider, or translated to the other provider's wire
-        format (cross-provider replay); the result is stored as a new call
-        linked to the original."""
-        principal = await _require(request, ROLE_EDITOR)
-        if not replay_api_key and not (replay_targets or {}):
-            return JSONResponse(
-                {"error": "Replay is not configured — set AGENTICLEDGER_REPLAY_API_KEY "
-                          "(same-provider) or AGENTICLEDGER_REPLAY_OPENAI_KEY / "
-                          "AGENTICLEDGER_REPLAY_ANTHROPIC_KEY (any provider, including "
-                          "a local LM Studio URL) on the proxy."},
-                status_code=409,
-            )
-        try:
-            payload = await request.json()
-        except Exception:
-            return JSONResponse({"error": "invalid JSON"}, status_code=400)
-        action_id = str(payload.get("action_id") or "").strip()
-        original = await request.app.state.store.get(action_id) if action_id else None
-        if original is None:
-            raise HTTPException(status_code=404, detail="action_id not found")
-        reason = replayable_reason(original)
-        if reason:
-            return JSONResponse({"error": f"Not replayable: {reason}"}, status_code=400)
+    class _ReplayError(Exception):
+        """A replay attempt that failed for a describable reason."""
+        def __init__(self, status: int, payload: dict):
+            self.status, self.payload = status, payload
+            super().__init__(payload.get("error"))
 
+    def _resolve_replay_provider(original: dict, model: str, explicit: str) -> str:
         source_provider = original.get("provider")
-        model = str(payload.get("model") or original["model_id"]).strip()
-        provider = str(payload.get("provider") or "").strip() or infer_provider(model)
+        provider = explicit.strip() or infer_provider(model)
         if not provider:
             # Unrecognized model name — usually a local one. If the capture's
             # own provider has no way to replay but exactly one target is
@@ -883,30 +863,34 @@ def create_app(
                 provider = next(iter(targets))
             else:
                 provider = source_provider
+        return provider
 
-        # Pick the wire format and the door to knock on.
+    async def _replay_once(app_ref, original: dict, model: str, provider: str,
+                           replay_session_id: str) -> dict:
+        """Re-execute one captured call and store the result. Raises
+        _ReplayError with an HTTP-shaped payload on any describable failure —
+        the single-call endpoint maps it to a response, the batch job files
+        it as a failed step."""
+        source_provider = original.get("provider")
         try:
             if provider == source_provider:
                 path, body = build_replay_request(original, model)
             else:
                 path, body = build_cross_request(original, model, provider)
         except NotTranslatable as exc:
-            return JSONResponse(
-                {"error": f"Not replayable on {provider}: {exc}"}, status_code=400)
+            raise _ReplayError(400, {"error": f"Not replayable on {provider}: {exc}"}) from None
 
         target = (replay_targets or {}).get(provider)
         if target:
-            client, key = request.app.state.replay_clients[provider], target["key"]
+            client, key = app_ref.state.replay_clients[provider], target["key"]
         elif provider == source_provider and replay_api_key:
-            client, key = request.app.state.client, replay_api_key
+            client, key = app_ref.state.client, replay_api_key
         else:
-            return JSONResponse(
-                {"error": f"No replay target for {provider!r} — pick a provider in "
-                          "the replay panel's dropdown, or set "
-                          f"AGENTICLEDGER_REPLAY_{provider.upper()}_KEY (and _URL for a "
-                          "local server like LM Studio, where any key works)."},
-                status_code=409,
-            )
+            raise _ReplayError(409, {
+                "error": f"No replay target for {provider!r} — pick a provider in "
+                         "the replay panel's dropdown, or set "
+                         f"AGENTICLEDGER_REPLAY_{provider.upper()}_KEY (and _URL for a "
+                         "local server like LM Studio, where any key works)."})
 
         start = time.time()
         try:
@@ -917,12 +901,11 @@ def create_app(
         except Exception as exc:
             where = target["url"] if target else str(client.base_url)
             local = any(h in where for h in ("localhost", "127.0.0.1"))
-            hint = " Is the local server running? (LM Studio: Developer tab → Start Server.)" if local else ""
-            return JSONResponse(
-                {"error": f"Couldn't reach the {provider} replay target at {where} "
-                          f"({exc}).{hint}"},
-                status_code=502,
-            )
+            hint = (" Is the local server running? (LM Studio: Developer tab → "
+                    "Start Server.)") if local else ""
+            raise _ReplayError(502, {
+                "error": f"Couldn't reach the {provider} replay target at {where} "
+                         f"({exc}).{hint}"}) from None
         latency_ms = (time.time() - start) * 1000
         if upstream.status_code != 200:
             payload = {"error": "Upstream rejected the replay",
@@ -936,7 +919,7 @@ def create_app(
                     "or replay for free against a local model (see the LM Studio "
                     "integration guide)."
                 )
-            return JSONResponse(payload, status_code=502)
+            raise _ReplayError(502, payload)
         resp = normalize_response(upstream.json(), latency_ms, model)
         if resp.cost_usd is None:
             resp.cost_usd = compute_cost(
@@ -957,14 +940,58 @@ def create_app(
             temperature=original.get("temperature"), max_tokens=original.get("max_tokens"),
         )
         new_id = str(uuid.uuid4())
-        await request.app.state.store.save(
+        await app_ref.state.store.save(
             new_id, req, resp,
-            session_id=f"replay-{action_id[:8]}",
+            session_id=replay_session_id,
             agent_name=original.get("agent_name"),
             framework="replay",
-            parent_action_id=action_id,
+            parent_action_id=original["action_id"],
             environment=original.get("environment") or "development",
         )
+        return {
+            "action_id": new_id, "model_id": model, "provider": provider,
+            "content": resp.content, "tool_calls": resp.tool_calls,
+            "tokens_in": resp.tokens_in, "tokens_out": resp.tokens_out,
+            "cache_read_tokens": resp.cache_read_tokens,
+            "cache_write_tokens": resp.cache_write_tokens,
+            "cost_usd": resp.cost_usd, "latency_ms": round(latency_ms, 1),
+        }
+
+    _REPLAY_UNCONFIGURED = (
+        "Replay is not configured — set AGENTICLEDGER_REPLAY_API_KEY "
+        "(same-provider) or AGENTICLEDGER_REPLAY_OPENAI_KEY / "
+        "AGENTICLEDGER_REPLAY_ANTHROPIC_KEY (any provider, including "
+        "a local LM Studio URL) on the proxy.")
+
+    @app.post("/api/replay")
+    async def api_replay(request: Request) -> JSONResponse:
+        """Re-execute a captured call using the proxy's replay credentials —
+        on the original provider, or translated to the other provider's wire
+        format (cross-provider replay); the result is stored as a new call
+        linked to the original."""
+        principal = await _require(request, ROLE_EDITOR)
+        if not replay_api_key and not (replay_targets or {}):
+            return JSONResponse({"error": _REPLAY_UNCONFIGURED}, status_code=409)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        action_id = str(payload.get("action_id") or "").strip()
+        original = await request.app.state.store.get(action_id) if action_id else None
+        if original is None:
+            raise HTTPException(status_code=404, detail="action_id not found")
+        reason = replayable_reason(original)
+        if reason:
+            return JSONResponse({"error": f"Not replayable: {reason}"}, status_code=400)
+
+        model = str(payload.get("model") or original["model_id"]).strip()
+        provider = _resolve_replay_provider(
+            original, model, str(payload.get("provider") or ""))
+        try:
+            replay = await _replay_once(request.app, original, model, provider,
+                                        f"replay-{action_id[:8]}")
+        except _ReplayError as exc:
+            return JSONResponse(exc.payload, status_code=exc.status)
         await _audit(principal, request, "replay", action_id, f"model={model}")
         return JSONResponse({
             "original": {
@@ -975,15 +1002,122 @@ def create_app(
                 "cache_write_tokens": original.get("cache_write_tokens"),
                 "cost_usd": original.get("cost_usd"), "latency_ms": original.get("latency_ms"),
             },
-            "replay": {
-                "action_id": new_id, "model_id": model, "provider": provider,
-                "content": resp.content, "tool_calls": resp.tool_calls,
-                "tokens_in": resp.tokens_in, "tokens_out": resp.tokens_out,
-                "cache_read_tokens": resp.cache_read_tokens,
-                "cache_write_tokens": resp.cache_write_tokens,
-                "cost_usd": resp.cost_usd, "latency_ms": round(latency_ms, 1),
-            },
+            "replay": replay,
         })
+
+    @app.post("/api/replay/batch")
+    async def api_replay_batch(request: Request) -> JSONResponse:
+        """Replay a WHOLE run or session on another model — the 0.8 flagship.
+        Starts a background job (a batch can take minutes against a local
+        model); poll GET /api/replay/jobs/{id} for progress and the report
+        card. Each step re-sends the ORIGINAL captured inputs — honest
+        moment-by-moment comparison, not a pretend re-run."""
+        principal = await _require(request, ROLE_EDITOR)
+        if not replay_api_key and not (replay_targets or {}):
+            return JSONResponse({"error": _REPLAY_UNCONFIGURED}, status_code=409)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        run_id = str(payload.get("run_id") or "").strip()
+        session_id = str(payload.get("session_id") or "").strip()
+        if bool(run_id) == bool(session_id):
+            return JSONResponse({"error": "pass exactly one of run_id, session_id"},
+                                status_code=400)
+        model = str(payload.get("model") or "").strip()
+        if not model:
+            return JSONResponse({"error": "model is required"}, status_code=400)
+        store = request.app.state.store
+        calls = (await store.get_run_calls(run_id) if run_id
+                 else await store.get_session(session_id))
+        # Replays of replays and metering calls are noise, not steps.
+        steps = [c for c in calls if c.get("framework") != "replay"]
+        if not steps:
+            raise HTTPException(status_code=404, detail="no calls found for that scope")
+        provider = _resolve_replay_provider(
+            steps[0], model, str(payload.get("provider") or ""))
+
+        ref = run_id or session_id
+        job_id = str(uuid.uuid4())
+        job = {
+            "job_id": job_id, "scope": "run" if run_id else "session", "ref_id": ref,
+            "model": model, "provider": provider,
+            "replay_session_id": f"replay-{'run' if run_id else 'sess'}-{ref[:8]}",
+            "total": len(steps), "done": 0, "status": "running",
+            "steps": [], "error": None,
+        }
+        if not hasattr(request.app.state, "replay_jobs"):
+            request.app.state.replay_jobs = {}
+        request.app.state.replay_jobs[job_id] = job
+        await _audit(principal, request, "replay_batch", ref,
+                     f"model={model} steps={len(steps)}")
+
+        app_ref = request.app
+
+        async def _run_job() -> None:
+            for original in steps:
+                step: dict = {
+                    "original_action_id": original["action_id"],
+                    "original_model": original.get("model_id"),
+                    "original_content": (original.get("content") or "")[:400] or None,
+                    "original_cost_usd": original.get("cost_usd"),
+                    "original_latency_ms": original.get("latency_ms"),
+                }
+                reason = replayable_reason(original)
+                if reason:
+                    step.update(status="skipped", reason=reason)
+                else:
+                    try:
+                        replay = await _replay_once(
+                            app_ref, original, model, provider,
+                            job["replay_session_id"])
+                        score = score_replay(original, replay.get("content"),
+                                             replay.get("tool_calls"))
+                        step.update(
+                            status="ok",
+                            replay_action_id=replay["action_id"],
+                            replay_content=(replay.get("content") or "")[:400] or None,
+                            replay_cost_usd=replay.get("cost_usd"),
+                            replay_latency_ms=replay.get("latency_ms"),
+                            score=score,
+                        )
+                    except _ReplayError as exc:
+                        step.update(status="failed",
+                                    reason=exc.payload.get("error"))
+                    except Exception as exc:   # never let one step kill the job
+                        step.update(status="failed", reason=str(exc))
+                job["steps"].append(step)
+                job["done"] += 1
+            scored = [st for st in job["steps"] if st.get("score")]
+            matched = sum(1 for st in scored if st["score"]["match"])
+            job["report"] = {
+                "replayed": len(scored),
+                "matched": matched,
+                "fumbles": [st["original_action_id"] for st in scored
+                            if not st["score"]["match"]],
+                "skipped": sum(1 for st in job["steps"] if st["status"] == "skipped"),
+                "failed": sum(1 for st in job["steps"] if st["status"] == "failed"),
+                "original_cost_usd": round(sum(
+                    float(st.get("original_cost_usd") or 0) for st in job["steps"]), 6),
+                "replay_cost_usd": round(sum(
+                    float(st.get("replay_cost_usd") or 0) for st in job["steps"]), 6),
+            }
+            job["status"] = "done"
+
+        task = asyncio.create_task(_run_job())
+        task.add_done_callback(lambda t: t.exception())  # surfaced via job status
+        return JSONResponse({"job_id": job_id, "total": job["total"],
+                             "provider": provider,
+                             "replay_session_id": job["replay_session_id"]},
+                            status_code=202)
+
+    @app.get("/api/replay/jobs/{job_id}")
+    async def api_replay_job(job_id: str, request: Request) -> JSONResponse:
+        await _require(request, ROLE_VIEWER)
+        job = getattr(request.app.state, "replay_jobs", {}).get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        return JSONResponse(job)
 
     @app.get("/api/whatif")
     async def api_whatif(request: Request, model: str,

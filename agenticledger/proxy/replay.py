@@ -268,3 +268,43 @@ def build_cross_request(record: dict[str, Any], model: str,
         return _openai_to_anthropic(record, model)
     raise NotTranslatable(
         f"no translation from {source!r} captures to {target_provider!r}")
+
+
+# ── Report card ──────────────────────────────────────────────────────────────
+
+def score_replay(original: dict[str, Any], replay_content: Optional[str],
+                 replay_tool_calls: Optional[list]) -> dict[str, Any]:
+    """Grade one replayed step against its original — heuristics, honestly
+    labeled, so 40 side-by-sides collapse into '34/40, read the fumbles'.
+
+    answered    — the stand-in produced something (text or a tool call)
+    tool_match  — it reached for the same tools the original did
+    match       — both of the above; a fumble is any step that isn't a match
+    """
+    def tool_names(calls) -> set:
+        names = set()
+        for c in calls or []:
+            if isinstance(c, dict):
+                name = c.get("name") or (c.get("function") or {}).get("name")
+                if name:
+                    names.add(name)
+        return names
+
+    orig_tools = tool_names(original.get("tool_calls"))
+    rep_tools = tool_names(replay_tool_calls)
+    answered = bool((replay_content or "").strip()) or bool(rep_tools)
+    if orig_tools == rep_tools:
+        tool_verdict = "same"
+    elif not orig_tools:
+        tool_verdict = "replay-only"   # original talked; replay reached for tools
+    elif not rep_tools:
+        tool_verdict = "orig-only"     # original used tools; replay just talked
+    else:
+        tool_verdict = "different"
+    return {
+        "answered": answered,
+        "tool_verdict": tool_verdict,
+        "orig_tools": sorted(orig_tools),
+        "replay_tools": sorted(rep_tools),
+        "match": answered and tool_verdict == "same",
+    }

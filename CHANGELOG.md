@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Replay the whole run** (flagship). 0.7 answered "what would this *call*
+  look like on another model?" — 0.8 answers the question that actually
+  decides a model switch: would the whole loop have survived? Pick a run or
+  session, pick a destination (a free local model counts), and every step
+  re-executes with its original inputs. `POST /api/replay/batch` starts a
+  background job; `GET /api/replay/jobs/{id}` reports progress and the
+  result. Honest by design: each step is the real captured moment, not a
+  pretend re-run, since a different model would have steered a different
+  conversation after step one.
+- **The report card.** Forty side-by-sides don't get read, so each replayed
+  step is graded — did it answer, did it reach for the same tools — and the
+  batch collapses to one line: "34 / 40 moments matched", with the fumbles
+  listed and everything else one click away. Cost is totalled both ways
+  ("$0.00 on qwen vs $0.0963 original").
+- **Names, pins, projects.** Sessions and runs get human names ("the
+  overnight auth fix" instead of `cc-73a26366`), a ★ pin that keeps them at
+  the top, and a project they can be filed under, with a project filter over
+  both lists. `PUT /api/labels/{scope}/{id}`, `GET /api/projects`.
+- **Settings page** (`GET /api/settings` + ⚙ in the dashboard): what the
+  proxy is actually running with — config file in effect, upstream, budgets,
+  capture and retention, replay targets — each row labeled with where its
+  value came from (file, env, or default). Read-only, admin-only, secrets
+  never shown.
+
 ## [0.7.0] - 2026-07-31
 
 Teams, free time travel, and the start of premiumness. Every feature and

@@ -236,6 +236,11 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def get_run_calls(self, run_id: str) -> list[dict[str, Any]]:
+        """Every call in a run, oldest first — the batch-replay work list."""
+        ...
+
+    @abstractmethod
     async def set_label(self, scope: str, ref_id: str,
                         name: Optional[str] = None,
                         pinned: Optional[bool] = None,
@@ -680,6 +685,14 @@ class _SqliteStore(Store):
             (value,),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
+
+    async def get_run_calls(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT * FROM llm_calls WHERE run_id = ? ORDER BY timestamp ASC",
+            (run_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_sqlite_row(r) for r in rows]
 
     async def set_label(self, scope, ref_id, name=None, pinned=None, project=None):
         import time as _time
@@ -1338,6 +1351,13 @@ class _PostgresStore(Store):
                 value if scope != "action_id" else __import__("uuid").UUID(value),
             )
         return [dict(r) for r in rows]
+
+    async def get_run_calls(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM llm_calls WHERE run_id = $1 ORDER BY timestamp ASC",
+                run_id)
+        return [_pg_row(r) for r in rows]
 
     async def set_label(self, scope, ref_id, name=None, pinned=None, project=None):
         import time as _time

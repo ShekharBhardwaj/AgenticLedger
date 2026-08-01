@@ -6,6 +6,7 @@ import {
 } from "../api";
 import CompareView from "./CompareView";
 import { LabelEditor, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
 
 function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (s: string) => void }) {
@@ -191,6 +192,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             </div>
 
             <WhatIf params={`run_id=${encodeURIComponent(detail.run_id)}`} />
+            <BatchReplay scope="run" refId={detail.run_id} onOpenSession={onOpenSession} />
 
             {iterations.length > 0 && (
               <>
