@@ -22,17 +22,21 @@ export default function BatchReplay({ scope, refId, onOpenSession }: {
   const [showAll, setShowAll] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
+  // A finished report card should find the reader: if one exists for this
+  // run/session, open the panel and show it without being asked.
+  useEffect(() => {
+    listReplayJobs({ scope, refId })
+      .then((r) => {
+        const last = r.jobs[r.jobs.length - 1];
+        if (last) { setOpen(true); poll(last.job_id); }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, refId]);
+
   useEffect(() => {
     if (!open) return;
     replayTargets().then((r) => setTargets(r.targets)).catch(() => {});
-    // A finished report card survives panel closes and page reloads: pick up
-    // the most recent job for this run/session and show it again.
-    listReplayJobs(scope, refId)
-      .then((r) => {
-        const last = r.jobs[r.jobs.length - 1];
-        if (last && !job) poll(last.job_id);
-      })
-      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 

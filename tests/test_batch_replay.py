@@ -141,3 +141,8 @@ def test_report_cards_are_reopenable(proxy):
     assert [j["job_id"] for j in listed] == [started["job_id"]]
     assert listed[0]["status"] == "done"
     assert client.get("/api/replay/jobs?scope=run&ref_id=batch-sess").json()["jobs"] == []
+    # A replay session can find its own comparison (the signpost's query).
+    by_replay = client.get(
+        f"/api/replay/jobs?replay_session_id={listed[0]['replay_session_id']}").json()["jobs"]
+    assert by_replay and by_replay[0]["job_id"] == started["job_id"]
+    assert by_replay[0]["ref_id"] == "batch-sess"

@@ -5,6 +5,7 @@ import {
   replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
 import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
@@ -141,10 +142,19 @@ type Mode = "calls" | "flow" | "trace";
 
 /** #62 — the call list says what it is: name, the id (always visible and
  *  copyable, even after a rename), chips, and totals that update live. */
-function SessionHeader({ session, sessionId, calls }: {
+function SessionHeader({ session, sessionId, calls, onOpenSession }: {
   session: Session | null; sessionId: string; calls: Call[];
+  onOpenSession?: (sid: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [sourceJob, setSourceJob] = useState<JobSummary | null>(null);
+  useEffect(() => {
+    setSourceJob(null);
+    if (!sessionId.startsWith("replay-sess-") && !sessionId.startsWith("replay-run-")) return;
+    listReplayJobs({ replaySessionId: sessionId })
+      .then((r) => setSourceJob(r.jobs[r.jobs.length - 1] ?? null))
+      .catch(() => {});
+  }, [sessionId]);
   const cost = calls.reduce((a, c) => a + (c.cost_usd ?? 0), 0);
   const tokIn = calls.reduce((a, c) => a + (c.tokens_in ?? 0)
     + (c.cache_read_tokens ?? 0) + (c.cache_write_tokens ?? 0), 0);
@@ -156,6 +166,22 @@ function SessionHeader({ session, sessionId, calls }: {
         {session?.team && <span className="badge team">{session.team}</span>}
         {session?.project && <span className="badge fw">{session.project}</span>}
       </div>
+      {sourceJob && (
+        <div className="replay-signpost">
+          This is {sourceJob.model}'s answer sheet — nothing here was executed.
+          The side-by-side comparison lives on the original {sourceJob.scope}
+          {sourceJob.scope === "session" && onOpenSession && (
+            <>
+              {": "}
+              <button className="link-btn" style={{ marginTop: 0 }}
+                      onClick={() => onOpenSession(sourceJob.ref_id)}>
+                open the comparison
+              </button>
+            </>
+          )}
+          {sourceJob.scope === "run" && <> — run {sourceJob.ref_id} in Loop Lens.</>}
+        </div>
+      )}
       <div className="session-header-sub">
         <button
           className="session-id mono"
@@ -429,6 +455,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               session={sessions.find((x) => x.session_id === selected) ?? null}
               sessionId={selected}
               calls={calls}
+              onOpenSession={(sid) => { setQuery(""); setSelected(sid); }}
             />
             <WhatIf params={`session_id=${encodeURIComponent(selected)}`} />
             <BatchReplay scope="session" refId={selected}

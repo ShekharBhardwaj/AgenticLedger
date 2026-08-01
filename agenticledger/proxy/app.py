@@ -1190,18 +1190,21 @@ def create_app(
 
     @app.get("/api/replay/jobs")
     async def api_replay_jobs(request: Request, scope: str = "",
-                              ref_id: str = "") -> JSONResponse:
-        """Most recent batch job for a run/session — lets the panel reopen a
-        finished report card instead of losing it to a page reload."""
+                              ref_id: str = "",
+                              replay_session_id: str = "") -> JSONResponse:
+        """Batch jobs, filterable — lets the panel reopen a finished report
+        card, and lets a replay session point back at its comparison."""
         await _require(request, ROLE_VIEWER)
         jobs = list(getattr(request.app.state, "replay_jobs", {}).values())
         if scope:
             jobs = [j for j in jobs if j["scope"] == scope]
         if ref_id:
             jobs = [j for j in jobs if j["ref_id"] == ref_id]
+        if replay_session_id:
+            jobs = [j for j in jobs if j["replay_session_id"] == replay_session_id]
         return JSONResponse({"jobs": [
             {k: j[k] for k in ("job_id", "scope", "ref_id", "model", "provider",
-                               "status", "done", "total")}
+                               "status", "done", "total", "replay_session_id")}
             for j in jobs]})
 
     @app.get("/api/replay/jobs/{job_id}")
