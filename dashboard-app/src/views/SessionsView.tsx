@@ -139,6 +139,44 @@ import WhatIf from "./WhatIf";
 
 type Mode = "calls" | "flow" | "trace";
 
+/** #62 — the call list says what it is: name, the id (always visible and
+ *  copyable, even after a rename), chips, and totals that update live. */
+function SessionHeader({ session, sessionId, calls }: {
+  session: Session | null; sessionId: string; calls: Call[];
+}) {
+  const [copied, setCopied] = useState(false);
+  const cost = calls.reduce((a, c) => a + (c.cost_usd ?? 0), 0);
+  const tokIn = calls.reduce((a, c) => a + (c.tokens_in ?? 0)
+    + (c.cache_read_tokens ?? 0) + (c.cache_write_tokens ?? 0), 0);
+  const tokOut = calls.reduce((a, c) => a + (c.tokens_out ?? 0), 0);
+  return (
+    <div className="session-header">
+      <div className="session-header-title">
+        {session?.label ?? sessionId}
+        {session?.team && <span className="badge team">{session.team}</span>}
+        {session?.project && <span className="badge fw">{session.project}</span>}
+      </div>
+      <div className="session-header-sub">
+        <button
+          className="session-id mono"
+          title="click to copy the session id"
+          onClick={() => {
+            navigator.clipboard?.writeText(sessionId).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1200);
+            }).catch(() => {});
+          }}
+        >
+          {sessionId} {copied ? "✓ copied" : "⧉"}
+        </button>
+        <span>{calls.length} calls</span>
+        <span>{fmtNum(tokIn)} → {fmtNum(tokOut)} tok</span>
+        <span>{fmtUsd(cost)}</span>
+      </div>
+    </div>
+  );
+}
+
 function CallCard({ call, onOpenSession }: { call: Call; onOpenSession?: (sid: string) => void }) {
   const [open, setOpen] = useState(false);
   const [replaying, setReplaying] = useState(false);
@@ -188,9 +226,26 @@ function CallCard({ call, onOpenSession }: { call: Call; onOpenSession?: (sid: s
             {tools.length > 3 ? ` +${tools.length - 3}` : ""}
           </span>
         )}
-        {call.step_index != null && <span className="dim">step {call.step_index}</span>}
-        {call.iteration != null && <span className="dim">iter {call.iteration}</span>}
-        <span className="dim">{fmtNum(call.tokens_in)} → {fmtNum(call.tokens_out)} tok</span>
+        {call.step_index != null && (
+          <span className="dim" title="position of this call within its inferred thread — assigned by the loop engine">
+            step {call.step_index}
+          </span>
+        )}
+        {call.iteration != null && (
+          <span className="dim" title="which iteration of the run this call belongs to">
+            iter {call.iteration}
+          </span>
+        )}
+        <span
+          className="dim"
+          title={`input: ${fmtNum(call.tokens_in)} new` +
+            (call.cache_read_tokens ? ` + ${fmtNum(call.cache_read_tokens)} cache reads` : "") +
+            (call.cache_write_tokens ? ` + ${fmtNum(call.cache_write_tokens)} cache writes` : "") +
+            ` · output: ${fmtNum(call.tokens_out)}`}
+        >
+          {fmtNum((call.tokens_in ?? 0) + (call.cache_read_tokens ?? 0) + (call.cache_write_tokens ?? 0))}
+          {" → "}{fmtNum(call.tokens_out)} tok
+        </span>
         {call.cache_read_tokens != null && call.cache_read_tokens > 0 && (
           <span className="dim" title="prompt-cache reads — billed at a fraction of the input rate">
             ⚡ {fmtNum(call.cache_read_tokens)} cached
@@ -370,6 +425,11 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
       <div className="main">
         {results === null && selected && (
           <>
+            <SessionHeader
+              session={sessions.find((x) => x.session_id === selected) ?? null}
+              sessionId={selected}
+              calls={calls}
+            />
             <WhatIf params={`session_id=${encodeURIComponent(selected)}`} />
             <BatchReplay scope="session" refId={selected}
                          onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />

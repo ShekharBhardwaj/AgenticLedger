@@ -236,6 +236,12 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def get_session_totals(self, since_ts: float) -> list[dict[str, Any]]:
+        """Per-session calls/cost/errors/blocked within the window — joined
+        with labels at the endpoint layer for the by-project report."""
+        ...
+
+    @abstractmethod
     async def get_run_calls(self, run_id: str) -> list[dict[str, Any]]:
         """Every call in a run, oldest first — the batch-replay work list."""
         ...
@@ -683,6 +689,24 @@ class _SqliteStore(Store):
             FROM llm_calls WHERE {scope} = ?
             """,
             (value,),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def get_session_totals(self, since_ts: float) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            """
+            SELECT session_id, COUNT(*) AS call_count,
+                   SUM(COALESCE(cost_usd, 0)) AS cost_usd,
+                   SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
+                            AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                            THEN 1 ELSE 0 END) AS error_count,
+                   SUM(CASE WHEN error_detail LIKE 'blocked:%'
+                            THEN 1 ELSE 0 END) AS blocked_count
+            FROM llm_calls
+            WHERE timestamp >= ? AND session_id IS NOT NULL
+            GROUP BY session_id
+            """,
+            (since_ts,),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
 
@@ -1351,6 +1375,31 @@ class _PostgresStore(Store):
                 value if scope != "action_id" else __import__("uuid").UUID(value),
             )
         return [dict(r) for r in rows]
+
+    async def get_session_totals(self, since_ts: float) -> list[dict[str, Any]]:
+        import datetime as _dt
+        since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT session_id::text, COUNT(*) AS call_count,
+                       SUM(COALESCE(cost_usd, 0)) AS cost_usd,
+                       SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
+                                AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                                THEN 1 ELSE 0 END) AS error_count,
+                       SUM(CASE WHEN error_detail LIKE 'blocked:%'
+                                THEN 1 ELSE 0 END) AS blocked_count
+                FROM llm_calls
+                WHERE timestamp >= $1 AND session_id IS NOT NULL
+                GROUP BY session_id
+                """,
+                since)
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["cost_usd"] = float(d["cost_usd"] or 0)
+            out.append(d)
+        return out
 
     async def get_run_calls(self, run_id: str) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:

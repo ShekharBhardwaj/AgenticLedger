@@ -70,3 +70,19 @@ def test_label_validation_and_roles(proxy, monkeypatch):
                          headers=MASTER).json()["token"]
     assert client.put("/api/labels/session/x", json={"name": "n"},
                       headers={"Authorization": f"Bearer {viewer}"}).status_code == 403
+
+
+def test_reports_break_down_by_project(proxy):
+    """#64: 'what did the checkout rewrite cost?' answerable from Reports."""
+    client = proxy(handler=_ok())
+    _capture(client, "proj-a1")
+    _capture(client, "proj-a2")
+    _capture(client, "unfiled")
+    client.put("/api/labels/session/proj-a1", json={"project": "checkout rewrite"})
+    client.put("/api/labels/session/proj-a2", json={"project": "checkout rewrite"})
+    report = client.get("/api/reports?days=1").json()
+    projects = {p["project"]: p for p in report["projects"]}
+    row = projects["checkout rewrite"]
+    assert row["session_count"] == 2 and row["call_count"] == 2
+    assert row["cost_usd"] > 0
+    assert "unfiled" not in str(report["projects"])  # unfiled sessions stay out

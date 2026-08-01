@@ -1254,8 +1254,28 @@ def create_app(
                     row["budget_daily"] = allowance
                     row["spent_today"] = round(spent, 4)
                     row["over_budget"] = spent >= allowance
-        return JSONResponse(build_report(raw["daily"], raw["models"], raw["agents"], days,
-                                         teams=teams))
+        # By-project rollup: sessions carry their project in the labels
+        # table, so join per-session totals with labels here and aggregate.
+        labels = await request.app.state.store.get_labels("session")
+        projects: dict = {}
+        if any(lab.get("project") for lab in labels.values()):
+            for st in await request.app.state.store.get_session_totals(
+                    time.time() - days * 86400):
+                project = (labels.get(st["session_id"]) or {}).get("project")
+                if not project:
+                    continue
+                agg = projects.setdefault(project, {
+                    "project": project, "call_count": 0, "session_count": 0,
+                    "cost_usd": 0.0, "error_count": 0, "blocked_count": 0})
+                agg["call_count"] += st["call_count"]
+                agg["session_count"] += 1
+                agg["cost_usd"] += float(st["cost_usd"] or 0)
+                agg["error_count"] += int(st["error_count"] or 0)
+                agg["blocked_count"] += int(st["blocked_count"] or 0)
+        return JSONResponse(build_report(
+            raw["daily"], raw["models"], raw["agents"], days, teams=teams,
+            projects=sorted(projects.values(),
+                            key=lambda p: -p["cost_usd"])))
 
     @app.get("/api/sessions/{session_id}/tools")
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:

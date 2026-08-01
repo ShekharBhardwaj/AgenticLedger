@@ -43,6 +43,15 @@ interface TeamRow {
   over_budget?: boolean;
 }
 
+interface ProjectRow {
+  project: string;
+  call_count: number;
+  session_count: number;
+  cost_usd: number;
+  error_count: number;
+  blocked_count: number;
+}
+
 interface AgentRow {
   agent_name: string;
   call_count: number;
@@ -98,6 +107,7 @@ interface Report {
   models: ModelRow[];
   agents: AgentRow[];
   teams: TeamRow[];
+  projects: ProjectRow[];
 }
 
 const WINDOWS = [7, 30, 90];
@@ -270,6 +280,33 @@ export default function ReportsView() {
                       </span>
                     )}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {report.projects.length > 0 && (
+        <>
+          <div className="section-title">By project</div>
+          <table className="rtable">
+            <thead>
+              <tr>
+                <th>project</th><th>calls</th><th>errors</th>
+                <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
+                <th>sessions</th><th>cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.projects.map((p) => (
+                <tr key={p.project}>
+                  <td>{p.project}</td>
+                  <td>{fmtNum(p.call_count)}</td>
+                  <ErrorCell n={p.error_count} />
+                  <BlockedCell n={p.blocked_count} />
+                  <td>{fmtNum(p.session_count)}</td>
+                  <td>{fmtUsd(p.cost_usd)}</td>
                 </tr>
               ))}
             </tbody>
