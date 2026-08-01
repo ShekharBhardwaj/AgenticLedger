@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-01
+
 Built and hardened through two real-framework test rounds (BMAD v6 and a
-Dockerized OpenClaw), which produced twenty-plus findings — every one
+Dockerized OpenClaw), which produced twenty-plus findings, every one
 fixed and re-verified in the same session it was found.
 
 ### Added
 - **Replay the whole run** (flagship). 0.7 answered "what would this *call*
-  look like on another model?" — 0.8 answers the question that actually
+  look like on another model?"; 0.8 answers the question that actually
   decides a model switch: would the whole loop have survived? Pick a run or
   session, pick a destination (a free local model counts), and every step
   re-executes with its original inputs. `POST /api/replay/batch` starts a
@@ -22,7 +24,7 @@ fixed and re-verified in the same session it was found.
   pretend re-run, since a different model would have steered a different
   conversation after step one.
 - **The report card.** Forty side-by-sides don't get read, so each replayed
-  step is graded — did it answer, did it reach for the same tools — and the
+  step is graded (did it answer, did it reach for the same tools) and the
   batch collapses to one line: "34 / 40 moments matched", with the fumbles
   listed and everything else one click away. Cost is totalled both ways
   ("$0.00 on qwen vs $0.0963 original").
@@ -30,47 +32,47 @@ fixed and re-verified in the same session it was found.
   overnight auth fix" instead of `cc-73a26366`), a ★ pin that keeps them at
   the top, and a project they can be filed under, with a project filter over
   both lists. `PUT /api/labels/{scope}/{id}`, `GET /api/projects`.
-- **Projects can exist first — and fill themselves.** "+ project" (or
+- **Projects can exist first, and fill themselves.** "+ project" (or
   `POST /api/projects`) declares a project before anything is filed under
   it, optionally bound to an app id: sessions and runs carrying that app
-  tag file themselves under the project — including everything already
+  tag file themselves under the project, including everything already
   captured, since the match is computed when you look, not stamped at
   capture. A hand-assigned project always beats the rule; auto-filed chips
   say `·auto` and explain themselves on hover. `agenticledger connect`
   already writes the app tag, so a connected framework can land in its
   project from the first call.
 - **Settings page** (`GET /api/settings` + ⚙ in the dashboard): what the
-  proxy is actually running with — config file in effect, upstream, budgets,
-  capture and retention, replay targets — each row labeled with where its
+  proxy is actually running with (config file in effect, upstream, budgets,
+  capture and retention, replay targets), each row labeled with where its
   value came from (file, env, or default), what it means in plain words,
   and exactly where to set it. Read-only, admin-only, secrets never shown.
-- **`agenticledger connect <framework>`** — wire claude-code, BMAD, or
+- **`agenticledger connect <framework>`**: wire claude-code, BMAD, or
   OpenClaw to the ledger without memorizing anyone's config schema. The
   OpenClaw writer detects Docker installs (and uses host.docker.internal,
   since localhost inside a container is the container), satisfies its
   validator's models-array demands from the config's own model list, and
   attributes runs via the URL path because OpenClaw can't send headers.
   Everything written is printed; existing files are backed up and merged.
-- **`agenticledger config set/get/unset/path`** — change one setting from
+- **`agenticledger config set/get/unset/path`**: change one setting from
   the terminal; the writer reuses the template's own commented lines, so
   the file stays readable and no key is ever typed blind.
 - **The dashboard diagnoses its own silence.** A ledger with zero captures
   shows a wiring checklist in the proxy's own concrete URLs (base URL,
   the /v1 form, Docker's host.docker.internal, upstream match) instead of
-  a blank page — because wrong wiring produces silence, and silence must
+  a blank page, because wrong wiring produces silence, and silence must
   say what to check.
 - **Report cards are durable and find the reader.** A finished batch
   comparison reopens itself when its session is selected, survives proxy
   restarts (rebuilt from the ledger's own replay records), labels its
-  columns "original — really ran" vs "replay — answer only, nothing
+  columns "original, really ran" vs "replay: answer only, nothing
   executed", numbers its rows with the same #N as the session's call
   list, and explains its headline fraction in plain words.
 - **Sessions grew a header** (human name, always-visible copyable id, team
   and project chips, live totals), **calls grew numbers and honest token
-  figures** (full input including cache reads/writes, split on hover — no
+  figures** (full input including cache reads/writes, split on hover; no
   more "2 → 352 tok" next to a $0.34 price), the call list reads
   newest-first, and Reports gained a **By-project** table.
-- **Provider marks**: every model carries a small colour chip — clay
+- **Provider marks**: every model carries a small colour chip: clay
   Anthropic, teal OpenAI, purple for anything running locally (detected
   from the model name, so an LM Studio qwen is never mislabeled as
   OpenAI). Deliberately not the providers' logos: no trademarks shipped,
@@ -78,7 +80,7 @@ fixed and re-verified in the same session it was found.
 - **The header shows the running version** (with a DEV tag for editable
   installs and an explanation of why their stamp can lag), and the filter
   dropdown gained an **★ all starred** view.
-- **A quiet console footer** — one line at the end of the page with the
+- **A quiet console footer**: one line at the end of the page with the
   local-first promise and links to agentic-ledger.dev, the repo, and the
   issue tracker. No sticky bar, no viewport tax.
 
@@ -86,8 +88,8 @@ fixed and re-verified in the same session it was found.
 - **UI copy dropped its em-dashes.** Every tooltip, hint, and panel now uses
   plain punctuation. The "no value" placeholder in tables stays.
 - **Deleting a session no longer summons the browser's stock popup.** The
-  × now opens an inline confirmation on the card itself — call count, a
-  red "delete permanently", and a Cancel — matching the project-delete
+  × now opens an inline confirmation on the card itself (call count, a
+  red "delete permanently", and a Cancel), matching the project-delete
   flow instead of `window.confirm`.
 - **Danger buttons are actually red.** A stylesheet-order tie was quietly
   painting the project-purge (and now session-delete) confirm buttons the
@@ -103,28 +105,28 @@ fixed and re-verified in the same session it was found.
 - **The MCP get_session and search tools stop firehosing.** Found live when a real
   MCP client met a 1.6MB session: full conversation snapshots were being
   dumped into the asking model's context. Sessions now return compact
-  per-call summaries by default — everything about each call, a content
+  per-call summaries by default: everything about each call, a content
   preview, and the byte sizes of what was withheld, with the action_id to
-  drill in via the explain tool — and `include_messages=true` remains the
+  drill in via the explain tool. `include_messages=true` remains the
   explicit firehose. Search had the same disease (three hits once weighed
   498KB) and got the same cure.
-- **Red means "your agent had a problem" — nothing else.** The errors
+- **Red means "your agent had a problem", nothing else.** The errors
   column no longer counts Claude Code's routine quota probes or upstream
   429/503/529s that clients retry through; both are labeled on the call
   (probe, transient) and excluded from every error count, completing what
   the blocked-vs-errors split started.
-- **BMAD v6 was entirely undetected** — its personas ship as host-tool
+- **BMAD v6 was entirely undetected**: its personas ship as host-tool
   skills, not system prompts, so a full real project ran through the proxy
   tagged plain claude-code. The detector now reads skill invocations (last
   one wins) and the installed-skill listing; merely *talking about* BMAD
   still doesn't count.
 - **Failed calls always say why and where** ("upstream 404 on POST
-  /v1/messages (no error body)") — a red badge with no reason was a dead
+  /v1/messages (no error body)"). A red badge with no reason was a dead
   end, and a wire-format mismatch (Anthropic agent, OpenAI upstream) now
   names itself instead of masquerading as "model does not exist".
 - **Flow no longer draws one story as islands**: a detected persona change
   between consecutive calls becomes an inferred (dotted) handoff edge.
-- **The report card resets when you switch sessions** — session A's
+- **The report card resets when you switch sessions**: session A's
   comparison no longer haunts session B's page.
 
 ## [0.7.0] - 2026-07-31
@@ -739,7 +741,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0.post1...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.7.0...v0.8.0
 [0.3.0.post1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0...v0.3.0.post1
 [0.3.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...v0.3.0
 [0.3.0-beta.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0-alpha.4...v0.3.0-beta.1
