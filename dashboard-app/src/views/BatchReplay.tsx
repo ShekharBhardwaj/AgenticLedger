@@ -207,11 +207,17 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
                 <div className="replay-grid">
                   <div>
                     <div className="muted mono">{st.original_model} (original — really ran)</div>
-                    <pre>{st.original_content ?? "(no text — answered with tool calls)"}</pre>
+                    <pre>{st.original_content?.trim()
+                      || (st.score?.orig_tools.length
+                        ? `(no text — called: ${st.score.orig_tools.join(", ")})`
+                        : "(no text)")}</pre>
                   </div>
                   <div>
                     <div className="muted mono">{job!.model} (replay — answer only, nothing executed)</div>
-                    <pre>{st.replay_content ?? "(no text — answered with tool calls)"}</pre>
+                    <pre>{st.replay_content?.trim()
+                      || (st.score?.replay_tools.length
+                        ? `(no text — would have called: ${st.score.replay_tools.join(", ")})`
+                        : "(no answer at all)")}</pre>
                   </div>
                 </div>
               )}
