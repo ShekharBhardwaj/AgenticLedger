@@ -22,14 +22,27 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  // Selection generation: switching to another run/session must fully reset
+  // this panel — without it, session A's report card (full call contents)
+  // kept rendering on session B, which read as B showing A's calls. The
+  // counter also lets in-flight polls from the previous selection expire
+  // instead of resurrecting the old card.
+  const gen = useRef(0);
 
-  // A finished report card should find the reader: if one exists for this
-  // run/session, open the panel and show it without being asked.
   useEffect(() => {
+    gen.current += 1;
+    window.clearTimeout(timer.current);
+    setJob(null);
+    setError(null);
+    setShowAll(false);
+    setOpen(false);
+    const myGen = gen.current;
+    // A finished report card should find the reader: if one exists for THIS
+    // run/session, open the panel and show it without being asked.
     listReplayJobs({ scope, refId })
       .then((r) => {
         const last = r.jobs[r.jobs.length - 1];
-        if (last) { setOpen(true); poll(last.job_id); }
+        if (last && gen.current === myGen) { setOpen(true); poll(last.job_id, myGen); }
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,15 +67,17 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  const poll = (jobId: string) => {
+  const poll = (jobId: string, myGen?: number) => {
+    const g = myGen ?? gen.current;
     getReplayJob(jobId)
       .then((j) => {
+        if (gen.current !== g) return;  // selection changed while in flight
         setJob(j);
         if (j.status !== "done") {
-          timer.current = window.setTimeout(() => poll(jobId), 1000);
+          timer.current = window.setTimeout(() => poll(jobId, g), 1000);
         }
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => { if (gen.current === g) setError(e.message); });
   };
 
   const run = () => {
