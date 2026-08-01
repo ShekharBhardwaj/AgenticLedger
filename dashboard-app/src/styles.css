@@ -246,6 +246,9 @@ body {
   background: rgba(248, 81, 73, 0.12); color: var(--red);
   border-color: rgba(248, 81, 73, 0.35);
 }
+.project-purge:disabled {
+  opacity: 0.45; cursor: not-allowed; transform: none;
+}
 
 /* Run comparison */
 .card-cmp {

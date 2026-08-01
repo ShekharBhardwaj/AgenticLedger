@@ -77,6 +77,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
   const [error, setError] = useState<string | null>(null);
   const [managing, setManaging] = useState<"rename" | "delete" | null>(null);
   const [newName, setNewName] = useState("");
+  const [confirmText, setConfirmText] = useState("");
   const isProject = value !== "" && value !== STARRED;
 
   const doRename = () => {
@@ -121,7 +122,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
           </button>
           <button className="link-btn project-delete" style={{ marginTop: 0 }}
                   title="Delete this project"
-                  onClick={() => { setManaging("delete"); setError(null); }}>
+                  onClick={() => { setManaging("delete"); setError(null); setConfirmText(""); }}>
             🗑
           </button>
         </>
@@ -146,12 +147,26 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
           <button className="link-btn" onClick={() => doDelete(false)}>
             remove project — its {sessionCount ?? "…"} sessions survive, unfiled
           </button>
-          <button className="link-btn project-purge" onClick={() => doDelete(true)}>
-            ⚠ delete project AND its {sessionCount ?? "…"} sessions — calls and all, permanently
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            …or destroy everything under it. Type <b>{value}</b> to unlock:
+          </div>
+          <input
+            placeholder={`type “${value}” to confirm`}
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") setManaging(null); }}
+          />
+          <button className="link-btn project-purge"
+                  disabled={confirmText !== value}
+                  onClick={() => doDelete(true)}>
+            ⚠ permanently delete project AND its {sessionCount ?? "…"} sessions — calls and all
           </button>
           {error && <div className="key-status warn">{error}</div>}
           <div className="key-actions">
-            <button className="link-btn" onClick={() => setManaging(null)}>Cancel</button>
+            <button className="link-btn"
+                    onClick={() => { setManaging(null); setConfirmText(""); }}>
+              Cancel
+            </button>
           </div>
         </div>
       )}
