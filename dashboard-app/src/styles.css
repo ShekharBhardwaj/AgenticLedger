@@ -234,7 +234,10 @@ body {
 .project-new { white-space: nowrap; }
 .project-delete {
   background: rgba(248, 81, 73, 0.10); color: var(--red);
-  border-color: rgba(248, 81, 73, 0.3); font-weight: 700;
+  border-color: rgba(248, 81, 73, 0.3);
+  /* Emoji render oversized next to text glyphs — pin the size so 🗑 sits
+     level with ✎ instead of towering over it. */
+  font-size: 11px; line-height: 1; padding-top: 5px; padding-bottom: 5px;
 }
 .project-delete:hover {
   background: rgba(248, 81, 73, 0.2); border-color: var(--red);
