@@ -80,13 +80,14 @@ fixed and re-verified in the same session it was found.
   dropdown gained an **★ all starred** view.
 
 ### Fixed
-- **The MCP get_session tool stops firehosing.** Found live when a real
+- **The MCP get_session and search tools stop firehosing.** Found live when a real
   MCP client met a 1.6MB session: full conversation snapshots were being
   dumped into the asking model's context. Sessions now return compact
   per-call summaries by default — everything about each call, a content
   preview, and the byte sizes of what was withheld, with the action_id to
   drill in via the explain tool — and `include_messages=true` remains the
-  explicit firehose.
+  explicit firehose. Search had the same disease (three hits once weighed
+  498KB) and got the same cure.
 - **Red means "your agent had a problem" — nothing else.** The errors
   column no longer counts Claude Code's routine quota probes or upstream
   429/503/529s that clients retry through; both are labeled on the call

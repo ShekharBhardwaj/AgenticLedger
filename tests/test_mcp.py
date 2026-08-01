@@ -394,3 +394,29 @@ def test_get_session_defaults_to_summaries_not_megabytes(proxy):
 
     fat = call({"session_id": "fat-sess", "include_messages": True})
     assert len(fat) > 150_000                      # the opt-in firehose
+
+
+def test_search_defaults_to_summaries_too(proxy):
+    """Same disease as get_session, found by the same audit: three search
+    hits once weighed 498KB. Hits are summaries unless asked otherwise."""
+    big = "needle " + "x" * 40_000
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
+    for i in range(3):
+        client.post("/v1/chat/completions",
+                    json={"model": "gpt-4o",
+                          "messages": [{"role": "user", "content": big + str(i)}]},
+                    headers={"x-agenticledger-session-id": f"needle-{i}"})
+
+    def call(args):
+        resp = client.post("/mcp", json={
+            "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+            "params": {"name": "search", "arguments": args}})
+        return resp.json()["result"]["content"][0]["text"]
+
+    slim = call({"query": "needle"})
+    assert len(slim) < 20_000
+    rows = json.loads(slim)
+    assert len(rows) == 3 and rows[0]["withheld_bytes"]["messages"] > 40_000
+
+    fat = call({"query": "needle", "include_messages": True})
+    assert len(fat) > 120_000

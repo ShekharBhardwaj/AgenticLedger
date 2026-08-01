@@ -127,6 +127,12 @@ _TOOLS = [
                     "description": "Maximum number of results to return (default 20, max 100).",
                     "default": 20,
                 },
+                "include_messages": {
+                    "type": "boolean",
+                    "description": "Return full message bodies for each hit. "
+                                   "Default false — hits are compact summaries "
+                                   "with an action_id to drill in via explain.",
+                },
             },
             "required": ["query"],
         },
@@ -298,7 +304,7 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
             records = [_call_summary(i + 1, r) for i, r in enumerate(records)]
         return (_ok(id_, _text_content(json.dumps(records, indent=2, default=str))))
 
-    if name == "search":  # noqa: SIM114 — kept adjacent to get_session
+    if name == "search":
         query = args.get("query", "").strip()
         if not query:
             return (_err(id_, -32602, "query is required"))
@@ -306,6 +312,8 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         results = await store.search(query, limit=limit)
         if not results:
             return (_ok(id_, _text_content(f"No results found for query {query!r}")))
+        if not args.get("include_messages"):
+            results = [_call_summary(i + 1, r) for i, r in enumerate(results)]
         return (_ok(id_, _text_content(json.dumps(results, indent=2, default=str))))
 
     if name == "list_runs":
