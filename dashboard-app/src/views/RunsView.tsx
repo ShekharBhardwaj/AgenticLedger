@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import {
   FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
   Iteration, liveUpdates, Run, runStatusInfo,
+ listProjects,
 } from "../api";
 import CompareView from "./CompareView";
+import { LabelEditor, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
 import WhatIf from "./WhatIf";
 
 function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (s: string) => void }) {
@@ -60,9 +62,13 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   const [iterations, setIterations] = useState<Iteration[]>([]);
   const [flags, setFlags] = useState<FlaggedCall[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<string[]>([]);
+  const [projectFilter, setProjectFilter] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     get<Run[]>("/api/runs").then(setRuns).catch((e) => setError(String(e)));
+    listProjects().then((r) => setProjects(r.projects)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -97,12 +103,24 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             </span>
           </div>
         )}
-        {runs.map((r) => (
+        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter} />
+        {pinnedFirst(runs.filter((r) => !projectFilter || r.project === projectFilter)).map((r) => (
           <div
             key={r.run_id}
             className={`card ${selected === r.run_id ? "selected" : ""}`}
             onClick={() => setSelected(r.run_id)}
           >
+            <PinButton scope="run" refId={r.run_id} pinned={r.pinned} onSaved={refresh} />
+            <button
+              className="card-edit"
+              title="Rename / assign to a project"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(editing === r.run_id ? null : r.run_id);
+              }}
+            >
+              ✎
+            </button>
             <button
               className={`card-cmp ${compare.includes(r.run_id) ? "on" : ""}`}
               title={compare.includes(r.run_id)
@@ -112,9 +130,14 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             >
               ⇆
             </button>
-            <div className="card-title">
-              {r.run_id} <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
+            <div className="card-title" title={r.run_id}>
+              {r.label ?? r.run_id} <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
             </div>
+            {editing === r.run_id && (
+              <LabelEditor scope="run" refId={r.run_id}
+                           label={r.label} project={r.project} projects={projects}
+                           onSaved={refresh} onClose={() => setEditing(null)} />
+            )}
             <div className="card-sub">
               <span>{fmtAgo(r.last_call_at)}</span>
               <span>{r.iterations ?? "?"} iterations</span>
@@ -122,6 +145,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               <span>{fmtUsd(r.total_cost_usd)}</span>
               {r.models && <span className="mono">{r.models}</span>}
               {r.framework && <span className="badge fw">{r.framework}</span>}
+              {r.project && <span className="badge fw" title="project">{r.project}</span>}
             </div>
           </div>
         ))}

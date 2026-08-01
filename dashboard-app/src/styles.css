@@ -184,6 +184,32 @@ body {
 .sidebar .card.replay     { border-left: 2px solid rgba(183, 138, 245, 0.65); }
 .sidebar .card.has-errors { border-left: 2px solid var(--red); }
 
+/* Label controls (#47): pin stays lit when on; edit reveals on hover. */
+.card-pin, .card-edit {
+  position: absolute; top: 6px;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-dim); font-size: 13px; line-height: 1; padding: 2px 4px;
+  opacity: 0; transition: opacity var(--ease), color var(--ease);
+}
+.card-pin { right: 28px; }
+.card-edit { right: 48px; }
+.card:hover .card-pin, .card:hover .card-edit { opacity: 1; }
+.card-pin:hover, .card-edit:hover { color: var(--accent); }
+.card-pin.on { opacity: 1; color: var(--amber); }
+.label-edit { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
+.label-edit input {
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 6px 8px; font-size: 12.5px; width: 100%;
+  transition: border-color var(--ease);
+}
+.label-edit input:focus { outline: none; border-color: var(--accent); }
+.project-filter {
+  width: 100%; margin-bottom: 12px; padding: 7px 10px; font-size: 13px;
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+
 /* Run comparison */
 .card-cmp {
   position: absolute; top: 6px; right: 8px;

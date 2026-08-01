@@ -236,6 +236,25 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def set_label(self, scope: str, ref_id: str,
+                        name: Optional[str] = None,
+                        pinned: Optional[bool] = None,
+                        project: Optional[str] = None) -> dict[str, Any]:
+        """Upsert a human label for a session or run — only the provided
+        fields change; empty string clears a text field. Returns the row."""
+        ...
+
+    @abstractmethod
+    async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
+        """ref_id → {name, pinned, project} for one scope."""
+        ...
+
+    @abstractmethod
+    async def list_projects(self) -> list[str]:
+        """Distinct project names across both scopes, alphabetical."""
+        ...
+
+    @abstractmethod
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         """Record that a runner explicitly finished this run (idempotent)."""
         ...
@@ -401,6 +420,17 @@ class _SqliteStore(Store):
             CREATE TABLE IF NOT EXISTS run_markers (
                 run_id   TEXT PRIMARY KEY,
                 ended_at REAL NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS labels (
+                scope      TEXT NOT NULL,      -- 'session' | 'run'
+                ref_id     TEXT NOT NULL,
+                name       TEXT,               -- human label ("overnight auth fix")
+                pinned     INTEGER DEFAULT 0,
+                project    TEXT,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (scope, ref_id)
             )
         """)
         with contextlib.suppress(Exception):
@@ -650,6 +680,49 @@ class _SqliteStore(Store):
             (value,),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
+
+    async def set_label(self, scope, ref_id, name=None, pinned=None, project=None):
+        import time as _time
+        row = await self._get_label(scope, ref_id)
+        merged = {
+            "name": row.get("name") if name is None else (name or None),
+            "pinned": bool(row.get("pinned")) if pinned is None else bool(pinned),
+            "project": row.get("project") if project is None else (project or None),
+        }
+        await self._db.execute(
+            "INSERT INTO labels (scope, ref_id, name, pinned, project, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(scope, ref_id) DO UPDATE SET name=excluded.name, "
+            "pinned=excluded.pinned, project=excluded.project, updated_at=excluded.updated_at",
+            (scope, ref_id, merged["name"], 1 if merged["pinned"] else 0,
+             merged["project"], _time.time()),
+        )
+        await self._db.commit()
+        return {"scope": scope, "ref_id": ref_id, **merged}
+
+    async def _get_label(self, scope: str, ref_id: str) -> dict[str, Any]:
+        async with self._db.execute(
+            "SELECT name, pinned, project FROM labels WHERE scope = ? AND ref_id = ?",
+            (scope, ref_id),
+        ) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else {}
+
+    async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT ref_id, name, pinned, project FROM labels WHERE scope = ?",
+            (scope,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
+                              "project": r["project"]} for r in rows}
+
+    async def list_projects(self) -> list[str]:
+        async with self._db.execute(
+            "SELECT DISTINCT project FROM labels WHERE project IS NOT NULL ORDER BY project",
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r["project"] for r in rows]
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         await self._db.execute(
@@ -991,6 +1064,17 @@ class _PostgresStore(Store):
                     ended_at DOUBLE PRECISION NOT NULL
                 )
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS labels (
+                    scope      TEXT NOT NULL,
+                    ref_id     TEXT NOT NULL,
+                    name       TEXT,
+                    pinned     BOOLEAN DEFAULT FALSE,
+                    project    TEXT,
+                    updated_at DOUBLE PRECISION NOT NULL,
+                    PRIMARY KEY (scope, ref_id)
+                )
+            """)
             await conn.execute(
                 "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS budget_daily DOUBLE PRECISION")
         return cls(pool)
@@ -1254,6 +1338,41 @@ class _PostgresStore(Store):
                 value if scope != "action_id" else __import__("uuid").UUID(value),
             )
         return [dict(r) for r in rows]
+
+    async def set_label(self, scope, ref_id, name=None, pinned=None, project=None):
+        import time as _time
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT name, pinned, project FROM labels WHERE scope = $1 AND ref_id = $2",
+                scope, ref_id)
+            prev = dict(row) if row else {}
+            merged = {
+                "name": prev.get("name") if name is None else (name or None),
+                "pinned": bool(prev.get("pinned")) if pinned is None else bool(pinned),
+                "project": prev.get("project") if project is None else (project or None),
+            }
+            await conn.execute(
+                "INSERT INTO labels (scope, ref_id, name, pinned, project, updated_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6) "
+                "ON CONFLICT (scope, ref_id) DO UPDATE SET name=EXCLUDED.name, "
+                "pinned=EXCLUDED.pinned, project=EXCLUDED.project, updated_at=EXCLUDED.updated_at",
+                scope, ref_id, merged["name"], merged["pinned"], merged["project"],
+                _time.time(),
+            )
+        return {"scope": scope, "ref_id": ref_id, **merged}
+
+    async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT ref_id, name, pinned, project FROM labels WHERE scope = $1", scope)
+        return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
+                              "project": r["project"]} for r in rows}
+
+    async def list_projects(self) -> list[str]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT project FROM labels WHERE project IS NOT NULL ORDER BY project")
+        return [r["project"] for r in rows]
 
     async def mark_run_ended(self, run_id: str, ended_at: float) -> None:
         async with self._pool.acquire() as conn:

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  getCall, interactionTags, liveUpdates, post, ReplayResult, replayModels,
-  replayTargets, ReplayTarget, Session, toolNames,
+  getCall, interactionTags, listProjects, liveUpdates, post, ReplayResult,
+  replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
+import { LabelEditor, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
   const parts: string[] = [];
@@ -253,9 +254,13 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);
   const [mode, setMode] = useState<Mode>("calls");
+  const [projects, setProjects] = useState<string[]>([]);
+  const [projectFilter, setProjectFilter] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     get<Session[]>("/api/sessions").then(setSessions).catch(() => {});
+    listProjects().then((r) => setProjects(r.projects)).catch(() => {});
     // keep an open session view fresh too
     setSelected((cur) => {
       if (cur) get<Call[]>(`/session/${encodeURIComponent(cur)}`).then(setCalls).catch(() => {});
@@ -293,12 +298,25 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        {sessions.map((s) => (
+        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter} />
+        {pinnedFirst(sessions.filter((s) => !projectFilter || s.project === projectFilter)).map((s) => (
           <div
             key={s.session_id}
             className={`card ${selected === s.session_id ? "selected" : ""} ${s.session_id.startsWith("replay-") ? "replay" : ""} ${(s.error_count ?? 0) > 0 ? "has-errors" : ""}`}
             onClick={() => { setQuery(""); setSelected(s.session_id); }}
           >
+            <PinButton scope="session" refId={s.session_id} pinned={s.pinned}
+                       onSaved={refresh} />
+            <button
+              className="card-edit"
+              title="Rename / assign to a project"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(editing === s.session_id ? null : s.session_id);
+              }}
+            >
+              ✎
+            </button>
             <button
               className="card-del"
               title="Delete this session's captured calls"
@@ -317,7 +335,14 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             >
               ×
             </button>
-            <div className="card-title">{s.session_id}</div>
+            <div className="card-title" title={s.session_id}>
+              {s.label ?? s.session_id}
+            </div>
+            {editing === s.session_id && (
+              <LabelEditor scope="session" refId={s.session_id}
+                           label={s.label} project={s.project} projects={projects}
+                           onSaved={refresh} onClose={() => setEditing(null)} />
+            )}
             <div className="card-sub">
               <span>{fmtAgo(s.started_at)}</span>
               <span>{s.call_count} calls</span>
@@ -327,6 +352,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               )}
               {s.agent_name && <span className="badge fw">{s.agent_name}</span>}
               {s.team && <span className="badge team" title="team card that made these calls">{s.team}</span>}
+              {s.project && <span className="badge fw" title="project">{s.project}</span>}
               {(s.error_count ?? 0) > 0 && (
                 <span className="badge error" title="calls that actually failed">{s.error_count} failed</span>
               )}

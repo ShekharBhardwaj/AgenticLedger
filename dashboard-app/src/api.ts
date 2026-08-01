@@ -70,6 +70,34 @@ export async function del(path: string): Promise<void> {
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
 }
 
+export async function put<T>(path: string, body: unknown): Promise<T> {
+  const resp = await fetch(path, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...headers() },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = (data as { error?: string; detail?: string }).error
+      ?? (data as { detail?: string }).detail
+      ?? `${resp.status} ${resp.statusText}`;
+    throw new Error(msg);
+  }
+  return data as T;
+}
+
+/** Name, pin, or file a session/run under a project (#47). */
+export function setLabel(
+  scope: "session" | "run", refId: string,
+  fields: { name?: string; pinned?: boolean; project?: string },
+): Promise<unknown> {
+  return put(`/api/labels/${scope}/${encodeURIComponent(refId)}`, fields);
+}
+
+export function listProjects(): Promise<{ projects: string[] }> {
+  return get("/api/projects");
+}
+
 export async function post<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(path, {
     method: "POST",
@@ -133,6 +161,9 @@ export interface Run {
   models: string | null;   // comma-separated distinct models in the run
   flagged_calls: number;
   status: "running" | "flagged" | "complete" | "ended";
+  label: string | null;
+  pinned: boolean;
+  project: string | null;
 }
 
 /** Plain-words tooltip for a run's status badge. */
@@ -175,6 +206,9 @@ export interface Session {
   team: string | null;
   error_count: number | null;
   blocked_count: number | null;
+  label: string | null;
+  pinned: boolean;
+  project: string | null;
 }
 
 export interface Call {

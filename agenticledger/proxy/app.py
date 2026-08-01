@@ -647,11 +647,21 @@ def create_app(
 
     # ── API ──────────────────────────────────────────────────────────────────
 
+    def _annotate_labels(rows: list, labels: dict, key: str) -> list:
+        for r in rows:
+            lab = labels.get(r.get(key)) or {}
+            r["label"] = lab.get("name")
+            r["pinned"] = bool(lab.get("pinned"))
+            r["project"] = lab.get("project")
+        return rows
+
     @app.get("/api/sessions")
     async def api_sessions(request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
-        sessions = await request.app.state.store.list_sessions()
-        return JSONResponse(sessions)
+        store = request.app.state.store
+        sessions = await store.list_sessions()
+        return JSONResponse(_annotate_labels(
+            sessions, await store.get_labels("session"), "session_id"))
 
     @app.get("/api/runs")
     async def api_runs(request: Request) -> JSONResponse:
@@ -659,6 +669,7 @@ def create_app(
         store = request.app.state.store
         runs = await store.list_runs()
         ended = await store.get_run_end_markers([r["run_id"] for r in runs])
+        runs = _annotate_labels(runs, await store.get_labels("run"), "run_id")
         return JSONResponse([
             _with_run_status(r, loop_run_gap_seconds, explicitly_ended=r["run_id"] in ended)
             for r in runs
@@ -675,6 +686,40 @@ def create_app(
         await store.mark_run_ended(run_id, time.time())
         await _audit(principal, request, "run_end", run_id, "runner exit signal")
         return JSONResponse({"run_id": run_id, "status": "ended"})
+
+    @app.put("/api/labels/{scope}/{ref_id}")
+    async def api_set_label(scope: str, ref_id: str, request: Request) -> JSONResponse:
+        """Name, pin, or file a session/run under a project — ids stay
+        stable underneath; only the provided fields change."""
+        principal = await _require(request, ROLE_EDITOR)
+        if scope not in ("session", "run"):
+            raise HTTPException(status_code=400, detail="scope must be session or run")
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        for field, limit in (("name", 120), ("project", 60)):
+            val = payload.get(field)
+            if val is not None and (not isinstance(val, str) or len(val) > limit):
+                raise HTTPException(status_code=400,
+                                    detail=f"{field} must be a string ≤ {limit} chars")
+        if "pinned" in payload and not isinstance(payload["pinned"], bool):
+            raise HTTPException(status_code=400, detail="pinned must be true/false")
+        row = await request.app.state.store.set_label(
+            scope, ref_id,
+            name=payload.get("name"),
+            pinned=payload.get("pinned"),
+            project=payload.get("project"),
+        )
+        await _audit(principal, request, "set_label", f"{scope}:{ref_id}",
+                     json.dumps({k: payload[k] for k in ("name", "pinned", "project")
+                                 if k in payload}))
+        return JSONResponse(row)
+
+    @app.get("/api/projects")
+    async def api_projects(request: Request) -> JSONResponse:
+        await _require(request, ROLE_VIEWER)
+        return JSONResponse({"projects": await request.app.state.store.list_projects()})
 
     @app.get("/api/settings")
     async def api_settings(request: Request) -> JSONResponse:
