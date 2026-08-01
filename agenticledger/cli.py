@@ -177,10 +177,47 @@ def main(argv: Optional[list] = None) -> int:
              "subprocess configs; reads the ledger DB via AGENTICLEDGER_DSN).",
     )
 
+    init_p = sub.add_parser(
+        "init",
+        help="Write a commented agenticledger.toml — one config file instead "
+             "of env vars in a command.",
+    )
+    init_p.add_argument("--path", default="agenticledger.toml",
+                        help="Where to write it (default: ./agenticledger.toml)")
+
+    sub.add_parser(
+        "start",
+        help="Run the proxy in the background — terminal freed, survives the "
+             "window closing; logs to ~/.agenticledger/proxy.log.",
+    )
+    sub.add_parser("stop", help="Stop the background proxy.")
+    sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
+    logs_p = sub.add_parser("logs", help="Show the background proxy's log.")
+    logs_p.add_argument("-n", "--lines", type=int, default=50)
+    logs_p.add_argument("-f", "--follow", action="store_true")
+    sub.add_parser(
+        "serve",
+        help="Run the proxy in the FOREGROUND (containers, debugging) — "
+             "same as python -m agenticledger.proxy.",
+    )
+
     args = parser.parse_args(argv)
     if args.subcommand == "mcp":
         from agenticledger.mcp_stdio import main as mcp_main
         return mcp_main()
+    if args.subcommand == "init":
+        from agenticledger.config import init_config
+        target = init_config(args.path)
+        print(f"Wrote {target} — open it, uncomment what you need, then: agenticledger start")
+        return 0
+    if args.subcommand in ("start", "stop", "status"):
+        from agenticledger import service
+        return getattr(service, args.subcommand)()
+    if args.subcommand == "logs":
+        from agenticledger import service
+        return service.logs(lines=args.lines, follow=args.follow)
+    if args.subcommand == "serve":
+        os.execv(sys.executable, [sys.executable, "-m", "agenticledger.proxy"])
     if args.subcommand != "run":
         parser.print_help()
         return 2

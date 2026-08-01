@@ -1,6 +1,11 @@
 """
 python -m agenticledger.proxy
 
+Prefer the CLI: `agenticledger init` writes agenticledger.toml (one file
+instead of these env vars), `agenticledger start` runs this in the
+background, `agenticledger serve` in the foreground. Environment variables
+always override the config file.
+
 Reads config from environment variables:
 
   Core:
@@ -85,11 +90,17 @@ import sys
 
 import uvicorn
 
+from ..config import apply_config
 from .alerts import AlertConfig
 from .app import _secret_env, create_app
 from .otel import init_otel
 from .ratelimit import RateLimitConfig
 from .redact import build_redactor
+
+# The config file (agenticledger.toml) fills the environment FIRST — via
+# setdefault, so anything already exported still wins. Every read below
+# stays a plain env read.
+_config_path = apply_config()
 
 
 class _QuietFilter(logging.Filter):
@@ -188,19 +199,20 @@ except Exception:
 # a stale venv silently serving an old release looks identical otherwise.
 print(
     f"Agentic Ledger v{_version} — proxying {upstream_url} — "
-    f"dashboard: http://{'localhost' if host == '0.0.0.0' else host}:{port}",
+    f"dashboard: http://{'localhost' if host == '0.0.0.0' else host}:{port}"
+    + (f" — config: {_config_path}" if _config_path else ""),
     file=sys.stderr,
     flush=True,
 )
 
 _logger = logging.getLogger("agenticledger")
-if not os.environ.get("AGENTICLEDGER_INGEST_KEY"):
+if not _secret_env("AGENTICLEDGER_INGEST_KEY"):
     _logger.warning(
         "AGENTICLEDGER_INGEST_KEY is not set — the proxy will forward requests from "
         "ANYONE who can reach it (open relay). Set it to require x-agenticledger-ingest-key "
         "before exposing the proxy beyond localhost."
     )
-if not os.environ.get("AGENTICLEDGER_API_KEY"):
+if not _secret_env("AGENTICLEDGER_API_KEY"):
     _logger.warning(
         "AGENTICLEDGER_API_KEY is not set — the dashboard, API, and MCP endpoints are "
         "UNAUTHENTICATED. Set it (or configure API tokens) before exposing Agentic Ledger "

@@ -55,6 +55,20 @@ docker run -p 8000:8000 \
 > both. Any OpenAI-compatible gateway URL (LiteLLM, OpenRouter, ...) works
 > the same way.
 
+Or the comfortable way — one config file, three commands, no terminal held
+hostage:
+
+```bash
+pip install -U agentic-ledger
+agenticledger init      # writes a commented agenticledger.toml — edit it
+agenticledger start     # runs in the background; terminal freed
+```
+
+`agenticledger status` tells you it's up and healthy, `agenticledger logs`
+shows what it's doing, `agenticledger stop` shuts it down. Environment
+variables always override the file, so everything below still works — and
+containers keep using `agenticledger serve` (foreground) unchanged.
+
 Or with docker compose (SQLite by default — see `docker-compose.yml`):
 ```bash
 AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com docker compose up

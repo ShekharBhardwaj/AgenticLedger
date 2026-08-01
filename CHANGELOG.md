@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (premium ops)
+- **One config file instead of nine env vars.** `agenticledger init` writes
+  a commented `agenticledger.toml` (upstream, keys or key-file paths,
+  budgets, replay targets); the proxy loads it at startup. Environment
+  variables always win over the file, so Docker/Kubernetes deployments are
+  unaffected.
+- **Background service commands.** `agenticledger start` detaches the proxy
+  (survives the terminal closing; logs to ~/.agenticledger/proxy.log),
+  `status` reports version/port/store health, `stop` shuts down cleanly,
+  `logs -f` tails, `serve` keeps today's foreground mode for containers.
+- **The ledger look** — a CSS-only design pass: layered surfaces with real
+  elevation, tabular numerals everywhere a figure appears, calm 160ms
+  transitions, refined tables, gradient spend bars, styled scrollbars.
+  Color stays reserved for meaning (green money, amber walls, red breakage,
+  purple replay lineage).
+
 ### Fixed & improved (0.7 walkthrough findings)
 - **Blocked is not broken.** Calls the ledger refuses on purpose (budget
   walls) are now counted as *blocked* (amber) everywhere, never as errors

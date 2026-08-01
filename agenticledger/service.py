@@ -1,0 +1,168 @@
+"""
+Background service mode — the proxy without a hostage terminal.
+
+`agenticledger start` detaches the proxy into the background: it keeps
+running when the terminal closes, logs to ~/.agenticledger/proxy.log, and
+records its pid in ~/.agenticledger/proxy.pid. `status` answers "is it up
+and healthy?", `stop` shuts it down cleanly, `logs` shows what it said.
+`serve` remains the foreground mode (containers, debugging).
+"""
+
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Optional
+
+import httpx
+
+from .config import apply_config
+
+STATE_DIR = Path.home() / ".agenticledger"
+PID_FILE = STATE_DIR / "proxy.pid"
+LOG_FILE = STATE_DIR / "proxy.log"
+
+
+def _port() -> int:
+    apply_config()
+    return int(os.environ.get("AGENTICLEDGER_PORT", "8000"))
+
+
+def _read_pid() -> Optional[int]:
+    try:
+        return int(PID_FILE.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _alive(pid: Optional[int]) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _health(port: int) -> Optional[dict]:
+    try:
+        resp = httpx.get(f"http://localhost:{port}/health", timeout=2.0)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return None
+
+
+def start() -> int:
+    port = _port()
+    pid = _read_pid()
+    if _alive(pid):
+        print(f"Already running (pid {pid}) — dashboard: http://localhost:{port}/app")
+        return 0
+
+    STATE_DIR.mkdir(exist_ok=True)
+    kwargs: dict = {"stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL}
+    if os.name == "posix":
+        kwargs["start_new_session"] = True  # survives the terminal closing
+    else:  # pragma: no cover - Windows
+        kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED | NEW_GROUP
+    with open(LOG_FILE, "ab") as log:
+        # The child inherits the fd; closing our handle after spawn is fine.
+        proc = subprocess.Popen([sys.executable, "-m", "agenticledger.proxy"],
+                                stdout=log, **kwargs)
+    PID_FILE.parent.mkdir(exist_ok=True)
+    PID_FILE.write_text(str(proc.pid))
+
+    # Wait for it to answer, so "start" means started — not "maybe".
+    for _ in range(40):
+        time.sleep(0.25)
+        health = _health(port)
+        if health:
+            print(f"Agentic Ledger v{health.get('version', '?')} running in the background "
+                  f"(pid {proc.pid})")
+            print(f"  dashboard: http://localhost:{port}/app")
+            print(f"  logs:      agenticledger logs   ({LOG_FILE})")
+            print( "  stop:      agenticledger stop")
+            return 0
+        if proc.poll() is not None:
+            break
+    print("The proxy did not come up. Last log lines:", file=sys.stderr)
+    _print_log_tail(15, file=sys.stderr)
+    PID_FILE.unlink(missing_ok=True)
+    return 1
+
+
+def stop() -> int:
+    pid = _read_pid()
+    if not _alive(pid):
+        PID_FILE.unlink(missing_ok=True)
+        print("Not running.")
+        return 0
+    os.kill(pid, signal.SIGTERM)
+    for _ in range(20):
+        time.sleep(0.25)
+        if not _alive(pid):
+            PID_FILE.unlink(missing_ok=True)
+            print(f"Stopped (pid {pid}).")
+            return 0
+    os.kill(pid, signal.SIGKILL)  # it had five seconds to be graceful
+    PID_FILE.unlink(missing_ok=True)
+    print(f"Force-stopped (pid {pid}).")
+    return 0
+
+
+def status() -> int:
+    port = _port()
+    pid = _read_pid()
+    running = _alive(pid)
+    health = _health(port) if running else None
+    if not running:
+        print("Stopped." + (f" (stale pid file: {PID_FILE})" if pid else ""))
+        return 3
+    if health is None:
+        print(f"Process alive (pid {pid}) but not answering on port {port} — "
+              f"check `agenticledger logs`.")
+        return 1
+    ready = "ok"
+    try:
+        r = httpx.get(f"http://localhost:{port}/readyz", timeout=2.0)
+        ready = r.json().get("store", "?")
+    except Exception:
+        ready = "?"
+    print(f"Running (pid {pid}) — v{health.get('version', '?')} on port {port}, "
+          f"store {ready}")
+    print(f"  dashboard: http://localhost:{port}/app")
+    return 0
+
+
+def logs(lines: int = 50, follow: bool = False) -> int:
+    if not LOG_FILE.exists():
+        print(f"No log yet ({LOG_FILE}).")
+        return 0
+    _print_log_tail(lines)
+    if follow:
+        with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as fh:
+            fh.seek(0, os.SEEK_END)
+            try:
+                while True:
+                    line = fh.readline()
+                    if line:
+                        print(line, end="")
+                    else:
+                        time.sleep(0.5)
+            except KeyboardInterrupt:
+                pass
+    return 0
+
+
+def _print_log_tail(lines: int, file=sys.stdout) -> None:
+    try:
+        content = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return
+    for line in content[-lines:]:
+        print(line, file=file)
