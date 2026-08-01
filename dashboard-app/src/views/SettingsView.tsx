@@ -22,7 +22,7 @@ export default function SettingsView() {
     return (
       <div className="reports">
         <div className="empty">
-          Settings need an admin key — set one in the ⚿ panel. ({error})
+          Settings need an admin key. Set one in the ⚿ panel. ({error})
         </div>
       </div>
     );
@@ -34,7 +34,7 @@ export default function SettingsView() {
     <div className="reports">
       <h2 className="page-title">Settings</h2>
       <div className="muted" style={{ marginBottom: 8, maxWidth: 760 }}>
-        What the proxy is running with — read-only, secrets hidden. Each row
+        What the proxy is running with: read-only, secrets hidden. Each row
         says where its value came from: <b>file</b> = your agenticledger.toml ·{" "}
         <b>env</b> = typed or exported, which always wins · <b>default</b> =
         built-in. To change something, edit the config file and restart

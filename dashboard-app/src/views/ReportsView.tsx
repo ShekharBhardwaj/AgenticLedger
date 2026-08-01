@@ -84,7 +84,7 @@ function ErrorCell({ n }: { n: number }) {
 function BlockedCell({ n }: { n: number }) {
   return (
     <td style={{ color: n ? "var(--amber)" : undefined }}
-        title="calls the ledger refused on purpose (over budget) — not failures">
+        title="calls the ledger refused on purpose (over budget), not failures">
       {n || "—"}
     </td>
   );
@@ -168,7 +168,7 @@ export default function ReportsView() {
             )}
             {t.blocked_calls > 0 && (
               <span style={{ color: "var(--amber)", fontSize: 13 }}
-                    title="refused by the ledger's budget walls — not failures"> ({t.blocked_calls} blocked)</span>
+                    title="refused by the ledger's budget walls, not failures"> ({t.blocked_calls} blocked)</span>
             )}
           </div>
           <div className="l">calls</div>
@@ -178,7 +178,7 @@ export default function ReportsView() {
           <div className="l">tokens in / out</div>
         </div>
         {cacheUsed && (
-          <div className="stat" title="What your prompt-cache traffic would have cost at full input rates minus what it actually cost. Negative (red) means heavy cache writes were never read back — caching cost more than it saved.">
+          <div className="stat" title="What your prompt-cache traffic would have cost at full input rates minus what it actually cost. Negative (red) means heavy cache writes were never read back: caching cost more than it saved.">
             <div className="v" style={{ color: t.cache_savings_usd >= 0 ? "var(--green)" : "var(--red)" }}>
               {t.cache_savings_usd >= 0 ? "" : "−"}{fmtUsd(Math.abs(t.cache_savings_usd))}
             </div>
@@ -215,7 +215,7 @@ export default function ReportsView() {
         <thead>
           <tr>
             <th>model</th><th>calls</th><th>errors</th>
-            <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
+            <th title="refused by the ledger on purpose (budget walls), not failures">blocked</th>
             <th>latency p50/p95/p99</th>
             <th>tokens in / out</th>
             <th title="prompt-cache tokens: reads are billed at a fraction of the input rate, writes at a premium">cache r / w</th>
@@ -258,7 +258,7 @@ export default function ReportsView() {
             <thead>
               <tr>
                 <th>team</th><th>calls</th><th>errors</th>
-                <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
+                <th title="refused by the ledger on purpose (budget walls), not failures">blocked</th>
                 <th>sessions</th><th>cost</th>
                 <th title="today's spend against the team card's daily allowance">allowance</th>
               </tr>
@@ -294,7 +294,7 @@ export default function ReportsView() {
             <thead>
               <tr>
                 <th>project</th><th>calls</th><th>errors</th>
-                <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
+                <th title="refused by the ledger on purpose (budget walls), not failures">blocked</th>
                 <th>sessions</th><th>cost</th>
               </tr>
             </thead>
@@ -319,7 +319,7 @@ export default function ReportsView() {
         <thead>
           <tr>
             <th>agent</th><th>calls</th><th>errors</th>
-            <th title="refused by the ledger on purpose (budget walls) — not failures">blocked</th>
+            <th title="refused by the ledger on purpose (budget walls), not failures">blocked</th>
             <th>latency p50/p95/p99</th><th>sessions</th><th>cost</th>
           </tr>
         </thead>

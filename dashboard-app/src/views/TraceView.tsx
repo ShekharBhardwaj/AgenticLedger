@@ -85,7 +85,7 @@ export default function TraceView({ calls }: { calls: Call[] }) {
                 opacity={failed ? 0.9 : 0.85}
               >
                 <title>
-                  {`${c.model_id} — ${c.agent_name ?? "unattributed"}
+                  {`${c.model_id} · ${c.agent_name ?? "unattributed"}
 ${fmtRel(c.latency_ms ?? 0)} · ${fmtUsd(c.cost_usd)} · ${c.tokens_in ?? "?"}→${c.tokens_out ?? "?"} tok${failed ? `\nstatus ${c.status_code}` : ""}${flagged ? `\nflags: ${c.loop_flags}` : ""}`}
                 </title>
               </rect>

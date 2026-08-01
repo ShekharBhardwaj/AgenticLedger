@@ -30,11 +30,11 @@ function Logo({ size = 24 }: { size?: number }) {
 /** Plain-words answer to "what is this key?" for the ⚿ panel. */
 function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
   if (!w.auth) {
-    return { text: "This server has no access key set — everything is open, no key needed.", tone: "ok" };
+    return { text: "This server has no access key set. Everything is open, no key needed.", tone: "ok" };
   }
   if (w.team) {
     return {
-      text: `This is team “${w.team}”’s card — it lets agents through the relay, but it can’t open the dashboard. Paste a viewer or admin key here instead.`,
+      text: `This is team “${w.team}”’s card. It lets agents through the relay, but it can’t open the dashboard. Paste a viewer or admin key here instead.`,
       tone: "warn",
     };
   }
@@ -68,7 +68,7 @@ function KeyPanel() {
       .then((w) => setStatus(describeKey(w)))
       .catch((e) => setStatus(stored
         ? { text: `Saved key: ${e.message}`, tone: "warn" }
-        : { text: "This server needs a key — paste one to unlock the dashboard.", tone: "warn" }));
+        : { text: "This server needs a key. Paste one to unlock the dashboard.", tone: "warn" }));
   }, [open, stored]);
 
   const save = () => {
@@ -95,7 +95,7 @@ function KeyPanel() {
     <div className="key-wrap">
       <button
         className={`key-btn ${stored ? "set" : ""}`}
-        title={stored ? "Access key is set — click to inspect, change, or clear"
+        title={stored ? "Access key is set. Click to inspect, change, or clear"
           : "Set the dashboard access key (needed when AGENTICLEDGER_API_KEY is configured)"}
         onClick={() => setOpen(!open)}
       >
@@ -167,7 +167,7 @@ export default function App() {
           <button
             className="version-chip"
             title={`Agentic Ledger ${version}${version.includes(".dev")
-              ? " — a dev build; its version is stamped at install time"
+              ? " (a dev build; its version is stamped at install time)"
               : ""} · click for settings`}
             onClick={() => setTab("settings")}
           >
@@ -178,7 +178,7 @@ export default function App() {
         )}
         <button
           className={`key-btn ${tab === "settings" ? "set" : ""}`}
-          title="Settings — what the proxy is running with (read-only)"
+          title="Settings: what the proxy is running with (read-only)"
           onClick={() => setTab(tab === "settings" ? "runs" : "settings")}
         >
           ⚙
@@ -186,7 +186,7 @@ export default function App() {
         <KeyPanel />
         <span
           className={`live-dot ${live ? "" : "down"}`}
-          title={live ? "live via WebSocket" : "disconnected — proxy unreachable, retrying"}
+          title={live ? "live via WebSocket" : "disconnected: proxy unreachable, retrying"}
         />
       </div>
       {tab === "runs" ? (
@@ -199,9 +199,11 @@ export default function App() {
         <SessionsView focusSession={focusSession} />
       )}
       <footer className="console-footer">
-        <span>Agentic Ledger — the flight recorder for AI agents. Local-first: everything on this page stays on this machine.</span>
+        <span>Agentic Ledger, the flight recorder for AI agents. Local-first: everything on this page stays on this machine.</span>
         <span className="spacer" />
         <a href="https://agentic-ledger.dev" target="_blank" rel="noreferrer">agentic-ledger.dev</a>
+        {/* README is the documentation until the website grows real doc pages (0.9) */}
+        <a href="https://github.com/ShekharBhardwaj/AgenticLedger#readme" target="_blank" rel="noreferrer">Docs</a>
         <a href="https://github.com/ShekharBhardwaj/AgenticLedger" target="_blank" rel="noreferrer">GitHub</a>
         <a href="https://github.com/ShekharBhardwaj/AgenticLedger/issues" target="_blank" rel="noreferrer">Report an issue</a>
       </footer>

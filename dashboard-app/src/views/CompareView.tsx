@@ -206,7 +206,7 @@ function DriftBlock({ label, a, b }: { label: string; a: string; b: string }) {
       <div className="drift-block">
         <div className="muted">
           {label}: only recorded for one of the runs (the other was captured
-          before this field was stored, or sent none) — nothing to diff.
+          before this field was stored, or sent none), so there is nothing to diff.
         </div>
       </div>
     );
@@ -219,7 +219,7 @@ function DriftBlock({ label, a, b }: { label: string; a: string; b: string }) {
       <div className="drift-block">
         <div className="muted">
           {label}: differs on more than {MAX_EDIT_DISTANCE.toLocaleString()} lines
-          ({aCount} vs {bCount} total) — effectively rewritten; open the first
+          ({aCount} vs {bCount} total), effectively rewritten; open the first
           call of each run to read them whole.
         </div>
       </div>
@@ -256,7 +256,7 @@ function DriftBlock({ label, a, b }: { label: string; a: string; b: string }) {
   return (
     <div className="drift-block">
       <div className="muted">
-        {label} — <span className="diff-del-key">−{dels}</span>{" "}
+        {label}: <span className="diff-del-key">−{dels}</span>{" "}
         <span className="diff-add-key">+{adds}</span> of {Math.max(aCount, bCount)} lines
       </div>
       <pre className="diff">{rows}</pre>
@@ -288,8 +288,8 @@ function ConfigDrift({ a, b }: { a: Call | null; b: Call | null }) {
     <div className="drift-block">
       <div className="muted">
         Configuration{drifted.length === 0
-          ? " — identical in both runs"
-          : " — differences change costs too, not just the prompt"}
+          ? ": identical in both runs"
+          : ": differences change costs too, not just the prompt"}
       </div>
       <table className="rtable" style={{ maxWidth: 640 }}>
         <tbody>
@@ -439,7 +439,7 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
 
       {(ra.firstCall || rb.firstCall) && (
         <>
-          <div className="section-title">Prompt drift — what changed between the runs</div>
+          <div className="section-title">Prompt drift: what changed between the runs</div>
           <ConfigDrift a={ra.firstCall} b={rb.firstCall} />
           <DriftBlock
             label="System prompt"

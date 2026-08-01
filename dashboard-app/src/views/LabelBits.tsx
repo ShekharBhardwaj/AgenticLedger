@@ -11,7 +11,7 @@ export function PinButton({ scope, refId, pinned, onSaved }: {
   return (
     <button
       className={`card-pin ${pinned ? "on" : ""}`}
-      title={pinned ? "Unpin" : "Pin — keeps it at the top of the list"}
+      title={pinned ? "Unpin" : "Pin: keeps it at the top of the list"}
       onClick={(e) => {
         e.stopPropagation();
         setLabel(scope, refId, { pinned: !pinned }).then(onSaved).catch(() => {});
@@ -145,7 +145,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
             Delete “{value}”? Two very different things:
           </div>
           <button className="link-btn" onClick={() => doDelete(false)}>
-            remove project — its {sessionCount ?? "…"} sessions survive, unfiled
+            remove project; its {sessionCount ?? "…"} sessions survive, unfiled
           </button>
           <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
             …or destroy everything under it. Type <b>{value}</b> to unlock:
@@ -159,7 +159,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
           <button className="link-btn project-purge"
                   disabled={confirmText !== value}
                   onClick={() => doDelete(true)}>
-            ⚠ permanently delete project AND its {sessionCount ?? "…"} sessions — calls and all
+            ⚠ permanently delete project AND its {sessionCount ?? "…"} sessions, calls and all
           </button>
           {error && <div className="key-status warn">{error}</div>}
           <div className="key-actions">
@@ -172,7 +172,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
       )}
       {!creating ? (
         <button className="link-btn project-new" style={{ marginTop: 0 }}
-                title="Create a project — optionally bound to an app id so its sessions file themselves"
+                title="Create a project, optionally bound to an app id so its sessions file themselves"
                 onClick={() => setCreating(true)}>
           + project
         </button>
@@ -184,7 +184,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
                                      if (e.key === "Escape") setCreating(false); }} />
           <input placeholder="auto-file app id (optional)" value={appId}
                  list="al-known-apps"
-                 title="Sessions and runs carrying this app id file themselves under the project — including ones already captured"
+                 title="Sessions and runs carrying this app id file themselves under the project, including ones already captured"
                  onChange={(e) => setAppId(e.target.value)}
                  onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) save();
                                      if (e.key === "Escape") setCreating(false); }} />

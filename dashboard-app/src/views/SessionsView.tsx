@@ -56,7 +56,7 @@ function ReplayPanel({ call }: { call: Call }) {
   };
 
   const destLabel = (t: ReplayTarget) =>
-    t.local ? `local — ${t.host}` : `${t.provider} — ${t.host}`;
+    t.local ? `local · ${t.host}` : `${t.provider} · ${t.host}`;
 
   const run = () => {
     setBusy(true);
@@ -92,7 +92,7 @@ function ReplayPanel({ call }: { call: Call }) {
           value={model}
           list={models.length > 0 ? `replay-models-${call.action_id}` : undefined}
           onChange={(e) => setModel(e.target.value)}
-          title="Model to replay on — the wire format is translated automatically"
+          title="Model to replay on. The wire format is translated automatically"
         />
         {models.length > 0 && (
           <datalist id={`replay-models-${call.action_id}`}>
@@ -103,7 +103,7 @@ function ReplayPanel({ call }: { call: Call }) {
           {busy ? "Replaying…" : "Run replay"}
         </button>
         <span className="muted">
-          re-sends this exact call where you point it — a local destination is
+          re-sends this exact call where you point it; a local destination is
           free; cloud replays cost real tokens.
         </span>
       </div>
@@ -150,7 +150,7 @@ function WiringGuide() {
     <div className="wiring-guide">
       <div className="section-title">Nothing captured yet</div>
       <div className="muted" style={{ maxWidth: 700 }}>
-        The proxy is up — this page is served by it — but no agent traffic
+        The proxy is up (this page is served by it) but no agent traffic
         has arrived. The three usual reasons, in order:
       </div>
       <ol className="wiring-list">
@@ -163,7 +163,7 @@ function WiringGuide() {
         </li>
         <li>
           <b>The agent runs in Docker.</b> Inside a container,{" "}
-          <span className="mono">localhost</span> means the container itself —
+          <span className="mono">localhost</span> means the container itself;
           use <span className="mono">http://host.docker.internal:{port}</span>
           {" "}instead.
         </li>
@@ -176,7 +176,7 @@ function WiringGuide() {
       </ol>
       <div className="muted" style={{ maxWidth: 700 }}>
         Mis-wired calls that DO reach the proxy are captured with the reason
-        named — so a fully silent dashboard means traffic never arrived here
+        named, so a fully silent dashboard means traffic never arrived here
         at all. Per-framework recipes: docs/integrations in the repo.
       </div>
     </div>
@@ -211,7 +211,7 @@ function SessionHeader({ session, sessionId, calls, onOpenSession }: {
       </div>
       {sourceJob && (
         <div className="replay-signpost">
-          This is {sourceJob.model}'s answer sheet — nothing here was executed.
+          This is {sourceJob.model}'s answer sheet: nothing here was executed.
           The side-by-side comparison lives on the original {sourceJob.scope}
           {sourceJob.scope === "session" && onOpenSession && (
             <>
@@ -222,7 +222,7 @@ function SessionHeader({ session, sessionId, calls, onOpenSession }: {
               </button>
             </>
           )}
-          {sourceJob.scope === "run" && <> — run {sourceJob.ref_id} in Loop Lens.</>}
+          {sourceJob.scope === "run" && <> ({sourceJob.ref_id} in Loop Lens).</>}
         </div>
       )}
       <div className="session-header-sub">
@@ -267,7 +267,7 @@ function CallCard({ call, num, onOpenSession }: {
     <div className="card call-card">
       <div className="call-head" onClick={() => setOpen(!open)}>
         {num != null && (
-          <span className="call-num" title="call number within this session, in time order — the report card uses the same numbers">
+          <span className="call-num" title="call number within this session, in time order; the report card uses the same numbers">
             #{num}
           </span>
         )}
@@ -286,13 +286,13 @@ function CallCard({ call, num, onOpenSession }: {
         )}
         {transient && (
           <span className="badge blocked"
-                title={(call.error_detail ?? "") + " — a provider hiccup clients retry through; not counted as an agent error"}>
+                title={(call.error_detail ?? "") + ". A provider hiccup clients retry through; not counted as an agent error"}>
             transient {call.status_code}
           </span>
         )}
         {probe && (
           <span className="badge fw"
-                title={(call.error_detail ?? "") + " — a routine client probe; not counted as an agent error"}>
+                title={(call.error_detail ?? "") + ". A routine client probe; not counted as an agent error"}>
             probe
           </span>
         )}
@@ -317,7 +317,7 @@ function CallCard({ call, num, onOpenSession }: {
           </span>
         )}
         {call.step_index != null && (
-          <span className="dim" title="position of this call within its inferred thread — assigned by the loop engine">
+          <span className="dim" title="position of this call within its inferred thread, assigned by the loop engine">
             step {call.step_index}
           </span>
         )}
@@ -337,12 +337,12 @@ function CallCard({ call, num, onOpenSession }: {
           {" → "}{fmtNum(call.tokens_out)} tok
         </span>
         {call.cache_read_tokens != null && call.cache_read_tokens > 0 && (
-          <span className="dim" title="prompt-cache reads — billed at a fraction of the input rate">
+          <span className="dim" title="prompt-cache reads, billed at a fraction of the input rate">
             ⚡ {fmtNum(call.cache_read_tokens)} cached
           </span>
         )}
         {call.cache_write_tokens != null && call.cache_write_tokens > 0 && (
-          <span className="dim" title="prompt-cache writes — billed at a premium over the input rate; this is usually where a surprising cost comes from">
+          <span className="dim" title="prompt-cache writes, billed at a premium over the input rate; this is usually where a surprising cost comes from">
             ✍ {fmtNum(call.cache_write_tokens)} written
           </span>
         )}
@@ -375,7 +375,7 @@ function CallCard({ call, num, onOpenSession }: {
             <><h4>Response</h4><pre>{call.content}</pre></>
           ) : call.tool_calls && call.tool_calls.length > 0 ? (
             <><h4>Response</h4>
-              <div className="muted">(no text — the model answered with tool calls below)</div></>
+              <div className="muted">(no text; the model answered with tool calls below)</div></>
           ) : null}
           {call.tool_calls && (
             <><h4>Tool calls</h4><pre>{JSON.stringify(call.tool_calls, null, 2)}</pre></>
@@ -483,7 +483,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             {deleting === s.session_id && (
               <div className="label-edit" onClick={(e) => e.stopPropagation()}>
                 <div className="muted" style={{ fontSize: 12.5 }}>
-                  Delete this session — {s.call_count} calls, permanently?
+                  Delete this session and its {s.call_count} calls, permanently?
                 </div>
                 <div className="key-actions">
                   <button
@@ -526,7 +526,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               {s.project && (
                 <span className="badge fw"
                       title={s.project_auto
-                        ? `filed automatically — this session's app matches the project's binding; assign a project by hand (✎) to override`
+                        ? `filed automatically: this session's app matches the project's binding; assign a project by hand (✎) to override`
                         : "project"}>
                   {s.project}{s.project_auto ? " ·auto" : ""}
                 </span>

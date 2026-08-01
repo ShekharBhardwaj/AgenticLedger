@@ -19,7 +19,7 @@ export function classifyProvider(provider?: string | null, model?: string | null
   // so the model name decides before the wire format does.
   if (LOCAL_FAMILIES.some((f) => m.includes(f)) || m.includes("local")) {
     const family = m.split(/[/:\-]/).filter(Boolean)[0] ?? "local";
-    return { key: "local", label: `${family} — running locally`, letter: letter(family) };
+    return { key: "local", label: `${family}, running locally`, letter: letter(family) };
   }
   if (m.startsWith("claude") || p === "anthropic") {
     return { key: "anthropic", label: "Anthropic", letter: "A" };

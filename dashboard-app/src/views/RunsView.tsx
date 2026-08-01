@@ -38,7 +38,7 @@ function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (
           <p className="muted">
             Tool call on this step: <code>{tools}</code>
             {flag.tool_calls?.[0]?.arguments ? (
-              <> — args <code>{JSON.stringify(flag.tool_calls[0].arguments).slice(0, 120)}</code></>
+              <> · args <code>{JSON.stringify(flag.tool_calls[0].arguments).slice(0, 120)}</code></>
             ) : null}
           </p>
         )}
@@ -159,7 +159,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               {r.project && (
                 <span className="badge fw"
                       title={r.project_auto
-                        ? "filed automatically — this run's app matches the project's binding"
+                        ? "filed automatically: this run's app matches the project's binding"
                         : "project"}>
                   {r.project}{r.project_auto ? " ·auto" : ""}
                 </span>
@@ -220,7 +220,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                       key={String(it.iteration)}
                       className={`bar ${it.error_calls ? "errored" : it.flagged_calls ? "flagged" : ""}`}
                       style={{ height: `${Math.max((100 * (it.cost_usd || 0)) / maxCost, 3)}%` }}
-                      title={`iteration ${it.iteration}: ${fmtUsd(it.cost_usd)}, ${it.call_count} calls — click to open its session`}
+                      title={`iteration ${it.iteration}: ${fmtUsd(it.cost_usd)}, ${it.call_count} calls. Click to open its session`}
                       onClick={() => it.session_id && onOpenSession(it.session_id)}
                     />
                   ))}
@@ -233,7 +233,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
 
                 {flags.length > 0 && (
                   <>
-                    <div className="section-title">Flags — what happened and why</div>
+                    <div className="section-title">Flags: what happened and why</div>
                     {flags.map((f) => (
                       <FlagCard key={f.action_id} flag={f} onOpenSession={onOpenSession} />
                     ))}

@@ -83,6 +83,8 @@ fixed and re-verified in the same session it was found.
   issue tracker. No sticky bar, no viewport tax.
 
 ### Fixed
+- **UI copy dropped its em-dashes.** Every tooltip, hint, and panel now uses
+  plain punctuation. The "no value" placeholder in tables stays.
 - **Deleting a session no longer summons the browser's stock popup.** The
   × now opens an inline confirmation on the card itself — call count, a
   red "delete permanently", and a Cancel — matching the project-delete

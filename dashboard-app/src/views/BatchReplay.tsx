@@ -115,7 +115,7 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
           <option value="auto">auto</option>
           {targets.map((t) => (
             <option key={t.provider} value={t.provider}>
-              {t.local ? `local — ${t.host}` : `${t.provider} — ${t.host}`}
+              {t.local ? `local · ${t.host}` : `${t.provider} · ${t.host}`}
             </option>
           ))}
         </select>
@@ -133,7 +133,7 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
         </button>
         <button className="link-btn" onClick={() => setOpen(false)}>Close</button>
         <span className="muted">
-          every step re-sends its original inputs — local destinations are free
+          every step re-sends its original inputs; local destinations are free
         </span>
       </div>
       {error && <div className="replay-error">{error}</div>}
@@ -181,7 +181,7 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
           {job!.steps.length > 0 && (
             <div className="muted" style={{ marginTop: 6 }}>
               {fumbleSteps.length === 0
-                ? "No fumbles — every step held up."
+                ? "No fumbles: every step held up."
                 : `${fumbleSteps.length} to read:`}{" "}
               {job!.steps.length > fumbleSteps.length && (
                 <button className="link-btn" style={{ marginTop: 0 }}
@@ -194,7 +194,7 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
           {shown.map((st, i) => (
             <div key={st.original_action_id} className="fumble">
               <div className="fumble-head">
-                <span className="mono" title="the call this row grades — same number as in the Calls list">
+                <span className="mono" title="the call this row grades, same number as in the Calls list">
                   {numberOf?.(st.original_action_id)
                     ? `call #${numberOf(st.original_action_id)}`
                     : `step ${job!.steps.indexOf(st) + 1}`}
@@ -221,17 +221,17 @@ export default function BatchReplay({ scope, refId, onOpenSession, numberOf }: {
               {st.status === "ok" && (
                 <div className="replay-grid">
                   <div>
-                    <div className="muted mono">{st.original_model} (original — really ran)</div>
+                    <div className="muted mono">{st.original_model} (original, really ran)</div>
                     <pre>{st.original_content?.trim()
                       || (st.score?.orig_tools.length
-                        ? `(no text — called: ${st.score.orig_tools.join(", ")})`
+                        ? `(no text; called: ${st.score.orig_tools.join(", ")})`
                         : "(no text)")}</pre>
                   </div>
                   <div>
-                    <div className="muted mono">{job!.model} (replay — answer only, nothing executed)</div>
+                    <div className="muted mono">{job!.model} (replay: answer only, nothing executed)</div>
                     <pre>{st.replay_content?.trim()
                       || (st.score?.replay_tools.length
-                        ? `(no text — would have called: ${st.score.replay_tools.join(", ")})`
+                        ? `(no text; would have called: ${st.score.replay_tools.join(", ")})`
                         : "(no answer at all)")}</pre>
                   </div>
                 </div>

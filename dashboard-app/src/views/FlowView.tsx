@@ -141,8 +141,8 @@ export default function FlowView({ calls }: { calls: Call[] }) {
             return (
               <g key={`${e.from}→${e.to}`}>
                 <title>{e.inferred
-                  ? `${e.from} → ${e.to} — cycles back; inferred from call order within a thread`
-                  : `${e.from} → ${e.to} — cycles back (explicit handoff)`}</title>
+                  ? `${e.from} → ${e.to} cycles back; inferred from call order within a thread`
+                  : `${e.from} → ${e.to} cycles back (explicit handoff)`}</title>
                 <path
                   d={`M ${x1 + BOX_W / 2} ${py(a) + BOX_H} C ${x1 + BOX_W / 2} ${dip}, ${x2 - BOX_W / 2} ${dip}, ${x2 - BOX_W / 2} ${py(b) + BOX_H}`}
                   stroke="var(--amber)" strokeWidth="1.4" strokeDasharray="5 4" fill="none" markerEnd="url(#arrow)"
@@ -156,8 +156,8 @@ export default function FlowView({ calls }: { calls: Call[] }) {
           return (
             <g key={`${e.from}→${e.to}`}>
               <title>{e.inferred
-                ? `${e.from} → ${e.to} — inferred from call order (the agent changed between consecutive calls)`
-                : `${e.from} → ${e.to} — explicit handoff`}</title>
+                ? `${e.from} → ${e.to}: inferred from call order (the agent changed between consecutive calls)`
+                : `${e.from} → ${e.to}: explicit handoff`}</title>
               <line
                 x1={px(a) + BOX_W} y1={py(a) + BOX_H / 2}
                 x2={px(b) - 3} y2={py(b) + BOX_H / 2}
