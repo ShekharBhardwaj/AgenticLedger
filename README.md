@@ -107,7 +107,14 @@ Proxy starts on `http://localhost:8000`. Traces are saved to `agenticledger.db` 
 
 **Step 2 — Point your agent at the proxy**
 
-Two changes: set `base_url` to the proxy and add a session ID header to group calls into a run. Everything else — your API key, model, messages — stays exactly the same.
+For Claude Code, BMAD, or OpenClaw, one command writes the config for you
+(backed up, merged, Docker-aware):
+
+```bash
+agenticledger connect claude-code    # or: bmad, openclaw
+```
+
+For everything else, two changes: set `base_url` to the proxy and add a session ID header to group calls into a run. Everything else — your API key, model, messages — stays exactly the same.
 
 **OpenAI:**
 ```python

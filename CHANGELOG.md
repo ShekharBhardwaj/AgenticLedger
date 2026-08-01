@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Built and hardened through two real-framework test rounds (BMAD v6 and a
+Dockerized OpenClaw), which produced twenty-plus findings — every one
+fixed and re-verified in the same session it was found.
+
 ### Added
 - **Replay the whole run** (flagship). 0.7 answered "what would this *call*
   look like on another model?" — 0.8 answers the question that actually
@@ -29,8 +33,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Settings page** (`GET /api/settings` + ⚙ in the dashboard): what the
   proxy is actually running with — config file in effect, upstream, budgets,
   capture and retention, replay targets — each row labeled with where its
-  value came from (file, env, or default). Read-only, admin-only, secrets
-  never shown.
+  value came from (file, env, or default), what it means in plain words,
+  and exactly where to set it. Read-only, admin-only, secrets never shown.
+- **`agenticledger connect <framework>`** — wire claude-code, BMAD, or
+  OpenClaw to the ledger without memorizing anyone's config schema. The
+  OpenClaw writer detects Docker installs (and uses host.docker.internal,
+  since localhost inside a container is the container), satisfies its
+  validator's models-array demands from the config's own model list, and
+  attributes runs via the URL path because OpenClaw can't send headers.
+  Everything written is printed; existing files are backed up and merged.
+- **`agenticledger config set/get/unset/path`** — change one setting from
+  the terminal; the writer reuses the template's own commented lines, so
+  the file stays readable and no key is ever typed blind.
+- **The dashboard diagnoses its own silence.** A ledger with zero captures
+  shows a wiring checklist in the proxy's own concrete URLs (base URL,
+  the /v1 form, Docker's host.docker.internal, upstream match) instead of
+  a blank page — because wrong wiring produces silence, and silence must
+  say what to check.
+- **Report cards are durable and find the reader.** A finished batch
+  comparison reopens itself when its session is selected, survives proxy
+  restarts (rebuilt from the ledger's own replay records), labels its
+  columns "original — really ran" vs "replay — answer only, nothing
+  executed", numbers its rows with the same #N as the session's call
+  list, and explains its headline fraction in plain words.
+- **Sessions grew a header** (human name, always-visible copyable id, team
+  and project chips, live totals), **calls grew numbers and honest token
+  figures** (full input including cache reads/writes, split on hover — no
+  more "2 → 352 tok" next to a \$0.34 price), the call list reads
+  newest-first, and Reports gained a **By-project** table.
+- **Provider marks**: every model carries a small colour chip — clay
+  Anthropic, teal OpenAI, purple for anything running locally (detected
+  from the model name, so an LM Studio qwen is never mislabeled as
+  OpenAI). Deliberately not the providers' logos: no trademarks shipped,
+  no CDN fetches, nothing leaves your machine.
+- **The header shows the running version** (with a DEV tag for editable
+  installs and an explanation of why their stamp can lag), and the filter
+  dropdown gained an **★ all starred** view.
+
+### Fixed
+- **BMAD v6 was entirely undetected** — its personas ship as host-tool
+  skills, not system prompts, so a full real project ran through the proxy
+  tagged plain claude-code. The detector now reads skill invocations (last
+  one wins) and the installed-skill listing; merely *talking about* BMAD
+  still doesn't count.
+- **Failed calls always say why and where** ("upstream 404 on POST
+  /v1/messages (no error body)") — a red badge with no reason was a dead
+  end, and a wire-format mismatch (Anthropic agent, OpenAI upstream) now
+  names itself instead of masquerading as "model does not exist".
+- **Flow no longer draws one story as islands**: a detected persona change
+  between consecutive calls becomes an inferred (dotted) handoff edge.
+- **The report card resets when you switch sessions** — session A's
+  comparison no longer haunts session B's page.
 
 ## [0.7.0] - 2026-07-31
 
