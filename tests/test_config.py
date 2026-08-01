@@ -176,3 +176,9 @@ def test_settings_page_is_admin_only_and_masks_secrets(proxy, monkeypatch, tmp_p
     assert rows[("Budgets", "daily (whole ledger)")]["value"] == "25.0"
     assert rows[("Budgets", "daily (whole ledger)")]["source"] == "file"
     assert "OPEN RELAY" in rows[("Access", "ingest key (relay)")]["value"]
+    # The page explains itself: plain words + where to set it (#50 follow-up).
+    upstream = rows[("Proxy", "upstream")]
+    assert "forwarded" in upstream["means"]
+    assert "[proxy] upstream_url" in upstream["set_with"]
+    assert "AGENTICLEDGER_UPSTREAM_URL" in upstream["set_with"]
+    assert all(r["means"] for r in body["rows"])

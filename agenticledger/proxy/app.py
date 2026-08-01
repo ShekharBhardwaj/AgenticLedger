@@ -752,9 +752,14 @@ def create_app(
         def key_state(present: bool) -> str:
             return "set (hidden)" if present else "not set"
 
-        def row(section: str, label: str, value, env: Optional[str] = None) -> dict:
+        def row(section: str, label: str, value, env: Optional[str] = None,
+                means: str = "", key: str = "") -> dict:
+            """One settings row. `means` explains it in plain words and `key`
+            names where to set it — the page should not need a translator."""
+            set_with = " · ".join(x for x in (key, env) if x)
             return {"section": section, "label": label,
-                    "value": "—" if value is None else str(value), "source": src(env)}
+                    "value": "—" if value is None else str(value),
+                    "source": src(env), "means": means, "set_with": set_with}
 
         try:
             from importlib.metadata import version as _v
@@ -769,44 +774,110 @@ def create_app(
                        "reinstall to refresh)"
         cfg = find_config()
         rows = [
-            row("Proxy", "version", version),
-            row("Proxy", "config file", str(cfg) if cfg else "none — using env vars and defaults"),
-            row("Proxy", "upstream", upstream_url, "AGENTICLEDGER_UPSTREAM_URL"),
-            row("Proxy", "database", masked_dsn(dsn), "AGENTICLEDGER_DSN"),
-            row("Proxy", "port", os.environ.get("AGENTICLEDGER_PORT", "8000"), "AGENTICLEDGER_PORT"),
-            row("Access", "dashboard key", key_state(_auth_enabled), "AGENTICLEDGER_API_KEY"),
+            row("Proxy", "version", version,
+                means="Which build is running."),
+            row("Proxy", "config file",
+                str(cfg) if cfg else "none — using env vars and defaults",
+                means="The file this proxy actually read. Searched in order: "
+                      "AGENTICLEDGER_CONFIG, ./agenticledger.toml, "
+                      "~/.agenticledger/config.toml.",
+                key="AGENTICLEDGER_CONFIG"),
+            row("Proxy", "upstream", upstream_url, "AGENTICLEDGER_UPSTREAM_URL",
+                means="Where your agents' calls are forwarded.",
+                key="[proxy] upstream_url"),
+            row("Proxy", "database", masked_dsn(dsn), "AGENTICLEDGER_DSN",
+                means="Where the ledger is stored — a SQLite file or Postgres.",
+                key="[proxy] db"),
+            row("Proxy", "port", os.environ.get("AGENTICLEDGER_PORT", "8000"),
+                "AGENTICLEDGER_PORT",
+                means="The port the proxy and dashboard listen on.",
+                key="[proxy] port"),
+            row("Access", "dashboard key", key_state(_auth_enabled),
+                "AGENTICLEDGER_API_KEY",
+                means="The key needed to read the ledger. Not set means anyone "
+                      "who can reach this port can read everything.",
+                key="[keys] api_key / api_key_file"),
             row("Access", "ingest key (relay)",
                 key_state(bool(_ingest_key)) + ("" if _ingest_key else " — OPEN RELAY"),
-                "AGENTICLEDGER_INGEST_KEY"),
-            row("Access", "audit log", "on" if _audit_enabled else "off", "AGENTICLEDGER_AUDIT_LOG"),
-            row("Budgets", "daily (whole ledger)", budget_daily, "AGENTICLEDGER_BUDGET_DAILY"),
-            row("Budgets", "per session", budget_session, "AGENTICLEDGER_BUDGET_SESSION"),
-            row("Budgets", "per agent / day", budget_agent, "AGENTICLEDGER_BUDGET_AGENT"),
-            row("Budgets", "per user / day", budget_user, "AGENTICLEDGER_BUDGET_USER"),
+                "AGENTICLEDGER_INGEST_KEY",
+                means="The key agents must present to send calls through. Open "
+                      "relay means anyone who can reach this port can spend your "
+                      "provider credit. Team cards work here too.",
+                key="[keys] ingest_key / ingest_key_file"),
+            row("Access", "audit log", "on" if _audit_enabled else "off",
+                "AGENTICLEDGER_AUDIT_LOG",
+                means="Records who viewed, exported, or deleted what."),
+            row("Budgets", "daily (whole ledger)", budget_daily,
+                "AGENTICLEDGER_BUDGET_DAILY",
+                means="Hard ceiling across everything, per UTC day. Enforced "
+                      "before the call reaches the provider.",
+                key="[budgets] daily"),
+            row("Budgets", "per session", budget_session,
+                "AGENTICLEDGER_BUDGET_SESSION",
+                means="Ceiling for a single session — one chat, one story cycle.",
+                key="[budgets] session"),
+            row("Budgets", "per agent / day", budget_agent,
+                "AGENTICLEDGER_BUDGET_AGENT",
+                means="Ceiling per agent name, per UTC day.",
+                key="[budgets] agent"),
+            row("Budgets", "per user / day", budget_user,
+                "AGENTICLEDGER_BUDGET_USER",
+                means="Ceiling per user id, per UTC day.",
+                key="[budgets] user"),
             row("Budgets", "on breach", f"{budget_action} → HTTP {budget_status}",
-                "AGENTICLEDGER_BUDGET_ACTION"),
-            row("Capture", "level", _capture_level, "AGENTICLEDGER_CAPTURE_LEVEL"),
+                "AGENTICLEDGER_BUDGET_ACTION",
+                means="What happens at the wall: block the call or only warn, and "
+                      "which answer the agent gets — 429 says 'come back later' "
+                      "(with Retry-After), 402 says 'no' and stops retries.",
+                key="[budgets] status"),
+            row("Capture", "level", _capture_level, "AGENTICLEDGER_CAPTURE_LEVEL",
+                means="full stores prompts and answers; metadata stores only the "
+                      "numbers (tokens, cost, latency)."),
             row("Capture", "async capture", "on" if _async_capture else "off",
-                "AGENTICLEDGER_ASYNC_CAPTURE"),
-            row("Capture", "redaction", "on" if redactor else "off", "AGENTICLEDGER_REDACT"),
-            row("Capture", "retention (days)", retention_days, "AGENTICLEDGER_RETENTION_DAYS"),
-            row("Loops", "circuit breaker", _loop_action, "AGENTICLEDGER_LOOP_ACTION"),
+                "AGENTICLEDGER_ASYNC_CAPTURE",
+                means="Write records in the background so capturing never adds "
+                      "latency to your agent's call."),
+            row("Capture", "redaction", "on" if redactor else "off",
+                "AGENTICLEDGER_REDACT",
+                means="Scrub emails, cards, and keys out of the STORED copy. What "
+                      "your agent sends and receives is never modified."),
+            row("Capture", "retention (days)", retention_days,
+                "AGENTICLEDGER_RETENTION_DAYS",
+                means="Delete captured calls older than this many days."),
+            row("Loops", "circuit breaker", _loop_action, "AGENTICLEDGER_LOOP_ACTION",
+                means="warn flags a stuck loop in the dashboard; block actually "
+                      "stops it before it burns more quota."),
             row("Loops", "completion promise", completion_promise or None,
-                "AGENTICLEDGER_COMPLETION_PROMISE"),
+                "AGENTICLEDGER_COMPLETION_PROMISE",
+                means="The phrase your loop prints to declare victory — what turns "
+                      "a run 'complete' instead of merely 'ended'.",
+                key="[proxy] completion_promise"),
             row("Replay", "same-provider replay",
-                "on" if replay_api_key else "off", "AGENTICLEDGER_REPLAY_API_KEY"),
+                "on" if replay_api_key else "off", "AGENTICLEDGER_REPLAY_API_KEY",
+                means="Key for re-running a captured call on its own provider. The "
+                      "proxy never stores your agents' credentials, so replay needs "
+                      "its own.",
+                key="[replay] api_key / api_key_file"),
         ]
         for prov, tcfg in (replay_targets or {}).items():
             host = urlparse(tcfg["url"]).netloc or tcfg["url"]
             local = host.split(":")[0] in ("localhost", "127.0.0.1")
             rows.append(row("Replay", f"target: {prov}",
                             f"{host}{' (local — free)' if local else ''}",
-                            f"AGENTICLEDGER_REPLAY_{prov.upper()}_URL"))
+                            f"AGENTICLEDGER_REPLAY_{prov.upper()}_URL",
+                            means=("A local destination — replays here cost nothing."
+                                   if local else
+                                   f"Replays sent here run on {prov} and cost real tokens."),
+                            key=f"[replay] {prov}_url + {prov}_key"))
         rows.append(row("Alerts", "webhook",
                         key_state(bool(_alert_config and _alert_config.webhook_url)),
-                        "AGENTICLEDGER_ALERT_WEBHOOK_URL"))
+                        "AGENTICLEDGER_ALERT_WEBHOOK_URL",
+                        means="Where alerts are posted — Slack, Discord, PagerDuty. "
+                              "Alerts notify after the fact; budgets block before."))
         rows.append(row("Alerts", "daily digest (UTC hour)", digest_hour,
-                        "AGENTICLEDGER_DIGEST_HOUR"))
+                        "AGENTICLEDGER_DIGEST_HOUR",
+                        means="Hour of day to post a last-24h spend summary to the "
+                              "webhook above."))
         return JSONResponse({"rows": rows})
 
     @app.get("/api/calls/{action_id}")
