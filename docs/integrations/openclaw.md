@@ -47,6 +47,19 @@ does not):
 }
 ```
 
+> **Running OpenClaw in Docker?** (the ghcr.io/openclaw/openclaw image —
+> if your config's workspace path looks like `/home/node/...`, that's you.)
+> Inside a container, `127.0.0.1` means *the container*, so the override
+> must use Docker's name for your machine:
+>
+> ```json5
+> baseUrl: "http://host.docker.internal:8000"
+> ```
+>
+> The failure mode of getting this wrong is silence — OpenClaw runs
+> normally, the ledger just never sees a call. The dashboard's empty state
+> walks through exactly this checklist.
+
 For OpenAI-compatible providers, point their `baseUrl` at
 `http://127.0.0.1:8000/v1` the same way.
 

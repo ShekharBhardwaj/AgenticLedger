@@ -140,6 +140,49 @@ import WhatIf from "./WhatIf";
 
 type Mode = "calls" | "flow" | "trace";
 
+/** Zero-state that diagnoses instead of shrugging: wrong wiring produces
+ *  silence, so the silence itself must say what to check. The dashboard's
+ *  own origin IS the proxy address — show the exact URLs to use. */
+function WiringGuide() {
+  const origin = window.location.origin;
+  const port = window.location.port || "8000";
+  return (
+    <div className="wiring-guide">
+      <div className="section-title">Nothing captured yet</div>
+      <div className="muted" style={{ maxWidth: 700 }}>
+        The proxy is up — this page is served by it — but no agent traffic
+        has arrived. The three usual reasons, in order:
+      </div>
+      <ol className="wiring-list">
+        <li>
+          <b>The agent's base URL isn't pointed here.</b> Point it at{" "}
+          <span className="mono">{origin}</span>
+          {" "}(OpenAI-style clients add <span className="mono">/v1</span>:{" "}
+          <span className="mono">{origin}/v1</span>). Claude Code:{" "}
+          <span className="mono">ANTHROPIC_BASE_URL={origin}</span>.
+        </li>
+        <li>
+          <b>The agent runs in Docker.</b> Inside a container,{" "}
+          <span className="mono">localhost</span> means the container itself —
+          use <span className="mono">http://host.docker.internal:{port}</span>
+          {" "}instead.
+        </li>
+        <li>
+          <b>The upstream doesn't match the agent.</b> An Anthropic agent needs{" "}
+          <span className="mono">upstream_url = "https://api.anthropic.com"</span>;
+          an OpenAI-style one needs the OpenAI URL or your gateway. The ⚙
+          settings page shows what this proxy is running with.
+        </li>
+      </ol>
+      <div className="muted" style={{ maxWidth: 700 }}>
+        Mis-wired calls that DO reach the proxy are captured with the reason
+        named — so a fully silent dashboard means traffic never arrived here
+        at all. Per-framework recipes: docs/integrations in the repo.
+      </div>
+    </div>
+  );
+}
+
 /** #62 — the call list says what it is: name, the id (always visible and
  *  copyable, even after a rename), chips, and totals that update live. */
 function SessionHeader({ session, sessionId, calls, onOpenSession }: {
@@ -485,7 +528,9 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             ))}
           </div>
         )}
-        {shown.length === 0 ? (
+        {sessions.length === 0 && results === null ? (
+          <WiringGuide />
+        ) : shown.length === 0 ? (
           <div className="empty">
             {results !== null ? "No matches." : "Select a session to inspect its calls."}
           </div>

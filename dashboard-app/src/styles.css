@@ -560,6 +560,13 @@ mark.w-del { background: rgba(248, 81, 73, 0.38); color: inherit; border-radius:
 
 .svg-scroll { overflow-x: auto; padding-bottom: 8px; }
 .empty { color: var(--text-dim); text-align: center; margin-top: 80px; font-size: 14px; }
+.wiring-guide { max-width: 720px; margin: 40px auto 0; }
+.wiring-list { padding-left: 20px; line-height: 1.7; font-size: 13.5px; }
+.wiring-list li { margin: 10px 0; }
+.wiring-list .mono {
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0 5px; font-size: 12px;
+}
 .section-title {
   font-size: 14px; font-weight: 650; margin: 22px 0 8px;
   letter-spacing: -0.005em;
