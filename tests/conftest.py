@@ -98,7 +98,10 @@ def proxy() -> Callable[..., ProxyClient]:
 
     def _make(handler: Optional[Any] = None, **app_kwargs: Any) -> ProxyClient:
         upstream = MockUpstream(handler)
-        app = create_app(upstream_url=UPSTREAM_URL, dsn="sqlite:///:memory:", **app_kwargs)
+        # Tests may declare a specific upstream (e.g. to exercise wire-format
+        # mismatch detection); traffic still goes to the mock transport.
+        app_kwargs.setdefault("upstream_url", UPSTREAM_URL)
+        app = create_app(dsn="sqlite:///:memory:", **app_kwargs)
         tc: ProxyClient = TestClient(app)  # type: ignore[assignment]
         tc.__enter__()  # runs lifespan → sets app.state.store and app.state.client
         # Replace the real upstream client with one backed by the mock transport.

@@ -990,3 +990,29 @@ def test_failed_stream_names_its_endpoint_too(proxy):
     assert resp.status_code == 404
     rec = client.get("/session/err-2").json()[0]
     assert "upstream 404" in rec["error_detail"] and "/v1/messages" in rec["error_detail"]
+
+
+def test_anthropic_call_to_openai_upstream_explains_itself(proxy):
+    """The most confusing misconfiguration there is: the provider answers 404
+    with no body and the agent says 'that model does not exist'."""
+    client = proxy(handler=lambda r: httpx.Response(404, content=b""),
+                   upstream_url="https://api.openai.com")
+    client.post("/v1/messages",
+                json={"model": "claude-opus-5", "max_tokens": 16,
+                      "messages": [{"role": "user", "content": "hi"}]},
+                headers={"x-agenticledger-session-id": "mismatch-1"})
+    detail = client.get("/session/mismatch-1").json()[0]["error_detail"]
+    assert "anthropic-format request" in detail
+    assert "api.openai.com" in detail and "upstream_url" in detail
+
+
+def test_matching_and_unknown_upstreams_stay_quiet(proxy):
+    from agenticledger.proxy.app import wire_format_mismatch
+
+    assert wire_format_mismatch("v1/messages", "https://api.anthropic.com") == ""
+    assert wire_format_mismatch("v1/chat/completions", "https://api.openai.com") == ""
+    # Gateways and local servers speak whatever they like — not our business.
+    assert wire_format_mismatch("v1/chat/completions", "http://localhost:1234") == ""
+    assert wire_format_mismatch("v1/messages", "http://localhost:4000") == ""
+    assert "openai-format" in wire_format_mismatch(
+        "v1/chat/completions", "https://api.anthropic.com")

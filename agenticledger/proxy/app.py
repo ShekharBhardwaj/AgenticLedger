@@ -1783,6 +1783,10 @@ def create_app(
                     canonical_resp = _empty_response(latency_ms)
                     error_detail = _extract_error(
                         upstream_resp, f"{request.method} /{path}")
+                    mismatch = wire_format_mismatch(path, upstream_url)
+                    if mismatch:
+                        error_detail = f"{error_detail} — {mismatch}"
+                        _warn_wire_mismatch(mismatch)
                 await _capture(_CaptureJob(
                     action_id, canonical_req, canonical_resp,
                     status_code, error_detail, meta, _budget_warning,
@@ -1851,6 +1855,10 @@ async def _streaming_proxy(
         body_text = raw.decode("utf-8", errors="replace").strip()[:300]
         head = f"upstream {upstream.status_code} on {request.method} /{path}"
         detail = f"{head}: {body_text}" if body_text else f"{head} (no error body)"
+        mismatch = wire_format_mismatch(path, str(client.base_url))
+        if mismatch:
+            detail = f"{detail} — {mismatch}"
+            _warn_wire_mismatch(mismatch)
         return _CaptureJob(
             action_id, canonical_req, _empty_response(latency_ms),
             upstream.status_code, detail, meta, budget_warning,
@@ -1986,6 +1994,45 @@ def _empty_response(latency_ms: float) -> CanonicalResponse:
         content=None, tool_calls=None, stop_reason=None,
         tokens_in=None, tokens_out=None, latency_ms=latency_ms,
     )
+
+
+_WIRE_FORMATS = (
+    ("anthropic", ("v1/messages", "v1/complete")),
+    ("openai", ("v1/chat/completions", "v1/completions", "v1/responses",
+                "v1/embeddings")),
+)
+
+
+def wire_format_mismatch(path: str, upstream_url: str) -> str:
+    """The single most confusing misconfiguration: an Anthropic-shaped call
+    sent to an OpenAI upstream (or vice versa). The provider answers 404 with
+    no body and the agent reports 'that model does not exist', which sends
+    people hunting for the wrong problem. Returns a hint, or "" when the pair
+    is fine or unknown."""
+    p = path.lstrip("/").lower()
+    sent = next((name for name, prefixes in _WIRE_FORMATS
+                 if any(p.startswith(pre) for pre in prefixes)), "")
+    host = (upstream_url or "").lower()
+    serves = ("anthropic" if "anthropic.com" in host
+              else "openai" if "openai.com" in host else "")
+    if not sent or not serves or sent == serves:
+        return ""   # gateways and local servers are none of our business
+    return (f"This is a {sent}-format request but the proxy's upstream is "
+            f"{upstream_url}, which serves {serves}. Point "
+            f"AGENTICLEDGER_UPSTREAM_URL (or [proxy] upstream_url) at the "
+            f"right provider — one proxy fronts one provider at a time.")
+
+
+_warned_mismatch = False
+
+
+def _warn_wire_mismatch(hint: str) -> None:
+    """Say it in the terminal too, once — the person debugging is usually
+    watching the log, not the dashboard."""
+    global _warned_mismatch
+    if not _warned_mismatch:
+        _warned_mismatch = True
+        logger.warning("Upstream mismatch: %s", hint)
 
 
 def _extract_error(resp: httpx.Response, where: str = "") -> str:
