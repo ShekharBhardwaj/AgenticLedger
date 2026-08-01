@@ -676,6 +676,87 @@ def create_app(
         await _audit(principal, request, "run_end", run_id, "runner exit signal")
         return JSONResponse({"run_id": run_id, "status": "ended"})
 
+    @app.get("/api/settings")
+    async def api_settings(request: Request) -> JSONResponse:
+        """What is this proxy actually running with? Read-only, admin-only,
+        secrets masked — answers "why isn't my budget working?" by looking.
+        Each row says where its value came from: the config file, an
+        environment variable, or the built-in default."""
+        await _require(request, ROLE_ADMIN)
+        from ..config import applied_from_file, find_config
+
+        def src(env_name: Optional[str]) -> str:
+            if env_name is None:
+                return "default"
+            if env_name in applied_from_file:
+                return "file"
+            if env_name in os.environ:
+                return "env"
+            return "default"
+
+        def masked_dsn(value: str) -> str:
+            try:
+                p = urlparse(value)
+                if p.password:
+                    return value.replace(f":{p.password}@", ":•••@")
+            except Exception:
+                pass
+            return value
+
+        def key_state(present: bool) -> str:
+            return "set (hidden)" if present else "not set"
+
+        def row(section: str, label: str, value, env: Optional[str] = None) -> dict:
+            return {"section": section, "label": label,
+                    "value": "—" if value is None else str(value), "source": src(env)}
+
+        try:
+            from importlib.metadata import version as _v
+            version = _v("agentic-ledger")
+        except Exception:
+            version = "unknown"
+        cfg = find_config()
+        rows = [
+            row("Proxy", "version", version),
+            row("Proxy", "config file", str(cfg) if cfg else "none — using env vars and defaults"),
+            row("Proxy", "upstream", upstream_url, "AGENTICLEDGER_UPSTREAM_URL"),
+            row("Proxy", "database", masked_dsn(dsn), "AGENTICLEDGER_DSN"),
+            row("Proxy", "port", os.environ.get("AGENTICLEDGER_PORT", "8000"), "AGENTICLEDGER_PORT"),
+            row("Access", "dashboard key", key_state(_auth_enabled), "AGENTICLEDGER_API_KEY"),
+            row("Access", "ingest key (relay)",
+                key_state(bool(_ingest_key)) + ("" if _ingest_key else " — OPEN RELAY"),
+                "AGENTICLEDGER_INGEST_KEY"),
+            row("Access", "audit log", "on" if _audit_enabled else "off", "AGENTICLEDGER_AUDIT_LOG"),
+            row("Budgets", "daily (whole ledger)", budget_daily, "AGENTICLEDGER_BUDGET_DAILY"),
+            row("Budgets", "per session", budget_session, "AGENTICLEDGER_BUDGET_SESSION"),
+            row("Budgets", "per agent / day", budget_agent, "AGENTICLEDGER_BUDGET_AGENT"),
+            row("Budgets", "per user / day", budget_user, "AGENTICLEDGER_BUDGET_USER"),
+            row("Budgets", "on breach", f"{budget_action} → HTTP {budget_status}",
+                "AGENTICLEDGER_BUDGET_ACTION"),
+            row("Capture", "level", _capture_level, "AGENTICLEDGER_CAPTURE_LEVEL"),
+            row("Capture", "async capture", "on" if _async_capture else "off",
+                "AGENTICLEDGER_ASYNC_CAPTURE"),
+            row("Capture", "redaction", "on" if redactor else "off", "AGENTICLEDGER_REDACT"),
+            row("Capture", "retention (days)", retention_days, "AGENTICLEDGER_RETENTION_DAYS"),
+            row("Loops", "circuit breaker", _loop_action, "AGENTICLEDGER_LOOP_ACTION"),
+            row("Loops", "completion promise", completion_promise or None,
+                "AGENTICLEDGER_COMPLETION_PROMISE"),
+            row("Replay", "same-provider replay",
+                "on" if replay_api_key else "off", "AGENTICLEDGER_REPLAY_API_KEY"),
+        ]
+        for prov, tcfg in (replay_targets or {}).items():
+            host = urlparse(tcfg["url"]).netloc or tcfg["url"]
+            local = host.split(":")[0] in ("localhost", "127.0.0.1")
+            rows.append(row("Replay", f"target: {prov}",
+                            f"{host}{' (local — free)' if local else ''}",
+                            f"AGENTICLEDGER_REPLAY_{prov.upper()}_URL"))
+        rows.append(row("Alerts", "webhook",
+                        key_state(bool(_alert_config and _alert_config.webhook_url)),
+                        "AGENTICLEDGER_ALERT_WEBHOOK_URL"))
+        rows.append(row("Alerts", "daily digest (UTC hour)", digest_hour,
+                        "AGENTICLEDGER_DIGEST_HOUR"))
+        return JSONResponse({"rows": rows})
+
     @app.get("/api/calls/{action_id}")
     async def api_get_call(action_id: str, request: Request) -> JSONResponse:
         """One call by id — lets the dashboard follow a replay's

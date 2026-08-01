@@ -214,6 +214,9 @@ body {
 .badge.team     { background: rgba(78,161,255,.14); color: var(--accent); font-family: var(--mono); font-weight: 500; }
 .badge.blocked  { background: rgba(210,153,34,.16); color: var(--amber); }
 .badge.replay   { background: rgba(183,138,245,.15); color: var(--purple); }
+.badge.src-file    { background: rgba(78,161,255,.14); color: var(--accent); }
+.badge.src-env     { background: rgba(210,153,34,.16); color: var(--amber); }
+.badge.src-default { background: var(--bg-hover); color: var(--text-dim); }
 
 /* Interaction-type indicators: who is talking to whom in this call. */
 .badge.proto      { font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; }

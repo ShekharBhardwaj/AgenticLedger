@@ -3,8 +3,9 @@ import { connectionStatus, whoami, WhoAmI } from "./api";
 import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
+import SettingsView from "./views/SettingsView";
 
-type Tab = "runs" | "sessions" | "reports";
+type Tab = "runs" | "sessions" | "reports" | "settings";
 
 /** Abstract raccoon mark: geometric head, triangle ears, and the signature
  *  mask band in accent blue with punched-out eyes. Flat, two-tone — a nod to
@@ -160,6 +161,13 @@ export default function App() {
           </button>
         </div>
         <span className="spacer" />
+        <button
+          className={`key-btn ${tab === "settings" ? "set" : ""}`}
+          title="Settings — what the proxy is running with (read-only)"
+          onClick={() => setTab(tab === "settings" ? "runs" : "settings")}
+        >
+          ⚙
+        </button>
         <KeyPanel />
         <span
           className={`live-dot ${live ? "" : "down"}`}
@@ -170,6 +178,8 @@ export default function App() {
         <RunsView onOpenSession={openSession} />
       ) : tab === "reports" ? (
         <ReportsView />
+      ) : tab === "settings" ? (
+        <SettingsView />
       ) : (
         <SessionsView focusSession={focusSession} />
       )}

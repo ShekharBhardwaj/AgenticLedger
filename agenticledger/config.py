@@ -29,6 +29,11 @@ else:  # pragma: no cover - exercised on 3.10 CI only
 
 logger = logging.getLogger("agenticledger.config")
 
+# Names apply_config actually set (i.e. they came from the file, not the
+# user's environment) — lets the settings page answer "where did this value
+# come from?" instead of making the user guess.
+applied_from_file: set[str] = set()
+
 # config key → environment variable. The env pipeline stays the single
 # source of truth; the file is just a friendlier way to fill it.
 _KEY_MAP: dict[str, dict[str, str]] = {
@@ -142,7 +147,9 @@ def apply_config(explicit: Optional[str] = None) -> Optional[Path]:
                 continue
             if key.endswith("_file") or key.endswith("_FILE"):
                 value = str(Path(str(value)).expanduser())
-            os.environ.setdefault(env_name, _plain(value))
+            if env_name not in os.environ:
+                os.environ[env_name] = _plain(value)
+                applied_from_file.add(env_name)
     return path
 
 

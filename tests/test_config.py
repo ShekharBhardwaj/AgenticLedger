@@ -153,3 +153,26 @@ def test_cli_wires_the_subcommands(tmp_path, capsys):
 # The proxy fixture used across the suite sets env directly; make sure the
 # _clean_env fixture here didn't leak into other files via import order.
 assert "proxy" not in dir(sys.modules[__name__])
+
+
+def test_settings_page_is_admin_only_and_masks_secrets(proxy, monkeypatch, tmp_path):
+    """#50: read-only settings — admin sees what's running, never the secrets."""
+    (tmp_path / "agenticledger.toml").write_text("[budgets]\ndaily = 25.0\n")
+    apply_config()
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy(budget_daily=25.0)
+    master = {"x-agenticledger-api-key": "master-key"}
+
+    assert client.get("/api/settings").status_code == 401
+    viewer = client.post("/api/tokens", json={"name": "v", "role": "viewer"},
+                         headers=master).json()["token"]
+    assert client.get("/api/settings",
+                      headers={"Authorization": f"Bearer {viewer}"}).status_code == 403
+
+    body = client.get("/api/settings", headers=master).json()
+    rows = {(r["section"], r["label"]): r for r in body["rows"]}
+    assert rows[("Access", "dashboard key")]["value"] == "set (hidden)"
+    assert "master-key" not in str(body)
+    assert rows[("Budgets", "daily (whole ledger)")]["value"] == "25.0"
+    assert rows[("Budgets", "daily (whole ledger)")]["source"] == "file"
+    assert "OPEN RELAY" in rows[("Access", "ingest key (relay)")]["value"]
