@@ -61,22 +61,37 @@ export function LabelEditor({ scope, refId, label, project, projects, onSaved, o
   );
 }
 
-/** Filter dropdown shown only once projects exist. */
-export function ProjectFilter({ projects, value, onChange }: {
+export const STARRED = "__starred__";
+
+/** Filter dropdown: two built-in views (everything, everything starred)
+ *  followed by the projects the user named. Hidden only when there is
+ *  nothing to filter by yet. */
+export function ProjectFilter({ projects, value, onChange, hasPinned }: {
   projects: string[]; value: string; onChange: (v: string) => void;
+  hasPinned?: boolean;
 }) {
-  if (projects.length === 0) return null;
+  if (projects.length === 0 && !hasPinned) return null;
   return (
     <select
       className="project-filter"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      title="Show only one project's work"
+      title="Narrow the list: everything, everything starred, or one project"
     >
       <option value="">all projects</option>
+      <option value={STARRED}>★ all starred</option>
       {projects.map((p) => <option key={p} value={p}>{p}</option>)}
     </select>
   );
+}
+
+/** Does a row belong in the current filter view? */
+export function matchesFilter<T extends { pinned: boolean; project: string | null }>(
+  row: T, filter: string,
+): boolean {
+  if (!filter) return true;
+  if (filter === STARRED) return row.pinned;
+  return row.project === filter;
 }
 
 /** Pinned first, otherwise keep the incoming (recency) order. */

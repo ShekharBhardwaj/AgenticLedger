@@ -5,7 +5,7 @@ import {
  listProjects,
 } from "../api";
 import CompareView from "./CompareView";
-import { LabelEditor, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
 import ProviderMark from "./ProviderMark";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
@@ -105,8 +105,9 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             </span>
           </div>
         )}
-        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter} />
-        {pinnedFirst(runs.filter((r) => !projectFilter || r.project === projectFilter)).map((r) => (
+        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
+                       hasPinned={runs.some((x) => x.pinned)} />
+        {pinnedFirst(runs.filter((r) => matchesFilter(r, projectFilter))).map((r) => (
           <div
             key={r.run_id}
             className={`card ${selected === r.run_id ? "selected" : ""}`}

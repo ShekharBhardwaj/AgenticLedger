@@ -188,6 +188,10 @@ body {
   font-variant-numeric: tabular-nums;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Sidebar cards carry up to three controls in the corner (✎ ★ × / ⇆).
+   Reserve that space permanently so a long id ellipsises clear of them —
+   and so the title doesn't reflow when hovering reveals the buttons. */
+.sidebar .card-title { padding-right: 74px; }
 .card-sub {
   color: var(--text-dim); font-size: 12px; margin-top: 5px;
   display: flex; gap: 10px; flex-wrap: wrap; align-items: center;

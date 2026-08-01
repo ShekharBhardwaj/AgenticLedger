@@ -4,7 +4,7 @@ import {
   getCall, interactionTags, listProjects, liveUpdates, post, ReplayResult,
   replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
-import { LabelEditor, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
 import ProviderMark from "./ProviderMark";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
@@ -301,8 +301,9 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter} />
-        {pinnedFirst(sessions.filter((s) => !projectFilter || s.project === projectFilter)).map((s) => (
+        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
+                       hasPinned={sessions.some((x) => x.pinned)} />
+        {pinnedFirst(sessions.filter((s) => matchesFilter(s, projectFilter))).map((s) => (
           <div
             key={s.session_id}
             className={`card ${selected === s.session_id ? "selected" : ""} ${s.session_id.startsWith("replay-") ? "replay" : ""} ${(s.error_count ?? 0) > 0 ? "has-errors" : ""}`}
