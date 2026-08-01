@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-31
+
+Teams, free time travel, and the start of premiumness. Every feature and
+fix below was hand-tested in a full guided walkthrough (16 findings filed
+during testing, all fixed and re-verified) plus a second retest round.
+
 ### Added (premium ops)
 - **One config file instead of nine env vars.** `agenticledger init` writes
   a commented `agenticledger.toml` (upstream, keys or key-file paths,
