@@ -122,7 +122,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
           <button className="link-btn project-delete" style={{ marginTop: 0 }}
                   title="Delete this project"
                   onClick={() => { setManaging("delete"); setError(null); }}>
-            ×
+            🗑
           </button>
         </>
       )}
