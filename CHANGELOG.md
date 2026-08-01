@@ -71,6 +71,11 @@ fixed and re-verified in the same session it was found.
   dropdown gained an **★ all starred** view.
 
 ### Fixed
+- **Red means "your agent had a problem" — nothing else.** The errors
+  column no longer counts Claude Code's routine quota probes or upstream
+  429/503/529s that clients retry through; both are labeled on the call
+  (probe, transient) and excluded from every error count, completing what
+  the blocked-vs-errors split started.
 - **BMAD v6 was entirely undetected** — its personas ship as host-tool
   skills, not system prompts, so a full real project ran through the proxy
   tagged plain claude-code. The detector now reads skill invocations (last

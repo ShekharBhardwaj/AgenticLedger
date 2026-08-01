@@ -1893,8 +1893,9 @@ def create_app(
                     error_detail = f"budget_warning: {_budget_warning}" if _budget_warning else None
                 else:
                     canonical_resp = _empty_response(latency_ms)
-                    error_detail = _extract_error(
-                        upstream_resp, f"{request.method} /{path}")
+                    error_detail = _classify_failure(
+                        status_code, body_json,
+                        _extract_error(upstream_resp, f"{request.method} /{path}"))
                     mismatch = wire_format_mismatch(path, upstream_url)
                     if mismatch:
                         error_detail = f"{error_detail} — {mismatch}"
@@ -1967,6 +1968,7 @@ async def _streaming_proxy(
         body_text = raw.decode("utf-8", errors="replace").strip()[:300]
         head = f"upstream {upstream.status_code} on {request.method} /{path}"
         detail = f"{head}: {body_text}" if body_text else f"{head} (no error body)"
+        detail = _classify_failure(upstream.status_code, body_json, detail)
         mismatch = wire_format_mismatch(path, str(client.base_url))
         if mismatch:
             detail = f"{detail} — {mismatch}"
@@ -2145,6 +2147,34 @@ def _warn_wire_mismatch(hint: str) -> None:
     if not _warned_mismatch:
         _warned_mismatch = True
         logger.warning("Upstream mismatch: %s", hint)
+
+
+def _is_probe_request(body_json) -> bool:
+    """Claude Code's quota probe: one tiny user message, no tools, no system.
+    It fails routinely and means nothing about the agent's health."""
+    if not isinstance(body_json, dict):
+        return False
+    msgs = body_json.get("messages")
+    if not isinstance(msgs, list) or len(msgs) != 1:
+        return False
+    m = msgs[0]
+    content = m.get("content") if isinstance(m, dict) else None
+    return (isinstance(m, dict) and m.get("role") == "user"
+            and isinstance(content, str) and len(content) <= 24
+            and not body_json.get("tools") and not body_json.get("system"))
+
+
+def _classify_failure(status: int, body_json, detail: str) -> str:
+    """Red should mean 'your agent had a problem'. A failing probe is
+    routine; an upstream 429/503/529 is the provider having a moment, which
+    clients retry through. Both get prefixes (like 'blocked:') so every
+    aggregate can keep them out of the error count while the call itself
+    still shows what happened."""
+    if _is_probe_request(body_json):
+        return f"probe: {detail}"
+    if status in (429, 503, 529):
+        return f"transient: {detail}"
+    return detail
 
 
 def _extract_error(resp: httpx.Response, where: str = "") -> str:

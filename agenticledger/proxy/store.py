@@ -609,7 +609,7 @@ class _SqliteStore(Store):
                 MAX(environment) AS environment,
                 MAX(team)        AS team,
                 SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
-                         AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                         AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                          THEN 1 ELSE 0 END) AS error_count,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%'
                          THEN 1 ELSE 0 END) AS blocked_count
@@ -698,7 +698,7 @@ class _SqliteStore(Store):
             SELECT session_id, COUNT(*) AS call_count,
                    SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                    SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
-                            AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                            AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                             THEN 1 ELSE 0 END) AS error_count,
                    SUM(CASE WHEN error_detail LIKE 'blocked:%'
                             THEN 1 ELSE 0 END) AS blocked_count
@@ -800,7 +800,7 @@ class _SqliteStore(Store):
                 SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                 SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                 SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY day ORDER BY day
@@ -819,7 +819,7 @@ class _SqliteStore(Store):
                 SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                 SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                 SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY model_id, provider ORDER BY cost_usd DESC
@@ -834,7 +834,7 @@ class _SqliteStore(Store):
                 COUNT(*)                               AS call_count,
                 SUM(COALESCE(cost_usd, 0))             AS cost_usd,
                 COUNT(DISTINCT session_id)             AS session_count,
-                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
             FROM llm_calls WHERE timestamp >= ?
             GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY cost_usd DESC
@@ -863,7 +863,7 @@ class _SqliteStore(Store):
                    SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                    COUNT(DISTINCT session_id) AS session_count,
                    SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
-                            AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                            AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                             THEN 1 ELSE 0 END) AS error_count,
                    SUM(CASE WHEN error_detail LIKE 'blocked:%'
                             THEN 1 ELSE 0 END) AS blocked_count
@@ -1287,7 +1287,7 @@ class _PostgresStore(Store):
                     MAX(environment)            AS environment,
                     MAX(team)                   AS team,
                     SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
-                             AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                             AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                              THEN 1 ELSE 0 END) AS error_count,
                     SUM(CASE WHEN error_detail LIKE 'blocked:%'
                              THEN 1 ELSE 0 END) AS blocked_count
@@ -1385,7 +1385,7 @@ class _PostgresStore(Store):
                 SELECT session_id::text, COUNT(*) AS call_count,
                        SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                        SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
-                                AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                                AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                                 THEN 1 ELSE 0 END) AS error_count,
                        SUM(CASE WHEN error_detail LIKE 'blocked:%'
                                 THEN 1 ELSE 0 END) AS blocked_count
@@ -1487,7 +1487,7 @@ class _PostgresStore(Store):
                     SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                     SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                     SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
                 FROM llm_calls WHERE timestamp >= $1
                 GROUP BY day ORDER BY day
@@ -1505,7 +1505,7 @@ class _PostgresStore(Store):
                     SUM(COALESCE(tokens_out, 0))         AS tokens_out,
                     SUM(COALESCE(cache_read_tokens, 0))  AS cache_read_tokens,
                     SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
-                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls,
                     percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
                     percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
@@ -1522,7 +1522,7 @@ class _PostgresStore(Store):
                     COUNT(*)                               AS call_count,
                     SUM(COALESCE(cost_usd, 0))             AS cost_usd,
                     COUNT(DISTINCT session_id)             AS session_count,
-                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%') THEN 1 ELSE 0 END) AS error_calls,
+                    SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls,
                     percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
                     percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
@@ -1539,7 +1539,7 @@ class _PostgresStore(Store):
                        SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                        COUNT(DISTINCT session_id) AS session_count,
                        SUM(CASE WHEN status_code IS NOT NULL AND status_code != 200
-                                AND (error_detail IS NULL OR error_detail NOT LIKE 'blocked:%')
+                                AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%'))
                                 THEN 1 ELSE 0 END) AS error_count,
                        SUM(CASE WHEN error_detail LIKE 'blocked:%'
                                 THEN 1 ELSE 0 END) AS blocked_count

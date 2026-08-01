@@ -252,7 +252,9 @@ function CallCard({ call, num, onOpenSession }: {
   const [open, setOpen] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const blocked = call.error_detail?.startsWith("blocked:") ?? false;
-  const failed = !blocked && (call.status_code ?? 200) !== 200;
+  const transient = call.error_detail?.startsWith("transient:") ?? false;
+  const probe = call.error_detail?.startsWith("probe:") ?? false;
+  const failed = !blocked && !transient && !probe && (call.status_code ?? 200) !== 200;
   const tools = toolNames(call);
   const openOriginal = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -280,6 +282,18 @@ function CallCard({ call, num, onOpenSession }: {
         {blocked && (
           <span className="badge blocked" title={call.error_detail ?? undefined}>
             blocked
+          </span>
+        )}
+        {transient && (
+          <span className="badge blocked"
+                title={(call.error_detail ?? "") + " — a provider hiccup clients retry through; not counted as an agent error"}>
+            transient {call.status_code}
+          </span>
+        )}
+        {probe && (
+          <span className="badge fw"
+                title={(call.error_detail ?? "") + " — a routine client probe; not counted as an agent error"}>
+            probe
           </span>
         )}
         {call.error_detail?.startsWith("partial:") && (

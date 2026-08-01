@@ -1016,3 +1016,40 @@ def test_matching_and_unknown_upstreams_stay_quiet(proxy):
     assert wire_format_mismatch("v1/messages", "http://localhost:4000") == ""
     assert "openai-format" in wire_format_mismatch(
         "v1/chat/completions", "https://api.anthropic.com")
+
+
+def test_red_means_your_agent_had_a_problem(proxy):
+    """#58: probes and provider hiccups are not agent failures. The error
+    count keeps meaning something."""
+    calls = {"n": 0}
+
+    def handler(r):
+        calls["n"] += 1
+        return httpx.Response({1: 404, 2: 429, 3: 500}.get(calls["n"], 200),
+                              content=b"", headers={})
+
+    client = proxy(handler=handler)
+    h = {"x-agenticledger-session-id": "sem-1"}
+    # 1: a quota probe fails (404) — routine, not an error.
+    client.post("/v1/messages", json={"model": "claude-opus-5", "max_tokens": 8,
+                                      "messages": [{"role": "user", "content": "quota"}]},
+                headers=h)
+    # 2: a real request hits an upstream 429 — transient, not an agent error.
+    client.post("/v1/messages", json={"model": "claude-opus-5", "max_tokens": 64,
+                                      "system": "be helpful",
+                                      "messages": [{"role": "user", "content": "do real work please"}]},
+                headers=h)
+    # 3: a real request gets a 500 — that IS an error.
+    client.post("/v1/messages", json={"model": "claude-opus-5", "max_tokens": 64,
+                                      "system": "be helpful",
+                                      "messages": [{"role": "user", "content": "do real work please"}]},
+                headers=h)
+    rows = client.get("/session/sem-1").json()
+    details = [r["error_detail"] for r in rows]
+    assert any(d.startswith("probe: ") for d in details)
+    assert any(d.startswith("transient: ") for d in details)
+    sess = {x["session_id"]: x for x in client.get("/api/sessions").json()}["sem-1"]
+    assert sess["error_count"] == 1        # only the 500
+    assert sess["blocked_count"] == 0      # transient/probe are not "blocked"
+    report = client.get("/api/reports?days=1").json()
+    assert report["totals"]["error_calls"] == 1
