@@ -201,7 +201,7 @@ export default function App() {
       <footer className="console-footer">
         <span>Agentic Ledger — the flight recorder for AI agents. Local-first: everything on this page stays on this machine.</span>
         <span className="spacer" />
-        <a href="https://agentic-ledger.dev" target="_blank" rel="noreferrer">Docs</a>
+        <a href="https://agentic-ledger.dev" target="_blank" rel="noreferrer">agentic-ledger.dev</a>
         <a href="https://github.com/ShekharBhardwaj/AgenticLedger" target="_blank" rel="noreferrer">GitHub</a>
         <a href="https://github.com/ShekharBhardwaj/AgenticLedger/issues" target="_blank" rel="noreferrer">Report an issue</a>
       </footer>

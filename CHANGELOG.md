@@ -79,8 +79,8 @@ fixed and re-verified in the same session it was found.
   installs and an explanation of why their stamp can lag), and the filter
   dropdown gained an **★ all starred** view.
 - **A quiet console footer** — one line at the end of the page with the
-  local-first promise and links to the docs, the repo, and the issue
-  tracker. No sticky bar, no viewport tax.
+  local-first promise and links to agentic-ledger.dev, the repo, and the
+  issue tracker. No sticky bar, no viewport tax.
 
 ### Fixed
 - **Deleting a session no longer summons the browser's stock popup.** The
