@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { connectionStatus, whoami, WhoAmI } from "./api";
+import { connectionStatus, health, whoami, WhoAmI } from "./api";
 import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
@@ -135,7 +135,9 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("runs");
   const [focusSession, setFocusSession] = useState<string | null>(null);
   const [live, setLive] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
   useEffect(() => connectionStatus(setLive), []);
+  useEffect(() => { health().then((h) => setVersion(h.version)).catch(() => {}); }, []);
 
   const openSession = (sessionId: string) => {
     setFocusSession(sessionId);
@@ -161,6 +163,19 @@ export default function App() {
           </button>
         </div>
         <span className="spacer" />
+        {version && (
+          <button
+            className="version-chip"
+            title={`Agentic Ledger ${version}${version.includes(".dev")
+              ? " — a dev build; its version is stamped at install time"
+              : ""} · click for settings`}
+            onClick={() => setTab("settings")}
+          >
+            {/* local build metadata (+g<sha>) is noise in the header */}
+            v{version.split("+")[0]}
+            {version.includes(".dev") && <span className="version-dev">dev</span>}
+          </button>
+        )}
         <button
           className={`key-btn ${tab === "settings" ? "set" : ""}`}
           title="Settings — what the proxy is running with (read-only)"

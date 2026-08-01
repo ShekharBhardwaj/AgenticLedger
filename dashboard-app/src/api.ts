@@ -87,6 +87,12 @@ export function getCall(actionId: string): Promise<Call> {
   return get(`/api/calls/${encodeURIComponent(actionId)}`);
 }
 
+/** Version of the running proxy. /health needs no key, so this works even
+ *  before one is pasted. */
+export function health(): Promise<{ status: string; version: string }> {
+  return fetch("/health").then((r) => r.json());
+}
+
 /** Ask the server what a key is — used by the ⚿ panel before saving. */
 export async function whoami(key: string | null): Promise<WhoAmI> {
   const h: Record<string, string> = key ? { "x-agenticledger-api-key": key } : {};
