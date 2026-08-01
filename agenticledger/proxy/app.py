@@ -2244,9 +2244,11 @@ def wire_format_mismatch(path: str, upstream_url: str) -> str:
     p = path.lstrip("/").lower()
     sent = next((name for name, prefixes in _WIRE_FORMATS
                  if any(p.startswith(pre) for pre in prefixes)), "")
-    host = (upstream_url or "").lower()
-    serves = ("anthropic" if "anthropic.com" in host
-              else "openai" if "openai.com" in host else "")
+    host = (urlparse(upstream_url or "").hostname or "").lower()
+    def _is(domain: str) -> bool:
+        return host == domain or host.endswith("." + domain)
+    serves = ("anthropic" if _is("anthropic.com")
+              else "openai" if _is("openai.com") else "")
     if not sent or not serves or sent == serves:
         return ""   # gateways and local servers are none of our business
     return (f"This is a {sent}-format request but the proxy's upstream is "

@@ -405,6 +405,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
   const [projects, setProjects] = useState<string[]>([]);
   const [projectFilter, setProjectFilter] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     get<Session[]>("/api/sessions").then(setSessions).catch(() => {});
@@ -474,19 +475,37 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               title="Delete this session's captured calls"
               onClick={(e) => {
                 e.stopPropagation();
-                if (!window.confirm(
-                  `Delete session ${s.session_id} (${s.call_count} calls)? This cannot be undone.`,
-                )) return;
-                del(`/api/sessions/${encodeURIComponent(s.session_id)}`)
-                  .then(() => {
-                    setSelected((cur) => (cur === s.session_id ? null : cur));
-                    refresh();
-                  })
-                  .catch((err) => window.alert(`Delete failed: ${err.message}`));
+                setDeleting(deleting === s.session_id ? null : s.session_id);
               }}
             >
               ×
             </button>
+            {deleting === s.session_id && (
+              <div className="label-edit" onClick={(e) => e.stopPropagation()}>
+                <div className="muted" style={{ fontSize: 12.5 }}>
+                  Delete this session — {s.call_count} calls, permanently?
+                </div>
+                <div className="key-actions">
+                  <button
+                    className="link-btn project-purge"
+                    onClick={() => {
+                      del(`/api/sessions/${encodeURIComponent(s.session_id)}`)
+                        .then(() => {
+                          setDeleting(null);
+                          setSelected((cur) => (cur === s.session_id ? null : cur));
+                          refresh();
+                        })
+                        .catch(() => setDeleting(null));
+                    }}
+                  >
+                    delete permanently
+                  </button>
+                  <button className="link-btn" onClick={() => setDeleting(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="card-title" title={s.session_id}>
               {s.label ?? s.session_id}
             </div>

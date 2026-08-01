@@ -169,11 +169,14 @@ def compute_cost(
     if best_pattern is None:
         if model_id not in _unpriced_warned:
             _unpriced_warned.add(model_id)
+            # model_id arrives in the request body — strip newlines so a
+            # crafted id can't forge extra lines in the proxy log
+            safe_id = model_id.replace("\r", " ").replace("\n", " ")
             logger.warning(
                 "No pricing for model %r — cost recorded as unknown (not $0). "
                 "Budgets and alerts will not see this spend. Add a rate via "
                 "AGENTICLEDGER_PRICING='{\"%s\": [in_per_M, out_per_M]}'.",
-                model_id, model_id,
+                safe_id, safe_id,
             )
         return None
     in_price, out_price = _PRICES[best_pattern]

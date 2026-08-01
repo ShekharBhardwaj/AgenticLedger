@@ -78,8 +78,26 @@ fixed and re-verified in the same session it was found.
 - **The header shows the running version** (with a DEV tag for editable
   installs and an explanation of why their stamp can lag), and the filter
   dropdown gained an **★ all starred** view.
+- **A quiet console footer** — one line at the end of the page with the
+  local-first promise and links to the docs, the repo, and the issue
+  tracker. No sticky bar, no viewport tax.
 
 ### Fixed
+- **Deleting a session no longer summons the browser's stock popup.** The
+  × now opens an inline confirmation on the card itself — call count, a
+  red "delete permanently", and a Cancel — matching the project-delete
+  flow instead of `window.confirm`.
+- **Danger buttons are actually red.** A stylesheet-order tie was quietly
+  painting the project-purge (and now session-delete) confirm buttons the
+  same blue as every other button.
+- **Upstream detection matches hostnames, not substrings.** The
+  wire-format-mismatch hint decided "this is Anthropic/OpenAI" via
+  substring search on the whole URL, so a gateway named
+  `not-anthropic.com.example.dev` could trigger a bogus hint (also flagged
+  by CodeQL). It now parses the URL and compares the hostname exactly.
+- **Log lines can't be forged via the model id.** The "no pricing for
+  model" warning logged the request-supplied id raw; newlines are now
+  stripped so a crafted id can't inject fake log entries (CodeQL).
 - **The MCP get_session and search tools stop firehosing.** Found live when a real
   MCP client met a 1.6MB session: full conversation snapshots were being
   dumped into the asking model's context. Sessions now return compact
