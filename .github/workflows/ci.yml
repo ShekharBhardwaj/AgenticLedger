@@ -112,8 +112,12 @@ jobs:
           /tmp/fresh/bin/pip install --pre dist/*.whl
           cd /tmp
           AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com /tmp/fresh/bin/python -m agenticledger.proxy &
-          sleep 4
-          curl -sf http://localhost:8000/health
+          # Cold runners can take >4s to boot — poll instead of praying.
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break
+            [ "$i" = 30 ] && { echo "proxy never became healthy"; exit 1; }
+            sleep 1
+          done
           curl -sf -o /dev/null http://localhost:8000/app
           echo "fresh install boots, /health and /app respond"
 

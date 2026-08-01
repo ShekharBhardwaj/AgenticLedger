@@ -47,3 +47,6 @@ coverage.xml
 # Web app (dashboard-app builds into agenticledger/proxy/static/)
 dashboard-app/node_modules/
 agenticledger/proxy/static/
+
+# User-local proxy config — never committed
+agenticledger.toml
