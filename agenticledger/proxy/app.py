@@ -761,6 +761,12 @@ def create_app(
             version = _v("agentic-ledger")
         except Exception:
             version = "unknown"
+        if ".dev" in version:
+            # An editable/source install stamps this at install time, so it
+            # can name an old tag while the code is far newer — say so
+            # instead of looking like a stale release.
+            version += " (dev build — stamped when the package was installed; "\
+                       "reinstall to refresh)"
         cfg = find_config()
         rows = [
             row("Proxy", "version", version),
