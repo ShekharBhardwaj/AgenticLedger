@@ -964,3 +964,29 @@ def test_run_end_marker_flips_status_immediately(proxy):
     assert client.get("/api/runs/em-run").json()["status"] == "ended"
     # Completion promise / flags still outrank the marker; unknown run 404s.
     assert client.post("/api/runs/nope/end").status_code == 404
+
+
+def test_failed_calls_name_their_status_and_endpoint(proxy):
+    """A red badge with no reason is a dead end — every failure says what
+    happened and where, even when the provider sends an empty body."""
+    client = proxy(handler=lambda r: httpx.Response(404, content=b""))
+    resp = client.post("/v1/messages?beta=true",
+                       json={"model": "claude-opus-5", "max_tokens": 16,
+                             "messages": [{"role": "user", "content": "quota"}]},
+                       headers={"x-agenticledger-session-id": "err-1"})
+    assert resp.status_code == 404
+    rec = client.get("/session/err-1").json()[0]
+    assert "upstream 404" in rec["error_detail"]
+    assert "/v1/messages" in rec["error_detail"]
+    assert "no error body" in rec["error_detail"]
+
+
+def test_failed_stream_names_its_endpoint_too(proxy):
+    client = proxy(handler=lambda r: httpx.Response(404, content=b""))
+    resp = client.post("/v1/messages",
+                       json={"model": "claude-opus-5", "max_tokens": 16, "stream": True,
+                             "messages": [{"role": "user", "content": "quota"}]},
+                       headers={"x-agenticledger-session-id": "err-2"})
+    assert resp.status_code == 404
+    rec = client.get("/session/err-2").json()[0]
+    assert "upstream 404" in rec["error_detail"] and "/v1/messages" in rec["error_detail"]

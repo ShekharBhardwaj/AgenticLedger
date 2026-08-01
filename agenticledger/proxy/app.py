@@ -1781,7 +1781,8 @@ def create_app(
                     error_detail = f"budget_warning: {_budget_warning}" if _budget_warning else None
                 else:
                     canonical_resp = _empty_response(latency_ms)
-                    error_detail = _extract_error(upstream_resp)
+                    error_detail = _extract_error(
+                        upstream_resp, f"{request.method} /{path}")
                 await _capture(_CaptureJob(
                     action_id, canonical_req, canonical_resp,
                     status_code, error_detail, meta, _budget_warning,
@@ -1845,10 +1846,11 @@ async def _streaming_proxy(
                 action_id, canonical_req, canonical_resp, 200,
                 "; ".join(parts) or None, meta, budget_warning,
             )
-        detail = (
-            raw.decode("utf-8", errors="replace")[:300]
-            or f"upstream returned {upstream.status_code}"
-        )
+        # Same promise on the streaming path: name the status and the
+        # endpoint even when the error body is empty.
+        body_text = raw.decode("utf-8", errors="replace").strip()[:300]
+        head = f"upstream {upstream.status_code} on {request.method} /{path}"
+        detail = f"{head}: {body_text}" if body_text else f"{head} (no error body)"
         return _CaptureJob(
             action_id, canonical_req, _empty_response(latency_ms),
             upstream.status_code, detail, meta, budget_warning,
@@ -1986,15 +1988,21 @@ def _empty_response(latency_ms: float) -> CanonicalResponse:
     )
 
 
-def _extract_error(resp: httpx.Response) -> str:
+def _extract_error(resp: httpx.Response, where: str = "") -> str:
+    """Why did this call fail? Always answerable: the provider's own message
+    when it sent one, and otherwise the status and the endpoint that
+    produced it. A red badge with no reason is a dead end for the reader."""
+    message = ""
     try:
         body = resp.json()
         err = body.get("error", {})
-        if isinstance(err, dict):
-            return err.get("message") or resp.text[:300]
-        return str(err)[:300]
+        message = err.get("message") or "" if isinstance(err, dict) else str(err)
     except Exception:
-        return resp.text[:300]
+        message = ""
+    if not message:
+        message = (resp.text or "").strip()[:300]
+    head = f"upstream {resp.status_code}" + (f" on {where}" if where else "")
+    return f"{head}: {message}" if message else f"{head} (no error body)"
 
 
 def _extract_meta(request: Request, body_json: Optional[dict] = None) -> dict:
