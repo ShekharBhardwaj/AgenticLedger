@@ -44,15 +44,25 @@ export default function FlowView({ calls }: { calls: Call[] }) {
   // Inferred handoffs: explicit handoff metadata is rare — most agent
   // changes are detected (claude-code invokes a BMAD skill and the next
   // call is bmad:spec). One conversation must not render as islands, so a
-  // change of agent between consecutive calls becomes a dotted edge.
+  // change of agent between consecutive calls becomes a dotted edge —
+  // BUT only within one thread of conversation. Two independent threads
+  // merely interleaving in time is not a handoff, and drawing one would
+  // be fiction; when both calls carry thread ids, they must match.
   const inferredKeys = new Set<string>();
   for (let i = 1; i < calls.length; i++) {
-    const prev = calls[i - 1].agent_name ?? "unattributed";
-    const cur = calls[i].agent_name ?? "unattributed";
+    const a = calls[i - 1];
+    const b = calls[i];
+    const prev = a.agent_name ?? "unattributed";
+    const cur = b.agent_name ?? "unattributed";
     if (prev === cur) continue;
+    if (a.thread_id && b.thread_id && a.thread_id !== b.thread_id) continue;
     const key = `${prev}→${cur}`;
-    if (!edgeCount.has(key)) inferredKeys.add(key);
-    edgeCount.set(key, (edgeCount.get(key) ?? 0) + (inferredKeys.has(key) ? 1 : 0));
+    if (!edgeCount.has(key)) {
+      inferredKeys.add(key);
+      edgeCount.set(key, 1);
+    } else if (inferredKeys.has(key)) {
+      edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1);
+    }
   }
   if (nodes.size === 0) return <div className="empty">No calls in this session.</div>;
 
@@ -130,12 +140,15 @@ export default function FlowView({ calls }: { calls: Call[] }) {
             const dip = Math.max(py(a), py(b)) + BOX_H + 26;
             return (
               <g key={`${e.from}→${e.to}`}>
+                <title>{e.inferred
+                  ? `${e.from} → ${e.to} — cycles back; inferred from call order within a thread`
+                  : `${e.from} → ${e.to} — cycles back (explicit handoff)`}</title>
                 <path
                   d={`M ${x1 + BOX_W / 2} ${py(a) + BOX_H} C ${x1 + BOX_W / 2} ${dip}, ${x2 - BOX_W / 2} ${dip}, ${x2 - BOX_W / 2} ${py(b) + BOX_H}`}
                   stroke="var(--amber)" strokeWidth="1.4" strokeDasharray="5 4" fill="none" markerEnd="url(#arrow)"
                 />
                 <text x={(x1 + x2) / 2} y={dip - 4} fill="var(--amber)" fontSize="10" textAnchor="middle" fontFamily="var(--mono)">
-                  ↩ {e.count}×
+                  ↩ {e.count}×{e.inferred ? " ·inferred" : ""}
                 </text>
               </g>
             );

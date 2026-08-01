@@ -119,7 +119,8 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
                   onClick={() => { setNewName(value); setManaging("rename"); setError(null); }}>
             ✎
           </button>
-          <button className="link-btn" style={{ marginTop: 0 }} title="Delete this project"
+          <button className="link-btn project-delete" style={{ marginTop: 0 }}
+                  title="Delete this project"
                   onClick={() => { setManaging("delete"); setError(null); }}>
             ×
           </button>

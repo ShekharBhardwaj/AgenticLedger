@@ -232,6 +232,13 @@ body {
   margin-bottom: 12px;
 }
 .project-new { white-space: nowrap; }
+.project-delete {
+  background: rgba(248, 81, 73, 0.10); color: var(--red);
+  border-color: rgba(248, 81, 73, 0.3); font-weight: 700;
+}
+.project-delete:hover {
+  background: rgba(248, 81, 73, 0.2); border-color: var(--red);
+}
 .project-purge {
   background: rgba(248, 81, 73, 0.12); color: var(--red);
   border-color: rgba(248, 81, 73, 0.35);
