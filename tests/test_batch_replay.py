@@ -146,3 +146,26 @@ def test_report_cards_are_reopenable(proxy):
         f"/api/replay/jobs?replay_session_id={listed[0]['replay_session_id']}").json()["jobs"]
     assert by_replay and by_replay[0]["job_id"] == started["job_id"]
     assert by_replay[0]["ref_id"] == "batch-sess"
+
+
+def test_report_cards_survive_a_restart_via_rebuild(proxy):
+    """Twice in one day a proxy restart ate the report card. Never again:
+    the card rebuilds from the durable replay calls themselves."""
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()),
+                   replay_targets={"openai": {"url": UPSTREAM_URL, "key": "k"}})
+    _wire_target(client, "openai")
+    _seed_run(client, n=2)
+    client.upstream.set(lambda r: httpx.Response(200, json=openai_response()))
+    started = client.post("/api/replay/batch",
+                          json={"session_id": "batch-sess", "model": "gpt-4o"}).json()
+    _wait_job(client, started["job_id"])
+
+    client.app.state.replay_jobs.clear()   # simulate the restart
+
+    jobs = client.get("/api/replay/jobs?scope=session&ref_id=batch-sess").json()["jobs"]
+    assert len(jobs) == 1 and jobs[0]["rebuilt"] is True
+    card = client.get(f"/api/replay/jobs/{jobs[0]['job_id']}").json()
+    assert card["status"] == "done"
+    assert card["report"]["replayed"] == 2
+    assert all(st["score"] for st in card["steps"])
+    assert card["ref_id"] == "batch-sess" and card["scope"] == "session"

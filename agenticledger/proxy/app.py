@@ -1188,6 +1188,64 @@ def create_app(
                              "replay_session_id": job["replay_session_id"]},
                             status_code=202)
 
+    async def _rebuild_card(store, replay_session_id: str) -> Optional[dict]:
+        """Reconstruct a report card from the ledger itself — replay calls,
+        their parent links, and the pure grader are all durable, so a card
+        survives proxy restarts even though jobs live in memory. When a
+        session holds several batches, the newest replay per original wins."""
+        replays = await store.get_session(replay_session_id)
+        replays = [c for c in replays if c.get("parent_action_id")]
+        if not replays:
+            return None
+        latest: dict[str, dict] = {}
+        for c in replays:                      # timestamp-ordered: last wins
+            latest[c["parent_action_id"]] = c
+        steps, scope, ref = [], "session", None
+        model = replays[-1].get("model_id")
+        for orig_id, rep in latest.items():
+            orig = await store.get(orig_id)
+            if orig is None:
+                continue
+            if replay_session_id.startswith("replay-run-"):
+                scope, ref = "run", orig.get("run_id") or ref
+            else:
+                scope, ref = "session", orig.get("session_id") or ref
+            score = score_replay(orig, rep.get("content"), rep.get("tool_calls"))
+            steps.append({
+                "original_action_id": orig_id,
+                "original_model": orig.get("model_id"),
+                "original_content": (orig.get("content") or "")[:400] or None,
+                "original_cost_usd": orig.get("cost_usd"),
+                "original_latency_ms": orig.get("latency_ms"),
+                "status": "ok",
+                "replay_action_id": rep["action_id"],
+                "replay_content": (rep.get("content") or "")[:400] or None,
+                "replay_cost_usd": rep.get("cost_usd"),
+                "replay_latency_ms": rep.get("latency_ms"),
+                "score": score,
+                "_ts": rep.get("timestamp"),
+            })
+        steps.sort(key=lambda st: st.pop("_ts") or "")
+        scored = [st for st in steps if st.get("score")]
+        return {
+            "job_id": f"db:{replay_session_id}", "scope": scope, "ref_id": ref,
+            "model": model, "provider": replays[-1].get("provider"),
+            "replay_session_id": replay_session_id,
+            "total": len(steps), "done": len(steps), "status": "done",
+            "steps": steps, "error": None, "rebuilt": True,
+            "report": {
+                "replayed": len(scored),
+                "matched": sum(1 for st in scored if st["score"]["match"]),
+                "fumbles": [st["original_action_id"] for st in scored
+                            if not st["score"]["match"]],
+                "skipped": 0, "failed": 0,
+                "original_cost_usd": round(sum(
+                    float(st.get("original_cost_usd") or 0) for st in steps), 6),
+                "replay_cost_usd": round(sum(
+                    float(st.get("replay_cost_usd") or 0) for st in steps), 6),
+            },
+        }
+
     @app.get("/api/replay/jobs")
     async def api_replay_jobs(request: Request, scope: str = "",
                               ref_id: str = "",
@@ -1202,15 +1260,30 @@ def create_app(
             jobs = [j for j in jobs if j["ref_id"] == ref_id]
         if replay_session_id:
             jobs = [j for j in jobs if j["replay_session_id"] == replay_session_id]
+        # Nothing in memory (e.g. after a restart): rebuild from the ledger.
+        if not jobs:
+            candidates = []
+            if replay_session_id:
+                candidates = [replay_session_id]
+            elif scope and ref_id:
+                candidates = [f"replay-{'run' if scope == 'run' else 'sess'}-{ref_id[:8]}"]
+            for cand in candidates:
+                card = await _rebuild_card(request.app.state.store, cand)
+                if card:
+                    jobs = [card]
+                    break
         return JSONResponse({"jobs": [
-            {k: j[k] for k in ("job_id", "scope", "ref_id", "model", "provider",
-                               "status", "done", "total", "replay_session_id")}
+            {**{k: j[k] for k in ("job_id", "scope", "ref_id", "model", "provider",
+                                  "status", "done", "total", "replay_session_id")},
+             "rebuilt": bool(j.get("rebuilt"))}
             for j in jobs]})
 
     @app.get("/api/replay/jobs/{job_id}")
     async def api_replay_job(job_id: str, request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
         job = getattr(request.app.state, "replay_jobs", {}).get(job_id)
+        if job is None and job_id.startswith("db:"):
+            job = await _rebuild_card(request.app.state.store, job_id[3:])
         if job is None:
             raise HTTPException(status_code=404, detail="job not found")
         return JSONResponse(job)
