@@ -134,7 +134,11 @@ if _otel_endpoint:
         headers=_otel_headers or None,
     )
 
-upstream_url = os.environ.get("AGENTICLEDGER_UPSTREAM_URL", "https://api.openai.com")
+# No configured upstream: route each call by its wire format instead of
+# defaulting everyone to OpenAI (an Anthropic agent would just bounce).
+_upstream_env = os.environ.get("AGENTICLEDGER_UPSTREAM_URL")
+upstream_auto = _upstream_env is None
+upstream_url  = _upstream_env or "https://api.openai.com"
 dsn          = os.environ.get("AGENTICLEDGER_DSN", "sqlite:///agenticledger.db")
 host         = os.environ.get("AGENTICLEDGER_HOST", "0.0.0.0")
 port         = int(os.environ.get("AGENTICLEDGER_PORT", "8000"))
@@ -142,6 +146,7 @@ port         = int(os.environ.get("AGENTICLEDGER_PORT", "8000"))
 app = create_app(
     upstream_url=upstream_url,
     dsn=dsn,
+    upstream_auto=upstream_auto,
     budget_session=_float_env("AGENTICLEDGER_BUDGET_SESSION"),
     budget_user=_float_env("AGENTICLEDGER_BUDGET_USER"),
     budget_status=int(os.environ.get("AGENTICLEDGER_BUDGET_STATUS", "429")),
@@ -198,7 +203,9 @@ except Exception:
 # Version banner so testers can see at a glance what they are running —
 # a stale venv silently serving an old release looks identical otherwise.
 print(
-    f"Agentic Ledger v{_version} — proxying {upstream_url} — "
+    f"Agentic Ledger v{_version} — proxying "
+    + ("by call format (anthropic → api.anthropic.com, openai → api.openai.com)"
+       if upstream_auto else upstream_url) + " — "
     f"dashboard: http://{'localhost' if host == '0.0.0.0' else host}:{port}"
     + (f" — config: {_config_path}" if _config_path else ""),
     file=sys.stderr,

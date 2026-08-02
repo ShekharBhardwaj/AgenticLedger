@@ -210,6 +210,7 @@ class _Broadcaster:
 def create_app(
     upstream_url: str,
     dsn: str,
+    upstream_auto: bool = False,   # no upstream configured: route by wire format
     budget_session: Optional[float] = None,
     budget_agent: Optional[float] = None,
     budget_daily: Optional[float] = None,
@@ -271,6 +272,14 @@ def create_app(
             base_url=upstream_url,
             timeout=httpx.Timeout(120.0),
         )
+        # Zero-config routing: with no explicit upstream, Anthropic-format
+        # calls go to Anthropic while everything else keeps the OpenAI-format
+        # default above. An explicitly configured upstream never creates this
+        # client, so it always wins.
+        app.state.client_anthropic = httpx.AsyncClient(
+            base_url="https://api.anthropic.com",
+            timeout=httpx.Timeout(120.0),
+        ) if upstream_auto else None
         app.state.replay_clients = {
             prov: httpx.AsyncClient(base_url=cfg["url"], timeout=httpx.Timeout(120.0))
             for prov, cfg in (replay_targets or {}).items()
@@ -303,6 +312,8 @@ def create_app(
                 await worker
         await app.state.store.close()
         await app.state.client.aclose()
+        if app.state.client_anthropic is not None:
+            await app.state.client_anthropic.aclose()
         for rc in app.state.replay_clients.values():
             await rc.aclose()
 
@@ -896,8 +907,13 @@ def create_app(
                       "AGENTICLEDGER_CONFIG, ./agenticledger.toml, "
                       "~/.agenticledger/config.toml.",
                 key="AGENTICLEDGER_CONFIG"),
-            row("Proxy", "upstream", upstream_url, "AGENTICLEDGER_UPSTREAM_URL",
-                means="Where your agents' calls are forwarded.",
+            row("Proxy", "upstream",
+                ("auto: anthropic calls → api.anthropic.com, openai-style → "
+                 "api.openai.com") if upstream_auto else upstream_url,
+                "AGENTICLEDGER_UPSTREAM_URL",
+                means="Where your agents' calls are forwarded. Auto means no "
+                      "upstream is configured, so each call goes to the "
+                      "provider whose wire format it speaks.",
                 key="[proxy] upstream_url"),
             row("Proxy", "database", masked_dsn(dsn), "AGENTICLEDGER_DSN",
                 means="Where the ledger is stored — a SQLite file or Postgres.",
@@ -1991,7 +2007,8 @@ def create_app(
             )
 
         start = time.monotonic()
-        upstream_resp = await request.app.state.client.request(
+        client = _upstream_client(request.app, path)
+        upstream_resp = await client.request(
             method=request.method,
             url=f"/{path}",
             content=body_bytes,
@@ -2014,7 +2031,10 @@ def create_app(
                     error_detail = _classify_failure(
                         status_code, body_json,
                         _extract_error(upstream_resp, f"{request.method} /{path}"))
-                    mismatch = wire_format_mismatch(path, upstream_url)
+                    # Hint from the CONFIGURED upstream, not the client's
+                    # address; in auto mode the destination matches the knock
+                    # by construction, so there is nothing to hint about.
+                    mismatch = "" if upstream_auto else wire_format_mismatch(path, upstream_url)
                     if mismatch:
                         error_detail = f"{error_detail} — {mismatch}"
                         _warn_wire_mismatch(mismatch)
@@ -2046,7 +2066,7 @@ async def _streaming_proxy(
     capture,
     budget_warning: Optional[str] = None,
 ) -> StreamingResponse:
-    client: httpx.AsyncClient = request.app.state.client
+    client: httpx.AsyncClient = _upstream_client(request.app, path)
 
     stream_ctx = client.stream(
         method=request.method,
@@ -2235,15 +2255,31 @@ _WIRE_FORMATS = (
 )
 
 
+def _wire_format(path: str) -> str:
+    """Which provider dialect a request path speaks ("" when unknown)."""
+    p = path.lstrip("/").lower()
+    return next((name for name, prefixes in _WIRE_FORMATS
+                 if any(p.startswith(pre) for pre in prefixes)), "")
+
+
+def _upstream_client(app, path: str) -> httpx.AsyncClient:
+    """Zero-config routing: Anthropic-format knocks go to the Anthropic
+    client when it exists (auto mode); everything else uses the default
+    client. Explicit configuration never creates the second client, so an
+    explicit upstream always wins."""
+    anthropic = getattr(app.state, "client_anthropic", None)
+    if anthropic is not None and _wire_format(path) == "anthropic":
+        return anthropic
+    return app.state.client
+
+
 def wire_format_mismatch(path: str, upstream_url: str) -> str:
     """The single most confusing misconfiguration: an Anthropic-shaped call
     sent to an OpenAI upstream (or vice versa). The provider answers 404 with
     no body and the agent reports 'that model does not exist', which sends
     people hunting for the wrong problem. Returns a hint, or "" when the pair
     is fine or unknown."""
-    p = path.lstrip("/").lower()
-    sent = next((name for name, prefixes in _WIRE_FORMATS
-                 if any(p.startswith(pre) for pre in prefixes)), "")
+    sent = _wire_format(path)
     host = (urlparse(upstream_url or "").hostname or "").lower()
     def _is(domain: str) -> bool:
         return host == domain or host.endswith("." + domain)

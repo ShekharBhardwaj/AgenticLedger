@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Zero config now includes the upstream.** With no upstream configured,
+  the proxy routes each call by the wire format it speaks: Anthropic-style
+  calls (`/v1/messages`) go to api.anthropic.com, OpenAI-style calls to
+  api.openai.com. Until now the default sent everything to OpenAI, so an
+  Anthropic agent's first call on a fresh install bounced. An explicitly
+  configured upstream behaves exactly as before: one proxy, one provider,
+  your word wins, mismatch hints included. The settings page says
+  "auto: by call format" so the behavior is never a secret. Found by
+  walking a brand-new user's path: fresh venv, pip install, connect
+  OpenClaw, ask the first question.
+
 ## [0.8.0] - 2026-08-01
 
 Built and hardened through two real-framework test rounds (BMAD v6 and a

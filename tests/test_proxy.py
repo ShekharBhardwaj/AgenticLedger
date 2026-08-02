@@ -1053,3 +1053,75 @@ def test_red_means_your_agent_had_a_problem(proxy):
     assert sess["blocked_count"] == 0      # transient/probe are not "blocked"
     report = client.get("/api/reports?days=1").json()
     assert report["totals"]["error_calls"] == 1
+
+
+# ── Zero-config upstream routing (0.8.1) ─────────────────────────────────────
+#
+# With no upstream configured, the proxy answers the knock: Anthropic-format
+# paths go to Anthropic, OpenAI-format paths keep the OpenAI-format default.
+# An explicitly configured upstream never creates the second client, so it
+# always wins (covered by every other test in this file, which pins one).
+
+def _swap_anthropic_client(client, log):
+    from .conftest import anthropic_response
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        log.append(str(request.url))
+        return httpx.Response(200, json=anthropic_response())
+
+    client.app.state.client_anthropic = httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler),
+        base_url="https://api.anthropic.com",
+        timeout=httpx.Timeout(120.0),
+    )
+
+
+def test_auto_mode_routes_anthropic_knock_to_anthropic(proxy):
+    client = proxy(upstream_auto=True)
+    anthropic_seen: list[str] = []
+    _swap_anthropic_client(client, anthropic_seen)
+
+    resp = client.post("/v1/messages", json={
+        "model": "claude-opus-5", "max_tokens": 2048,
+        "messages": [{"role": "user", "content": "hi"}],
+    })
+    assert resp.status_code == 200
+    assert anthropic_seen and "api.anthropic.com" in anthropic_seen[0]
+    # The default (OpenAI-format) upstream never saw the call.
+    assert client.upstream.last_request is None
+
+
+def test_auto_mode_keeps_openai_knock_on_default(proxy):
+    client = proxy(upstream_auto=True)
+    anthropic_seen: list[str] = []
+    _swap_anthropic_client(client, anthropic_seen)
+
+    resp = client.post("/v1/chat/completions", json={
+        "model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}],
+    })
+    assert resp.status_code == 200
+    assert anthropic_seen == []
+    assert client.upstream.last_json()["model"] == "gpt-4o"
+
+
+def test_auto_mode_never_emits_wire_format_mismatch(proxy):
+    """In auto mode the destination matches the knock by construction, so a
+    404 is a real 404 and must not carry the mismatch hint."""
+    client = proxy(upstream_auto=True)
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": {"message": "no such model"}})
+
+    client.app.state.client_anthropic = httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler),
+        base_url="https://api.anthropic.com",
+        timeout=httpx.Timeout(120.0),
+    )
+    client.post("/v1/messages", json={
+        "model": "claude-nonexistent", "max_tokens": 16,
+        "messages": [{"role": "user", "content": "hi"}],
+        "metadata": {"user_id": "session_11111111-2222-3333-4444-555555555555"},
+    }, headers={"x-agenticledger-session-id": "auto-404"})
+    detail = client.get("/session/auto-404").json()[0]["error_detail"]
+    assert "upstream 404" in detail
+    assert "wire" not in detail and "format request" not in detail
