@@ -6,25 +6,36 @@ BMAD project's LLM traffic with zero BMAD changes**, and answers the questions
 the community asks constantly: *what did this story cost, which persona burns
 the tokens, how many QA→Dev bounces did this epic take?*
 
+## Fastest: the community module
+
+Agentic Ledger ships as a BMad community module with two skills:
+`agentic-ledger-setup` wires the project (proxy check, connect, a ledger
+project that files sessions automatically), and `agentic-ledger-report`
+answers "what has this story cost so far" from inside the workflow. In
+the BMad installer, choose the custom module option and give it:
+
+```
+https://github.com/ShekharBhardwaj/bmad-agentic-ledger
+```
+
+The sections below are the same setup by hand.
+
 ## Setup (once per host tool)
 
-Start the proxy — one config file, running in the background:
+Start the proxy, running in the background:
 
 ```bash
-agenticledger init     # writes agenticledger.toml
+pip install -U agentic-ledger
 agenticledger start    # background; terminal stays yours
 ```
 
-In `agenticledger.toml`, point it at your provider and give BMAD work a
-sensible ceiling:
+No upstream config needed: the proxy routes each call to the provider
+matching its wire format (0.8.1 and later). Give BMAD work a sensible
+ceiling (optional):
 
-```toml
-[proxy]
-upstream_url = "https://api.anthropic.com"
-
-[budgets]
-session = 5.0     # one story cycle
-daily = 25.0      # the whole project, per day
+```bash
+agenticledger config set budgets.session 5.0   # one story cycle
+agenticledger config set budgets.daily 25.0    # the whole project, per day
 ```
 
 (Environment variables still work and always override the file — the old

@@ -6,6 +6,23 @@ blocks spend**. Agentic Ledger sits under it as a transparent proxy and adds
 the two things operators ask for most: a complete ledger of every prompt
 that leaves the machine, and a **hard spend cap**.
 
+## Fastest: the ClawHub skill
+
+The assistant can keep its own books. One install gives it a skill that
+answers "what have I spent", reads real captured numbers from the ledger,
+and teaches budget setup at the moment it matters:
+
+```bash
+clawhub install agentic-ledger
+```
+
+Docker installs: `clawhub --workdir ~/.openclaw/workspace install
+agentic-ledger` (clawhub otherwise tries the container's own path on your
+host). Skill source:
+<https://github.com/ShekharBhardwaj/openclaw-agentic-ledger>. The skill
+walks the rest of this setup itself; the sections below are the same
+steps by hand.
+
 ## Setup (config edit only — no OpenClaw code changes)
 
 Start the proxy in front of your provider. For an always-on assistant you
@@ -13,19 +30,23 @@ want the ledger always on too — so run it as a background service, not in a
 terminal that a closed window would kill:
 
 ```bash
-agenticledger init
+pip install -U agentic-ledger
 agenticledger start        # survives the terminal closing
 agenticledger status       # is it up, and is the store healthy?
 ```
 
-```toml
-# agenticledger.toml
-[proxy]
-upstream_url = "https://api.anthropic.com"
+No upstream config needed: since 0.8.1 the proxy routes each call to the
+provider matching its wire format. Give the assistant the ceiling
+OpenClaw doesn't have (both optional):
 
-[budgets]
-daily = 10.0        # the hard cap OpenClaw doesn't have
+```bash
+agenticledger config set budgets.daily 10.0
+agenticledger config set budgets.status 402
 ```
+
+Use 402 rather than the default 429 here: OpenClaw reads a 429 as a rate
+limit and retries it over and over; 402 is a final no that nothing
+retries.
 
 (The old `AGENTICLEDGER_UPSTREAM_URL=... python -m agenticledger.proxy`
 command still works — env vars always beat the config file.)

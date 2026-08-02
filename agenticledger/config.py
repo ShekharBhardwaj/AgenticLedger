@@ -207,9 +207,17 @@ def _toml_value(raw: str) -> str:
 def set_value(dotted: str, value: Optional[str], path: Optional[str] = None) -> Path:
     """Set (or with value=None, comment out) one key, editing the file in
     place so the template's comments survive — a commented-out line for the
-    same key is uncommented and reused rather than duplicated."""
+    same key is uncommented and reused rather than duplicated.
+
+    When no config file exists anywhere, the new file is created at
+    ~/.agenticledger/config.toml, the path every directory falls back to.
+    Creating ./agenticledger.toml here instead would bring cwd-dependence
+    back: a later `config set` or service start from another folder would
+    resolve a different file. An existing ./agenticledger.toml is an
+    explicit choice and keeps being edited in place."""
     section, key = _split_key(dotted)
-    target = Path(path).expanduser() if path else (find_config() or Path("agenticledger.toml"))
+    target = Path(path).expanduser() if path else (
+        find_config() or Path.home() / ".agenticledger" / "config.toml")
     target = target.resolve()
     if not target.is_file():
         init_config(str(target))
@@ -267,6 +275,7 @@ def init_config(path: str = "agenticledger.toml") -> Path:
     target = Path(path).expanduser().resolve()
     if target.exists():
         raise SystemExit(f"{target} already exists — not overwriting it.")
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(TEMPLATE, encoding="utf-8")
     with os.fdopen(os.open(target, os.O_RDONLY), "r"):
         pass  # ensure it landed

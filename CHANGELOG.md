@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`config set` now creates its file in one fixed place.** With no config
+  file anywhere, `agenticledger config set` created `./agenticledger.toml`
+  in whatever directory it was run from. That reopened the trap the 0.8.2
+  database fix closed: a later `config set` or service start from another
+  folder resolved a different file, so the setting quietly went missing
+  (observed live). When no config file exists, the new file now lands at
+  `~/.agenticledger/config.toml`, the path every directory falls back to.
+  An existing `./agenticledger.toml` is an explicit choice and keeps being
+  edited in place, and the command still prints the full path of the file
+  it touched.
+
 ## [0.8.2] - 2026-08-02
 
 ### Added

@@ -36,24 +36,24 @@ Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any L
 
 **Step 1 — Start the proxy**
 
-One config file, three commands, no terminal held hostage:
+Two commands, zero config, no terminal held hostage:
 
 ```bash
 pip install -U agentic-ledger
-agenticledger init      # writes a commented agenticledger.toml — edit it
 agenticledger start     # runs in the background; terminal freed
 ```
 
 `agenticledger start` prints the dashboard URL and gives your terminal
 back — closing the window doesn't stop it. `agenticledger status` tells
 you it's up and healthy, `agenticledger logs` shows what it's doing,
-`agenticledger stop` shuts it down. See [Configuration](#configuration)
-for what goes in the file.
+`agenticledger stop` shuts it down. Want a config file anyway?
+`agenticledger init` writes a commented one; see
+[Configuration](#configuration) for what goes in it.
 
 Or with Docker (no Python required):
 ```bash
 docker run -p 8000:8000 \
-  -e AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com \
+  -e AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com \  # optional: omit to route by call format
   -v $(pwd)/data:/data \
   ghcr.io/shekharbhardwaj/agentic-ledger:latest
 ```
@@ -63,12 +63,12 @@ docker run -p 8000:8000 \
 > deployment (TLS, auth keys, redaction, verification)? See the
 > [deployment guide](docs/deployment.md).
 
-> **Using Anthropic / Claude?** Set the upstream to Anthropic instead
-> (`upstream_url` in the config file, or
-> `AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com`). The proxy fronts
-> one provider at a time — run a second instance on another port to cover
-> both. Any OpenAI-compatible gateway URL (LiteLLM, OpenRouter, ...) works
-> the same way.
+> **Using Anthropic / Claude?** Nothing to configure: with no upstream
+> set, the proxy routes each call by its wire format, so Anthropic-style
+> calls go to Anthropic and OpenAI-style calls go to OpenAI, side by side
+> through one proxy. Setting an explicit `upstream_url` (a gateway like
+> LiteLLM or OpenRouter, LM Studio, or a pinned provider) switches to the
+> classic one-proxy-one-provider behavior, mismatch hints included.
 
 Or with docker compose (SQLite by default — see `docker-compose.yml`):
 ```bash
@@ -132,7 +132,7 @@ response = client.chat.completions.create(
 )
 ```
 
-**Anthropic** (start the proxy with `AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com`):
+**Anthropic** (no upstream config needed: `/v1/messages` calls route to Anthropic automatically):
 ```python
 import anthropic
 

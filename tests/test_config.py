@@ -162,6 +162,12 @@ def test_service_pins_default_db_to_the_state_dir(tmp_path, monkeypatch):
     loss. The service pins the default to an absolute path instead."""
     from agenticledger import service
 
+    # Immunity to the machine running the suite: ambient env, the real
+    # home config, and cwd contents must not reach the assertions.
+    monkeypatch.delenv("AGENTICLEDGER_DSN", raising=False)
+    (tmp_path / "empty.toml").write_text("")
+    monkeypatch.setenv("AGENTICLEDGER_CONFIG", str(tmp_path / "empty.toml"))
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(service, "STATE_DIR", tmp_path / "state")
     dsn = service._child_env()["AGENTICLEDGER_DSN"]
     assert dsn == f"sqlite:///{tmp_path / 'state' / 'agenticledger.db'}"
@@ -189,6 +195,10 @@ def test_service_notes_a_stranded_db_in_cwd(tmp_path, monkeypatch, capsys):
     the user staring at an empty dashboard."""
     from agenticledger import service
 
+    monkeypatch.delenv("AGENTICLEDGER_DSN", raising=False)
+    (tmp_path / "empty.toml").write_text("")
+    monkeypatch.setenv("AGENTICLEDGER_CONFIG", str(tmp_path / "empty.toml"))
+    monkeypatch.chdir(tmp_path)  # the stray check reads cwd; make it ours
     (tmp_path / "agenticledger.db").write_text("")
     monkeypatch.setattr(service, "STATE_DIR", tmp_path / "state")
     service._child_env()
@@ -280,13 +290,46 @@ def test_config_rejects_unknown_keys_with_a_useful_message(tmp_path):
         assert "Known" in str(exc.value) or "section.key" in str(exc.value)
 
 
-def test_config_set_creates_the_file_when_missing(tmp_path, monkeypatch):
+def test_config_set_creates_the_home_file_when_missing(tmp_path, monkeypatch, capsys):
+    """With no config file anywhere, `config set` used to create
+    ./agenticledger.toml, which brought cwd-dependence back: a later
+    `config set` or service start from another folder resolved a different
+    file (observed live on 0.8.2). The new file now lands at
+    ~/.agenticledger/config.toml, the path every directory falls back to."""
     from agenticledger.cli import main
 
-    monkeypatch.chdir(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    workdir = tmp_path / "project"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+
     assert main(["config", "set", "proxy.port", "9001"]) == 0
-    assert (tmp_path / "agenticledger.toml").is_file()
+    created = home / ".agenticledger" / "config.toml"
+    assert created.is_file()
+    assert not (workdir / "agenticledger.toml").exists()  # nothing in cwd
     assert get_value("proxy.port") == "9001"
+    # The output names the file with its full path, so the operator can see
+    # exactly where the setting landed.
+    assert str(created.resolve()) in capsys.readouterr().out
+
+
+def test_config_set_still_edits_an_existing_local_file(tmp_path, monkeypatch):
+    """An agenticledger.toml already sitting in the current directory is an
+    explicit choice; `config set` keeps editing it instead of starting a
+    second file in the home directory."""
+    from agenticledger.cli import main
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    local = tmp_path / "agenticledger.toml"
+    init_config(str(local))
+
+    assert main(["config", "set", "proxy.port", "9002"]) == 0
+    assert "port = 9002" in local.read_text()
+    assert not (home / ".agenticledger" / "config.toml").exists()
 
 
 def test_config_commands_name_the_file_with_its_full_path(tmp_path, capsys):
