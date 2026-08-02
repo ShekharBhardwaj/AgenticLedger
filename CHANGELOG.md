@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-02
+
 ### Fixed
 - **Zero config now includes the upstream.** With no upstream configured,
   the proxy routes each call by the wire format it speaks: Anthropic-style
@@ -753,7 +755,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.7.0...v0.8.0
 [0.3.0.post1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0...v0.3.0.post1
 [0.3.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.2.0...v0.3.0
