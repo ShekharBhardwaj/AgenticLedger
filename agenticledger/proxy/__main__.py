@@ -10,7 +10,9 @@ Reads config from environment variables:
 
   Core:
     AGENTICLEDGER_UPSTREAM_URL          LLM endpoint to proxy (default: https://api.openai.com)
-    AGENTICLEDGER_DSN                   Database URL (default: sqlite:///agenticledger.db)
+    AGENTICLEDGER_DSN                   Database URL (default: sqlite:///agenticledger.db,
+                                      relative to the cwd; `agenticledger start` defaults to
+                                      ~/.agenticledger/agenticledger.db instead)
     AGENTICLEDGER_HOST                  Bind host (default: 0.0.0.0)
     AGENTICLEDGER_PORT                  Bind port (default: 8000)
     AGENTICLEDGER_API_KEY               Master admin key; protects dashboard/API/management

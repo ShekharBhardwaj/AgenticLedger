@@ -108,10 +108,21 @@ def detect_agent(headers, body: Optional[dict]) -> dict:
         ):
             framework = "claude-code"
 
+        system_text = _system_text(body)
+
+        # OpenClaw hosts its own assistant and cannot send custom headers
+        # (the reason `connect openclaw` names runs via the /r/ URL path).
+        # Its system prompt self-identifies ("You are a personal assistant
+        # running inside OpenClaw." — verified on live captures); requiring
+        # the phrase in the SYSTEM prompt keeps conversations that merely
+        # mention OpenClaw from triggering it.
+        if framework is None and "running inside openclaw" in system_text:
+            framework = "openclaw"
+            agent_name = "openclaw"
+
         # BMAD personas ride on top of a host coding agent — a BMAD marker in
         # the system prompt upgrades the framework tag, and a persona match
         # names the agent (bmad:sm, bmad:dev, ...).
-        system_text = _system_text(body)
         if system_text and any(mk in system_text for mk in _BMAD_MARKERS):
             framework = "bmad"
             for marker, persona in _BMAD_PERSONAS:

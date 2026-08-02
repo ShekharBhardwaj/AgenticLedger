@@ -238,16 +238,36 @@ def main(argv: Optional[list] = None) -> int:
         action = getattr(args, "config_action", None)
         if action == "path":
             found = find_config()
-            print(found or "no config file yet — run: agenticledger init")
+            print(found or "no config file yet. Run: agenticledger init")
             return 0 if found else 1
         if action == "get":
             val = get_value(args.key)
-            print(val if val is not None else "(not set in the file)")
+            found = find_config()
+            if val is not None:
+                print(val)
+                # The file note goes to stderr so `$(config get ...)` in
+                # scripts still captures the bare value.
+                print(f"(from {found})", file=sys.stderr)
+            elif found:
+                print(f"(not set in {found})")
+            else:
+                print("(no config file found)")
             return 0
         if action in ("set", "unset"):
             target = set_value(args.key, args.value if action == "set" else None)
             what = f"{args.key} = {args.value}" if action == "set" else f"{args.key} (unset)"
             print(f"{target}: {what}")
+            from agenticledger import service
+            known, loaded = service.running_proxy_config()
+            if known and loaded != target:
+                if loaded is None:
+                    print("Warning: the proxy running right now started "
+                          "without a config file, so it is not using the "
+                          "file this just edited.")
+                else:
+                    print(f"Warning: the proxy running right now reads its "
+                          f"settings from {loaded}, not from the file this "
+                          f"just edited.")
             print("Restart to apply: agenticledger stop && agenticledger start")
             return 0
         cfg_p.print_help()

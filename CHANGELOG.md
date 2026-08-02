@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **OpenClaw traffic names itself.** OpenClaw cannot send identifying
+  headers, so its calls landed as "(unattributed)" in the by-agent tables.
+  The detector now recognizes its self-identifying system prompt (verified
+  against live captures) and tags the framework and agent as openclaw.
+  Merely talking about OpenClaw does not count, and a BMAD persona hosted
+  inside OpenClaw still files as BMAD, same as on any other host.
+
+### Fixed
+- **The background service now keeps its database in one place.** The
+  default database path was relative, and `agenticledger start` inherits
+  the directory it was run from. Start the service from one directory,
+  restart it from another, and the proxy quietly created a second empty
+  database there: the dashboard opened blank and the day's captures looked
+  lost (they were still in the first directory's file). When nothing names
+  a database, the service now uses the absolute path
+  `~/.agenticledger/agenticledger.db`, so the data lands in the same place
+  no matter where `start` was run. An explicit `AGENTICLEDGER_DSN`, a `db`
+  value in agenticledger.toml, and foreground `agenticledger serve` behave
+  exactly as before. Migration note: if you relied on the old behavior and
+  have an `agenticledger.db` next to your project, point the service at it
+  with `agenticledger config set proxy.db sqlite:///path/to/agenticledger.db`
+  (or set `AGENTICLEDGER_DSN`); `start` prints a note when it spots such a
+  file that it is no longer using.
+
 ## [0.8.1] - 2026-08-02
 
 ### Fixed

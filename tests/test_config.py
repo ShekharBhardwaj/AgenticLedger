@@ -122,7 +122,9 @@ def test_key_file_paths_expand_home(tmp_path):
 
 @pytest.mark.skipif(os.name != "posix", reason="daemonization is POSIX-only in tests")
 def test_service_start_status_stop_roundtrip(tmp_path, monkeypatch):
-    """The whole premium-ops promise: start detaches, status answers, stop kills."""
+    """The whole premium-ops promise: start detaches, status answers, stop
+    kills. With no db configured anywhere, the database must land in the
+    state dir (absolute), not in whatever directory start was run from."""
     import socket
 
     from agenticledger import service
@@ -130,11 +132,11 @@ def test_service_start_status_stop_roundtrip(tmp_path, monkeypatch):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    (tmp_path / "agenticledger.toml").write_text(
-        f'[proxy]\nport = {port}\ndb = "sqlite:///{tmp_path}/svc.db"\n')
+    (tmp_path / "agenticledger.toml").write_text(f'[proxy]\nport = {port}\n')
     monkeypatch.setattr(service, "STATE_DIR", tmp_path / "state")
     monkeypatch.setattr(service, "PID_FILE", tmp_path / "state" / "proxy.pid")
     monkeypatch.setattr(service, "LOG_FILE", tmp_path / "state" / "proxy.log")
+    monkeypatch.setattr(service, "CONFIG_STATE_FILE", tmp_path / "state" / "proxy.config")
 
     assert service.status() == 3  # stopped
     assert service.start() == 0
@@ -142,10 +144,62 @@ def test_service_start_status_stop_roundtrip(tmp_path, monkeypatch):
         assert service.status() == 0
         assert service.start() == 0  # idempotent: already running
         assert service.logs(lines=5) == 0
+        assert (tmp_path / "state" / "agenticledger.db").is_file()
+        assert not (tmp_path / "agenticledger.db").exists()  # nothing in cwd
+        # start recorded which config file the proxy read, absolute.
+        recorded = (tmp_path / "state" / "proxy.config").read_text().strip()
+        assert recorded == str((tmp_path / "agenticledger.toml").resolve())
+        assert service.running_proxy_config() == (True, (tmp_path / "agenticledger.toml").resolve())
     finally:
         assert service.stop() == 0
     assert service.status() == 3
     assert service.stop() == 0  # idempotent: already stopped
+
+
+def test_service_pins_default_db_to_the_state_dir(tmp_path, monkeypatch):
+    """A relative default db + inherited cwd meant the data moved with the
+    directory `start` was run from; a restart elsewhere looked like data
+    loss. The service pins the default to an absolute path instead."""
+    from agenticledger import service
+
+    monkeypatch.setattr(service, "STATE_DIR", tmp_path / "state")
+    dsn = service._child_env()["AGENTICLEDGER_DSN"]
+    assert dsn == f"sqlite:///{tmp_path / 'state' / 'agenticledger.db'}"
+    # The path part is absolute once the store parses the URL.
+    assert os.path.isabs(dsn.split("sqlite:///", 1)[1])
+
+
+def test_service_default_db_yields_to_explicit_env(monkeypatch):
+    from agenticledger import service
+
+    monkeypatch.setenv("AGENTICLEDGER_DSN", "sqlite:///explicit.db")
+    assert service._child_env()["AGENTICLEDGER_DSN"] == "sqlite:///explicit.db"
+
+
+def test_service_default_db_yields_to_the_config_file(tmp_path):
+    from agenticledger import service
+
+    (tmp_path / "agenticledger.toml").write_text('[proxy]\ndb = "sqlite:///from-file.db"\n')
+    assert service._child_env()["AGENTICLEDGER_DSN"] == "sqlite:///from-file.db"
+
+
+def test_service_notes_a_stranded_db_in_cwd(tmp_path, monkeypatch, capsys):
+    """An agenticledger.db sitting in cwd used to BE the database; now the
+    service ignores it. Say so, and say how to keep it, instead of leaving
+    the user staring at an empty dashboard."""
+    from agenticledger import service
+
+    (tmp_path / "agenticledger.db").write_text("")
+    monkeypatch.setattr(service, "STATE_DIR", tmp_path / "state")
+    service._child_env()
+    err = capsys.readouterr().err
+    assert "agenticledger.db" in err and "no longer" in err
+    assert "AGENTICLEDGER_DSN" in err  # the way out is named, not implied
+
+    # With a db configured, the note would be wrong; it must stay quiet.
+    monkeypatch.setenv("AGENTICLEDGER_DSN", "sqlite:///explicit.db")
+    service._child_env()
+    assert capsys.readouterr().err == ""
 
 
 def test_cli_wires_the_subcommands(tmp_path, capsys):
@@ -177,6 +231,10 @@ def test_settings_page_is_admin_only_and_masks_secrets(proxy, monkeypatch, tmp_p
 
     body = client.get("/api/settings", headers=master).json()
     rows = {(r["section"], r["label"]): r for r in body["rows"]}
+    # The config-file row shows the full path of the file this process
+    # loaded — a bare relative name let two shells mean two different files.
+    assert rows[("Proxy", "config file")]["value"] == str(
+        (tmp_path / "agenticledger.toml").resolve())
     assert rows[("Access", "dashboard key")]["value"] == "set (hidden)"
     assert "master-key" not in str(body)
     assert rows[("Budgets", "daily (whole ledger)")]["value"] == "25.0"
@@ -229,3 +287,72 @@ def test_config_set_creates_the_file_when_missing(tmp_path, monkeypatch):
     assert main(["config", "set", "proxy.port", "9001"]) == 0
     assert (tmp_path / "agenticledger.toml").is_file()
     assert get_value("proxy.port") == "9001"
+
+
+def test_config_commands_name_the_file_with_its_full_path(tmp_path, capsys):
+    """A bare "agenticledger.toml:" in output let a budget get set via one
+    directory's file and unset via another's while the operator believed
+    both hit the same file. Every config command now prints the full path."""
+    from agenticledger.cli import main
+
+    resolved = str((tmp_path / "agenticledger.toml").resolve())
+    init_config(str(tmp_path / "agenticledger.toml"))
+    capsys.readouterr()
+
+    assert main(["config", "set", "budgets.daily", "0.01"]) == 0
+    assert capsys.readouterr().out.startswith(f"{resolved}: budgets.daily = 0.01")
+
+    assert main(["config", "get", "budgets.daily"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "0.01"     # stdout stays script-friendly
+    assert resolved in captured.err           # the file is named on stderr
+
+    assert main(["config", "get", "proxy.port"]) == 0
+    assert resolved in capsys.readouterr().out  # "(not set in <full path>)"
+
+    assert main(["config", "unset", "budgets.daily"]) == 0
+    assert capsys.readouterr().out.startswith(f"{resolved}: budgets.daily (unset)")
+
+    assert main(["config", "path"]) == 0
+    assert capsys.readouterr().out.strip() == resolved
+
+
+def test_config_set_warns_when_the_running_proxy_loaded_another_file(
+        tmp_path, monkeypatch, capsys):
+    """The trap this closes: the running proxy loaded one file, the edit
+    landed in another, and nothing said so — the budget wall stayed up
+    while the operator believed it was lifted."""
+    from agenticledger import service
+    from agenticledger.cli import main
+
+    edited = (tmp_path / "agenticledger.toml").resolve()
+    other = (tmp_path / "elsewhere" / "agenticledger.toml").resolve()
+    other.parent.mkdir()
+    init_config(str(edited))
+    init_config(str(other))
+    monkeypatch.setattr(service, "CONFIG_STATE_FILE", tmp_path / "state" / "proxy.config")
+    monkeypatch.setattr(service, "_read_pid", lambda: 12345)
+    monkeypatch.setattr(service, "_alive", lambda pid: True)
+    service.CONFIG_STATE_FILE.parent.mkdir()
+
+    # Proxy loaded a different file than the one this edit touches.
+    service.CONFIG_STATE_FILE.write_text(str(other))
+    assert main(["config", "set", "budgets.daily", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "Warning" in out and str(other) in out
+
+    # Proxy started without any config file.
+    service.CONFIG_STATE_FILE.write_text("")
+    assert main(["config", "set", "budgets.daily", "2"]) == 0
+    assert "Warning" in capsys.readouterr().out
+
+    # Editing the very file the proxy loaded: no warning.
+    service.CONFIG_STATE_FILE.write_text(str(edited))
+    assert main(["config", "set", "budgets.daily", "3"]) == 0
+    assert "Warning" not in capsys.readouterr().out
+
+    # No proxy running: no warning either.
+    monkeypatch.setattr(service, "_alive", lambda pid: False)
+    service.CONFIG_STATE_FILE.write_text(str(other))
+    assert main(["config", "unset", "budgets.daily"]) == 0
+    assert "Warning" not in capsys.readouterr().out

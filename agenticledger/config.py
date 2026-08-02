@@ -34,6 +34,13 @@ logger = logging.getLogger("agenticledger.config")
 # come from?" instead of making the user guess.
 applied_from_file: set[str] = set()
 
+# What apply_config did in THIS process: whether it ran, and which file it
+# read. The settings page reports these instead of searching the disk again
+# at request time, so it names the file the proxy loaded at startup even if
+# files were added or removed since.
+load_attempted = False
+loaded_path: Optional[Path] = None
+
 # config key → environment variable. The env pipeline stays the single
 # source of truth; the file is just a friendlier way to fill it.
 _KEY_MAP: dict[str, dict[str, str]] = {
@@ -108,8 +115,12 @@ TEMPLATE = '''\
 
 
 def find_config(explicit: Optional[str] = None) -> Optional[Path]:
-    """The config file in effect, or None. Order: AGENTICLEDGER_CONFIG,
-    ./agenticledger.toml, ~/.agenticledger/config.toml."""
+    """The config file in effect as an ABSOLUTE path, or None. Order:
+    AGENTICLEDGER_CONFIG, ./agenticledger.toml, ~/.agenticledger/config.toml.
+
+    Absolute because two shells in different directories can resolve the
+    cwd candidate to two different files; a bare "agenticledger.toml" in
+    output let an operator edit one file while the proxy read another."""
     candidates = [
         explicit or os.environ.get("AGENTICLEDGER_CONFIG"),
         "agenticledger.toml",
@@ -117,14 +128,17 @@ def find_config(explicit: Optional[str] = None) -> Optional[Path]:
     ]
     for cand in candidates:
         if cand and Path(cand).expanduser().is_file():
-            return Path(cand).expanduser()
+            return Path(cand).expanduser().resolve()
     return None
 
 
 def apply_config(explicit: Optional[str] = None) -> Optional[Path]:
     """Load the config file (if any) into the environment via setdefault —
     an env var that is already set always wins. Returns the path used."""
+    global load_attempted, loaded_path
     path = find_config(explicit)
+    load_attempted = True
+    loaded_path = path
     if path is None:
         return None
     try:
@@ -196,6 +210,7 @@ def set_value(dotted: str, value: Optional[str], path: Optional[str] = None) -> 
     same key is uncommented and reused rather than duplicated."""
     section, key = _split_key(dotted)
     target = Path(path).expanduser() if path else (find_config() or Path("agenticledger.toml"))
+    target = target.resolve()
     if not target.is_file():
         init_config(str(target))
     lines = target.read_text(encoding="utf-8").splitlines()
@@ -239,7 +254,7 @@ def get_value(dotted: str, path: Optional[str] = None) -> Optional[str]:
     """The value currently in the file (not the effective value — the
     settings page and `status` speak for what is actually running)."""
     section, key = _split_key(dotted)
-    target = Path(path).expanduser() if path else find_config()
+    target = Path(path).expanduser().resolve() if path else find_config()
     if target is None or not target.is_file():
         return None
     data = tomllib.loads(target.read_text(encoding="utf-8"))
@@ -249,7 +264,7 @@ def get_value(dotted: str, path: Optional[str] = None) -> Optional[str]:
 
 def init_config(path: str = "agenticledger.toml") -> Path:
     """Write the commented template. Refuses to overwrite an existing file."""
-    target = Path(path).expanduser()
+    target = Path(path).expanduser().resolve()
     if target.exists():
         raise SystemExit(f"{target} already exists — not overwriting it.")
     target.write_text(TEMPLATE, encoding="utf-8")

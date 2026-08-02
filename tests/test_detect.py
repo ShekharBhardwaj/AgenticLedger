@@ -225,3 +225,38 @@ def test_bmad_v4_system_prompt_personas_still_win():
             "messages": [{"role": "user", "content": "next story"}]}
     d = detect_agent(headers, body)
     assert d["framework"] == "bmad" and d["agent_name"] == "bmad:sm"
+
+
+# ── OpenClaw ─────────────────────────────────────────────────────────────────
+#
+# OpenClaw cannot send custom headers, so its self-identifying system prompt
+# is the only fingerprint there is. Verified against live captures: every
+# call opens with "You are a personal assistant running inside OpenClaw."
+
+def test_openclaw_system_prompt_names_the_agent():
+    got = detect_agent({}, {
+        "system": "You are a personal assistant running inside OpenClaw.\n## Tooling\n- exec: Run shell commands",
+        "messages": [{"role": "user", "content": "what did I spend?"}],
+    })
+    assert got["framework"] == "openclaw"
+    assert got["agent_name"] == "openclaw"
+
+
+def test_talking_about_openclaw_is_not_running_openclaw():
+    got = detect_agent({}, {
+        "messages": [{"role": "user",
+                      "content": "I'm running inside OpenClaw, how do I track costs?"}],
+    })
+    assert got["framework"] is None
+    assert got["agent_name"] is None
+
+
+def test_bmad_riding_on_openclaw_upgrades_to_bmad():
+    """A BMAD persona hosted by OpenClaw is BMAD work, same as on claude-code."""
+    got = detect_agent({}, {
+        "system": ("You are a personal assistant running inside OpenClaw.\n"
+                   "bmad-core activation: you are the Developer persona."),
+        "messages": [{"role": "user", "content": "implement the story"}],
+    })
+    assert got["framework"] == "bmad"
+    assert got["agent_name"] == "bmad:dev"

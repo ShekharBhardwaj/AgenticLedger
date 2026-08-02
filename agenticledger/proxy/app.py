@@ -854,7 +854,7 @@ def create_app(
         Each row says where its value came from: the config file, an
         environment variable, or the built-in default."""
         await _require(request, ROLE_ADMIN)
-        from ..config import applied_from_file, find_config
+        from ..config import applied_from_file, find_config, load_attempted, loaded_path
 
         def src(env_name: Optional[str]) -> str:
             if env_name is None:
@@ -897,15 +897,20 @@ def create_app(
             # instead of looking like a stale release.
             version += " (dev build — stamped when the package was installed; "\
                        "reinstall to refresh)"
-        cfg = find_config()
+        # Report the file this process actually loaded at startup, not what a
+        # fresh search would find now — a file created after start has NOT
+        # been read, and saying otherwise recreates the "I set the budget,
+        # why is the wall still up?" trap. find_config is only the fallback
+        # for embedded uses that never ran apply_config.
+        cfg = loaded_path if load_attempted else find_config()
         rows = [
             row("Proxy", "version", version,
                 means="Which build is running."),
             row("Proxy", "config file",
-                str(cfg) if cfg else "none — using env vars and defaults",
-                means="The file this proxy actually read. Searched in order: "
-                      "AGENTICLEDGER_CONFIG, ./agenticledger.toml, "
-                      "~/.agenticledger/config.toml.",
+                str(cfg) if cfg else "none (using env vars and defaults)",
+                means="The file this proxy read at startup, as a full path. "
+                      "Searched in order: AGENTICLEDGER_CONFIG, "
+                      "./agenticledger.toml, ~/.agenticledger/config.toml.",
                 key="AGENTICLEDGER_CONFIG"),
             row("Proxy", "upstream",
                 ("auto: anthropic calls → api.anthropic.com, openai-style → "

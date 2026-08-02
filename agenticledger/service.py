@@ -3,9 +3,12 @@ Background service mode — the proxy without a hostage terminal.
 
 `agenticledger start` detaches the proxy into the background: it keeps
 running when the terminal closes, logs to ~/.agenticledger/proxy.log, and
-records its pid in ~/.agenticledger/proxy.pid. `status` answers "is it up
-and healthy?", `stop` shuts it down cleanly, `logs` shows what it said.
-`serve` remains the foreground mode (containers, debugging).
+records its pid in ~/.agenticledger/proxy.pid. Unless a database is
+configured, the service stores captures in ~/.agenticledger/agenticledger.db
+(an absolute path, so the data does not depend on where `start` was run).
+`status` answers "is it up and healthy?", `stop` shuts it down cleanly,
+`logs` shows what it said. `serve` remains the foreground mode
+(containers, debugging).
 """
 
 import os
@@ -18,16 +21,73 @@ from typing import Optional
 
 import httpx
 
-from .config import apply_config
+from .config import apply_config, find_config
 
 STATE_DIR = Path.home() / ".agenticledger"
 PID_FILE = STATE_DIR / "proxy.pid"
 LOG_FILE = STATE_DIR / "proxy.log"
+# The absolute path of the config file the background proxy read at start
+# (empty when it started without one). `config set` compares against this
+# to warn when an edit lands in a file the running proxy never saw.
+CONFIG_STATE_FILE = STATE_DIR / "proxy.config"
 
 
 def _port() -> int:
     apply_config()
     return int(os.environ.get("AGENTICLEDGER_PORT", "8000"))
+
+
+def _child_env() -> dict:
+    """Environment for the spawned proxy.
+
+    The proxy's own default DSN is relative (sqlite:///agenticledger.db),
+    so a background service inheriting the caller's cwd would put the
+    database wherever `start` happened to be run; restarting from another
+    directory then reads a fresh empty file and the old captures look
+    lost. If neither the environment nor the config file names a database,
+    pin it to an absolute path in STATE_DIR so the data lands in the same
+    place every time. Explicit AGENTICLEDGER_DSN and `serve` keep their
+    old behavior.
+    """
+    apply_config()  # the config file's db value, if any, is in os.environ now
+    env = dict(os.environ)
+    if not env.get("AGENTICLEDGER_DSN"):
+        default_db = STATE_DIR / "agenticledger.db"
+        env["AGENTICLEDGER_DSN"] = f"sqlite:///{default_db}"
+        stray = Path("agenticledger.db")
+        if stray.is_file():
+            print(
+                f"note: found {stray.resolve()} but the background service no longer "
+                f"uses it; data goes to {default_db}. To keep the old file, set "
+                f"AGENTICLEDGER_DSN or [proxy] db in agenticledger.toml.",
+                file=sys.stderr,
+            )
+    return env
+
+
+def _record_loaded_config() -> None:
+    """Remember which config file the proxy being started will read."""
+    loaded = find_config()
+    try:
+        CONFIG_STATE_FILE.parent.mkdir(exist_ok=True)
+        CONFIG_STATE_FILE.write_text(str(loaded) if loaded else "", encoding="utf-8")
+    except OSError:
+        pass  # the warning in `config set` just stays silent
+
+
+def running_proxy_config() -> tuple[bool, Optional[Path]]:
+    """Which config file is the background proxy using right now?
+
+    Returns (known, path). known is False when the proxy is not running or
+    was started by a version that did not record this. path is the file the
+    proxy read at start, or None when it started without one."""
+    if not _alive(_read_pid()):
+        return False, None
+    try:
+        text = CONFIG_STATE_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False, None
+    return True, (Path(text) if text else None)
 
 
 def _read_pid() -> Optional[int]:
@@ -65,6 +125,7 @@ def start() -> int:
         return 0
 
     STATE_DIR.mkdir(exist_ok=True)
+    _record_loaded_config()
     kwargs: dict = {"stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL}
     if os.name == "posix":
         kwargs["start_new_session"] = True  # survives the terminal closing
@@ -73,7 +134,7 @@ def start() -> int:
     with open(LOG_FILE, "ab") as log:
         # The child inherits the fd; closing our handle after spawn is fine.
         proc = subprocess.Popen([sys.executable, "-m", "agenticledger.proxy"],
-                                stdout=log, **kwargs)
+                                stdout=log, env=_child_env(), **kwargs)
     PID_FILE.parent.mkdir(exist_ok=True)
     PID_FILE.write_text(str(proc.pid))
 
