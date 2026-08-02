@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-02
+
 ### Added
 - **OpenClaw traffic names itself.** OpenClaw cannot send identifying
   headers, so its calls landed as "(unattributed)" in the by-agent tables.
@@ -31,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `agenticledger config set proxy.db sqlite:///path/to/agenticledger.db`
   (or set `AGENTICLEDGER_DSN`); `start` prints a note when it spots such a
   file that it is no longer using.
+- **Config commands name the exact file they touched.** `config set` and
+  friends printed a bare "agenticledger.toml", so two shells in different
+  folders could quietly edit two different files while believing they
+  shared one (observed live: a budget wall stayed up because the unset
+  edited the wrong file). All config command output now prints the
+  absolute path, and the settings page shows the absolute path of the
+  file the proxy actually loaded.
 
 ## [0.8.1] - 2026-08-02
 
@@ -780,7 +789,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.7.0...v0.8.0
 [0.3.0.post1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.3.0...v0.3.0.post1
