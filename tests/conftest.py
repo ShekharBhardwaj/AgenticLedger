@@ -19,7 +19,9 @@ reinvent provider wire formats.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 from typing import Any, Callable, Optional
 
 import httpx
@@ -101,7 +103,7 @@ def proxy() -> Callable[..., ProxyClient]:
         # Tests may declare a specific upstream (e.g. to exercise wire-format
         # mismatch detection); traffic still goes to the mock transport.
         app_kwargs.setdefault("upstream_url", UPSTREAM_URL)
-        app = create_app(dsn="sqlite:///:memory:", **app_kwargs)
+        app = create_app(dsn=_default_test_dsn(), **app_kwargs)
         tc: ProxyClient = TestClient(app)  # type: ignore[assignment]
         tc.__enter__()  # runs lifespan → sets app.state.store and app.state.client
         # Replace the real upstream client with one backed by the mock transport.
@@ -124,12 +126,50 @@ def proxy() -> Callable[..., ProxyClient]:
 
 @pytest_asyncio.fixture
 async def store() -> Store:
-    """A fresh in-memory SQLite Store, closed on teardown."""
-    s = await Store.connect("sqlite:///:memory:")
+    """A fresh Store on the suite's default backend, closed on teardown."""
+    if _FULL_PG_DSN:
+        await _drop_all_pg_tables()
+    s = await Store.connect(_default_test_dsn(reset=False))
     try:
         yield s
     finally:
         await s.close()
+
+
+# ── Full-suite Postgres mode ─────────────────────────────────────────────────
+#
+# Set AGENTICLEDGER_TEST_FULL_PG_DSN to run the ENTIRE suite against a real
+# Postgres instead of in-memory SQLite: every fixture-made store points at it,
+# and each test starts from a dropped schema that Store.connect rebuilds.
+# SQLite remains the default so plain `pytest` stays dependency-free.
+#
+#     docker run -d -p 5433:5432 -e POSTGRES_PASSWORD=postgres \
+#         -e POSTGRES_DB=agenticledger_test postgres:16-alpine
+#     AGENTICLEDGER_TEST_FULL_PG_DSN=postgresql://postgres:postgres@127.0.0.1:5433/agenticledger_test pytest
+
+_FULL_PG_DSN = os.environ.get("AGENTICLEDGER_TEST_FULL_PG_DSN")
+_ALL_TABLES = "llm_calls, api_tokens, audit_log, tool_executions, run_markers, labels"
+
+
+async def _drop_all_pg_tables() -> None:
+    import asyncpg
+
+    conn = await asyncpg.connect(_FULL_PG_DSN)
+    try:
+        await conn.execute(f"DROP TABLE IF EXISTS {_ALL_TABLES}")
+    finally:
+        await conn.close()
+
+
+def _default_test_dsn(reset: bool = True) -> str:
+    """The dsn fixtures use when a test does not pick its own. In Postgres
+    mode the schema is dropped first (sync callers only; async fixtures call
+    _drop_all_pg_tables themselves), so every test starts pristine."""
+    if not _FULL_PG_DSN:
+        return "sqlite:///:memory:"
+    if reset:
+        asyncio.run(_drop_all_pg_tables())
+    return _FULL_PG_DSN
 
 
 # ── Wire-format builders ──────────────────────────────────────────────────────

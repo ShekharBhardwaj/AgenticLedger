@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The Postgres backend now returns exactly what the SQLite backend
+  returns.** Running the full test suite against real Postgres for the
+  first time surfaced 29 latent bugs with one root cause: backend-native
+  types leaking through the store boundary. Costs were stored as float4
+  (silently shaving precision the accuracy promise depends on),
+  action ids were typed UUID so a non-UUID id was silently dropped by the
+  fail-open save path, aggregate rows leaked Decimal into JSON encoding,
+  and JSONB fields came back as strings where SQLite returned parsed
+  objects. One plain-types contract now shapes every Postgres row, ids
+  are TEXT, numerics are double precision, and existing databases migrate
+  in place on startup. CI runs the entire suite against Postgres on every
+  push so the two backends can never drift again.
+
+### Fixed
 - **`config set` now creates its file in one fixed place.** With no config
   file anywhere, `agenticledger config set` created `./agenticledger.toml`
   in whatever directory it was run from. That reopened the trap the 0.8.2

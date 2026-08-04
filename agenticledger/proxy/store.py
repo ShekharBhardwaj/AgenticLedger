@@ -12,6 +12,8 @@ non-destructively so existing databases survive upgrades.
 
 import contextlib
 import datetime
+import datetime as _dt
+import decimal as _decimal
 import json
 import uuid
 from abc import ABC, abstractmethod
@@ -111,20 +113,28 @@ def _attach_percentiles(rows: list[dict], key: str, latencies: dict[str, list[fl
 
 
 def _flagged_row(d: dict) -> dict:
-    ts = d.get("timestamp")
-    if isinstance(ts, (int, float)):
-        d["timestamp"] = _unix_to_iso(ts)
-    elif ts is not None:
-        d["timestamp"] = ts.isoformat()
+    if d.get("timestamp") is not None:
+        d["timestamp"] = _to_iso(d["timestamp"])
     if isinstance(d.get("tool_calls"), str):
         with contextlib.suppress(Exception):
             d["tool_calls"] = json.loads(d["tool_calls"])
     return d
 
 
+def _to_iso(v) -> str:
+    """A timestamp in any of the shapes the two backends produce: unix
+    number (SQLite), datetime (raw asyncpg), or already an ISO string
+    (anything that went through _pg_plain)."""
+    if isinstance(v, (int, float)):
+        return _unix_to_iso(v)
+    if isinstance(v, str):
+        return v
+    return v.isoformat()
+
+
 def _iteration_row(d: dict) -> dict:
-    d["started_at"] = _unix_to_iso(d["started_at"]) if isinstance(d["started_at"], (int, float)) else d["started_at"].isoformat()
-    d["last_call_at"] = _unix_to_iso(d["last_call_at"]) if isinstance(d["last_call_at"], (int, float)) else d["last_call_at"].isoformat()
+    d["started_at"] = _to_iso(d["started_at"])
+    d["last_call_at"] = _to_iso(d["last_call_at"])
     if d.get("cost_usd") is not None:
         d["cost_usd"] = float(d["cost_usd"])
     return d
@@ -1068,7 +1078,7 @@ class _PostgresStore(Store):
         async with pool.acquire() as conn:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS llm_calls (
-                    action_id   UUID        PRIMARY KEY,
+                    action_id   TEXT        PRIMARY KEY,
                     session_id  TEXT,
                     timestamp   TIMESTAMPTZ NOT NULL,
                     model_id    TEXT        NOT NULL,
@@ -1080,15 +1090,24 @@ class _PostgresStore(Store):
                     stop_reason TEXT,
                     tokens_in   INTEGER,
                     tokens_out  INTEGER,
-                    latency_ms  INTEGER
+                    latency_ms  DOUBLE PRECISION
                 )
             """)
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS llm_calls_session_idx
                 ON llm_calls (session_id) WHERE session_id IS NOT NULL
             """)
+            # Ids are opaque strings (the session_id lesson, learned twice:
+            # a UUID-typed action_id silently dropped non-UUID ids through
+            # the fail-open save path), and SQLite's REAL is float8 while
+            # Postgres reads REAL as float4, which quietly shaved cost
+            # precision. Both migrations are no-ops when already applied.
+            await conn.execute("ALTER TABLE llm_calls ALTER COLUMN action_id TYPE TEXT")
+            await conn.execute("ALTER TABLE llm_calls ALTER COLUMN latency_ms TYPE DOUBLE PRECISION")
             for col, col_type in _MIGRATION_COLUMNS:
-                pg_type = "JSONB" if col in ("tool_results",) else col_type
+                pg_type = ("JSONB" if col in ("tool_results",)
+                           else "DOUBLE PRECISION" if col_type == "REAL"
+                           else col_type)
                 await conn.execute(
                     f"ALTER TABLE llm_calls ADD COLUMN IF NOT EXISTS {col} {pg_type}"
                 )
@@ -1168,6 +1187,8 @@ class _PostgresStore(Store):
             """)
             await conn.execute(
                 "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS budget_daily DOUBLE PRECISION")
+            await conn.execute("ALTER TABLE llm_calls ALTER COLUMN temperature TYPE DOUBLE PRECISION")
+            await conn.execute("ALTER TABLE llm_calls ALTER COLUMN cost_usd TYPE DOUBLE PRECISION")
         return cls(pool)
 
     async def save(self, action_id, req, resp, *, session_id=None, user_id=None,
@@ -1203,7 +1224,7 @@ class _PostgresStore(Store):
                      $32,$33,$34,$35,
                      $36,$37,$38,$39)
                 """,
-                uuid.UUID(action_id),
+                action_id,
                 session_id,
                 req.timestamp, req.model_id, req.provider,
                 json.dumps(req.messages),
@@ -1263,7 +1284,7 @@ class _PostgresStore(Store):
                 """,
                 run_id,
             )
-        return [_iteration_row(dict(r)) for r in rows]
+        return [_iteration_row(_pg_plain(r)) for r in rows]
 
     async def get_flagged_calls(self, run_id: str) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
@@ -1272,7 +1293,7 @@ class _PostgresStore(Store):
                 "WHERE run_id = $1 AND loop_flags IS NOT NULL ORDER BY timestamp ASC",
                 run_id,
             )
-        return [_flagged_row(dict(r)) for r in rows]
+        return [_flagged_row(_pg_plain(r)) for r in rows]
 
     async def save_tool_executions(self, executions: list[dict[str, Any]]) -> None:
         if not executions:
@@ -1306,12 +1327,12 @@ class _PostgresStore(Store):
                 "SELECT * FROM tool_executions WHERE session_id = $1 ORDER BY timestamp ASC",
                 session_id,
             )
-        return [dict(r) for r in rows]
+        return [_pg_plain(r) for r in rows]
 
     async def get(self, action_id: str) -> Optional[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT * FROM llm_calls WHERE action_id = $1", uuid.UUID(action_id)
+                "SELECT * FROM llm_calls WHERE action_id = $1", action_id
             )
         return _pg_row(row) if row else None
 
@@ -1430,7 +1451,7 @@ class _PostgresStore(Store):
                 """,
                 value if scope != "action_id" else __import__("uuid").UUID(value),
             )
-        return [dict(r) for r in rows]
+        return [_pg_plain(r) for r in rows]
 
     async def get_session_totals(self, since_ts: float) -> list[dict[str, Any]]:
         import datetime as _dt
@@ -1453,7 +1474,7 @@ class _PostgresStore(Store):
                 since)
         out = []
         for r in rows:
-            d = dict(r)
+            d = _pg_plain(r)
             d["cost_usd"] = float(d["cost_usd"] or 0)
             out.append(d)
         return out
@@ -1471,7 +1492,7 @@ class _PostgresStore(Store):
             row = await conn.fetchrow(
                 "SELECT name, pinned, project FROM labels WHERE scope = $1 AND ref_id = $2",
                 scope, ref_id)
-            prev = dict(row) if row else {}
+            prev = _pg_plain(row) if row else {}
             merged = {
                 "name": prev.get("name") if name is None else (name or None),
                 "pinned": bool(prev.get("pinned")) if pinned is None else bool(pinned),
@@ -1561,7 +1582,7 @@ class _PostgresStore(Store):
         since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
         day_shift = int(tz_offset_minutes)
         async with self._pool.acquire() as conn:
-            daily = [dict(r) for r in await conn.fetch(
+            daily = [_pg_plain(r) for r in await conn.fetch(
                 f"""
                 SELECT
                     to_char((timestamp + make_interval(mins => {day_shift})) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
@@ -1578,7 +1599,7 @@ class _PostgresStore(Store):
                 """,
                 since,
             )]
-            models = [dict(r) for r in await conn.fetch(
+            models = [_pg_plain(r) for r in await conn.fetch(
                 """
                 SELECT
                     model_id,
@@ -1599,7 +1620,7 @@ class _PostgresStore(Store):
                 """,
                 since,
             )]
-            agents = [dict(r) for r in await conn.fetch(
+            agents = [_pg_plain(r) for r in await conn.fetch(
                 """
                 SELECT
                     COALESCE(agent_name, '(unattributed)') AS agent_name,
@@ -1617,7 +1638,7 @@ class _PostgresStore(Store):
                 since,
             )]
         async with self._pool.acquire() as conn:
-            teams = [dict(r) for r in await conn.fetch(
+            teams = [_pg_plain(r) for r in await conn.fetch(
                 """
                 SELECT team, COUNT(*) AS call_count,
                        SUM(COALESCE(cost_usd, 0)) AS cost_usd,
@@ -1665,7 +1686,7 @@ class _PostgresStore(Store):
             row = await conn.fetchrow(
                 "SELECT * FROM api_tokens WHERE token_hash = $1", token_hash
             )
-        return dict(row) if row else None
+        return _pg_plain(row) if row else None
 
     async def list_tokens(self) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
@@ -1673,7 +1694,7 @@ class _PostgresStore(Store):
                 "SELECT token_id, name, role, created_at, expires_at, revoked_at "
                 "FROM api_tokens ORDER BY created_at DESC"
             )
-        return [dict(r) for r in rows]
+        return [_pg_plain(r) for r in rows]
 
     async def revoke_token(self, token_id: str, revoked_at: float) -> int:
         async with self._pool.acquire() as conn:
@@ -1715,7 +1736,7 @@ class _PostgresStore(Store):
             )
         out = []
         for r in rows:
-            d = dict(r)
+            d = _pg_plain(r)
             d["timestamp"] = _unix_to_iso(d["timestamp"])
             out.append(d)
         return out
@@ -1724,24 +1745,37 @@ class _PostgresStore(Store):
         await self._pool.close()
 
 
-def _pg_row(row) -> dict[str, Any]:
+def _pg_plain(row) -> dict[str, Any]:
+    """One contract for every Postgres row: the same plain Python types the
+    SQLite backend returns. Decimal becomes float, UUID becomes str,
+    datetime becomes an ISO string. Every fetch goes through this, so the
+    two backends cannot drift apart at the API surface."""
     d = dict(row)
-    d["action_id"] = str(d["action_id"])
-    d["session_id"] = str(d["session_id"]) if d["session_id"] else None
-    d["parent_action_id"] = str(d["parent_action_id"]) if d.get("parent_action_id") else None
-    d["timestamp"] = d["timestamp"].isoformat()
+    for k, v in d.items():
+        if isinstance(v, _decimal.Decimal):
+            d[k] = float(v)
+        elif isinstance(v, uuid.UUID):
+            d[k] = str(v)
+        elif isinstance(v, _dt.datetime):
+            d[k] = v.isoformat()
+    return d
+
+
+def _pg_row(row) -> dict[str, Any]:
+    d = _pg_plain(row)
+    # asyncpg hands JSONB back as text; SQLite's shaper parses its JSON
+    # columns, so parse here too or the API shape depends on the backend.
+    for field in ("messages", "tools", "tool_calls", "tool_results"):
+        if isinstance(d.get(field), str):
+            d[field] = json.loads(d[field])
     return d
 
 
 def _pg_session_row(row) -> dict[str, Any]:
-    d = dict(row)
-    d["started_at"] = d["started_at"].isoformat()
-    return d
+    return _pg_plain(row)
 
 
 def _pg_run_row(row) -> dict[str, Any]:
-    d = dict(row)
-    d["started_at"] = d["started_at"].isoformat()
-    d["last_call_at"] = d["last_call_at"].isoformat()
-    d["total_cost_usd"] = float(d["total_cost_usd"] or 0)
+    d = _pg_plain(row)
+    d["total_cost_usd"] = float(d.get("total_cost_usd") or 0)
     return d
