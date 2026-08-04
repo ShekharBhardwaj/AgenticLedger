@@ -1766,6 +1766,11 @@ def _pg_plain(row) -> dict[str, Any]:
             d[k] = str(v)
         elif isinstance(v, _dt.datetime):
             d[k] = v.isoformat()
+        # Costs are written rounded to 8 decimals (compute_cost's contract);
+        # guarantee the same on the way out. This also erases the float4
+        # noise on rows written before the DOUBLE PRECISION migration.
+        if k.endswith("cost_usd") and isinstance(d[k], float):
+            d[k] = round(d[k], 8)
     return d
 
 

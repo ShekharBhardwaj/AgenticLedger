@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Upgrade-safety tests.** Databases created by past releases must open,
+  migrate, and keep their history under current code, forever: CI now
+  proves it against frozen schema snapshots from real release tags (a
+  0.6.0 SQLite file, a 0.8.2 Postgres schema with UUID-typed ids and
+  float4 costs). Writing them found one more truth: rows stored under the
+  old float4 column keep their precision noise after the type migration,
+  so costs are now also rounded to 8 decimals on the way out of the
+  store, matching the write-side contract and erasing the legacy noise.
 - **Pricing is data now.** Model prices moved out of Python into plain
   JSON packs (`agenticledger/pricing_data/`, one file per provider) that
   anyone can PR without touching code: see docs/pricing.md. The runtime
