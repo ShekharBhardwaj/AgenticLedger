@@ -295,6 +295,29 @@ signature/SBOM verification, enterprise mirrors, and scaling guidance in
 
 ---
 
+## The numbers
+
+Measured, not promised. Reproduce them with
+`python scripts/loadtest.py --calls 2000 --seed 1000000` (Apple M-series
+MacBook, SQLite backend, ledger 0.9):
+
+| What | Result |
+|---|---|
+| Sustained capture throughput | 2,886 proxied calls/sec |
+| Added latency per call | 10ms p50 · 12ms p95 |
+| Direct store writes | ~38,000 saves/sec |
+| One million calls on disk | 271 MB |
+| Open one session at 1M calls | 2 ms |
+| Session list at 1M calls | 335 ms |
+| 30-day report at 1M calls | 719 ms |
+
+The honest caveats: the session list aggregates every session on every
+load, so it grows with total history; the report window uses a timestamp
+index, so it grows with the window's traffic, not the table. Your agent's
+provider latency (hundreds of ms per call) dwarfs the proxy's overhead by
+an order of magnitude. Postgres numbers vary with your server; the same
+script measures them with `--dsn`.
+
 ## What gets captured
 
 Every LLM call is stored with:

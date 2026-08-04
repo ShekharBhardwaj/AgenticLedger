@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Published performance numbers.** The README now carries a measured
+  table (sustained calls per second, added latency, database size and
+  dashboard latency at one million calls) and the reproducible
+  `scripts/loadtest.py` behind it. Measuring found a missing timestamp
+  index: the 30-day report at a million calls dropped from 2.4 seconds
+  to 0.7 after adding it (both backends, migrated in place).
+
 ### Fixed
 - **The Postgres backend now returns exactly what the SQLite backend
   returns.** Running the full test suite against real Postgres for the
@@ -20,8 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are TEXT, numerics are double precision, and existing databases migrate
   in place on startup. CI runs the entire suite against Postgres on every
   push so the two backends can never drift again.
-
-### Fixed
 - **`config set` now creates its file in one fixed place.** With no config
   file anywhere, `agenticledger config set` created `./agenticledger.toml`
   in whatever directory it was run from. That reopened the trap the 0.8.2

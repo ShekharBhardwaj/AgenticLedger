@@ -410,6 +410,10 @@ class _SqliteStore(Store):
             CREATE INDEX IF NOT EXISTS llm_calls_session_idx
             ON llm_calls (session_id) WHERE session_id IS NOT NULL
         """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS llm_calls_ts_idx
+            ON llm_calls (timestamp)
+        """)
         for col, col_type in _MIGRATION_COLUMNS:
             # Column already exists on an upgraded DB — that's fine, skip it.
             with contextlib.suppress(Exception):
@@ -1096,6 +1100,10 @@ class _PostgresStore(Store):
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS llm_calls_session_idx
                 ON llm_calls (session_id) WHERE session_id IS NOT NULL
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS llm_calls_ts_idx
+                ON llm_calls (timestamp)
             """)
             # Ids are opaque strings (the session_id lesson, learned twice:
             # a UUID-typed action_id silently dropped non-UUID ids through
