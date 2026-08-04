@@ -316,7 +316,9 @@ load, so it grows with total history; the report window uses a timestamp
 index, so it grows with the window's traffic, not the table. Your agent's
 provider latency (hundreds of ms per call) dwarfs the proxy's overhead by
 an order of magnitude. Postgres numbers vary with your server; the same
-script measures them with `--dsn`.
+script measures them with `--dsn`. Cost math has its own guardrails and
+a five-minute parity check against your provider console: see
+[docs/accuracy.md](docs/accuracy.md).
 
 ## What gets captured
 

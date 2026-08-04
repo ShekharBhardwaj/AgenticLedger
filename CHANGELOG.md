@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus golden cost assertions pinning the math to known rates), so a
   typo fails CI with the file named, and a wrong price cannot ship
   silently. Runtime overrides behave exactly as before.
+- **The accuracy method is documented.** docs/accuracy.md explains what
+  guards the cost math in CI and gives a five-minute parity check
+  against the Anthropic or OpenAI console, including the legitimate
+  differences to rule out first. The claim stays "if we disagree with
+  your bill, that's a bug"; now the reader can test it.
 - **Published performance numbers.** The README now carries a measured
   table (sustained calls per second, added latency, database size and
   dashboard latency at one million calls) and the reproducible
