@@ -1,0 +1,31 @@
+{
+  "provider": "anthropic",
+  "pricing_page": "https://www.anthropic.com/pricing",
+  "notes": [
+    "Prices are USD per million tokens: {\"input\": in, \"output\": out}.",
+    "Cache pricing follows the provider convention (reads 0.1x input,",
+    "writes 1.25x input) unless a model sets cache_read/cache_write."
+  ],
+  "models": {
+    "claude-fable-5":    {"input": 10.00, "output": 50.00},
+    "claude-mythos-5":   {"input": 10.00, "output": 50.00},
+    "claude-opus-5":     {"input": 5.00,  "output": 25.00},
+    "claude-sonnet-5":   {"input": 2.00,  "output": 10.00,
+                          "note": "introductory rate through 2026-08-31; becomes 3.00/15.00 on Sept 1"},
+    "claude-opus-4":     {"input": 15.00, "output": 75.00},
+    "claude-opus-4-5":   {"input": 5.00,  "output": 25.00},
+    "claude-opus-4-6":   {"input": 5.00,  "output": 25.00},
+    "claude-opus-4-7":   {"input": 5.00,  "output": 25.00},
+    "claude-opus-4-8":   {"input": 5.00,  "output": 25.00},
+    "claude-sonnet-4":   {"input": 3.00,  "output": 15.00},
+    "claude-sonnet-4-5": {"input": 3.00,  "output": 15.00},
+    "claude-haiku-4":    {"input": 0.80,  "output": 4.00},
+    "claude-haiku-4-5":  {"input": 1.00,  "output": 5.00},
+    "claude-3-7-sonnet": {"input": 3.00,  "output": 15.00},
+    "claude-3-5-sonnet": {"input": 3.00,  "output": 15.00},
+    "claude-3-5-haiku":  {"input": 0.80,  "output": 4.00},
+    "claude-3-opus":     {"input": 15.00, "output": 75.00},
+    "claude-3-sonnet":   {"input": 3.00,  "output": 15.00},
+    "claude-3-haiku":    {"input": 0.25,  "output": 1.25}
+  }
+}

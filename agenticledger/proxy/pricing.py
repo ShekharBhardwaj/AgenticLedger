@@ -1,9 +1,10 @@
 """
-Per-token pricing table for common models.
+Per-token pricing for common models.
 Cost is computed at capture time and stored with each call.
 
-Prices are per million tokens (input, output).
-Update this table as providers change pricing.
+The prices themselves live in agenticledger/pricing_data/*.json — plain
+data files, one per provider, that a contributor can update without
+touching Python. See docs/pricing.md for how to add or correct a model.
 
 User overrides (merged over the built-in table at startup):
 
@@ -29,67 +30,45 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# (input_per_million_tokens, output_per_million_tokens) in USD
-_PRICES: dict[str, tuple[float, float]] = {
-    # OpenAI — GPT-4o family
-    "gpt-4o":            (2.50,  10.00),
-    "gpt-4o-mini":       (0.15,   0.60),
-    # OpenAI — GPT-4.1 family
-    "gpt-4.1":           (2.00,   8.00),
-    "gpt-4.1-mini":      (0.40,   1.60),
-    "gpt-4.1-nano":      (0.10,   0.40),
-    # OpenAI — GPT-4 legacy
-    "gpt-4-turbo":      (10.00,  30.00),
-    "gpt-4":            (30.00,  60.00),
-    "gpt-3.5-turbo":     (0.50,   1.50),
-    # OpenAI — GPT-5 family
-    "gpt-5":             (1.25,  10.00),
-    "gpt-5-mini":        (0.25,   2.00),
-    "gpt-5-nano":        (0.05,   0.40),
-    # OpenAI — reasoning models (o3 repriced June 2025)
-    "o3":                (2.00,   8.00),
-    "o3-mini":           (1.10,   4.40),
-    "o1":               (15.00,  60.00),
-    "o1-mini":           (3.00,  12.00),
-    "o4-mini":           (1.10,   4.40),
-    # Anthropic — Claude 5 family
-    "claude-fable-5":   (10.00,  50.00),
-    "claude-mythos-5":  (10.00,  50.00),
-    "claude-opus-5":     (5.00,  25.00),
-    # Introductory rate through 2026-08-31; becomes (3.00, 15.00) on Sept 1.
-    "claude-sonnet-5":   (2.00,  10.00),
-    # Anthropic — Claude 4 family (4.5+ repriced to 5/25; 4 and 4.1 stay 15/75)
-    "claude-opus-4":    (15.00,  75.00),
-    "claude-opus-4-5":   (5.00,  25.00),
-    "claude-opus-4-6":   (5.00,  25.00),
-    "claude-opus-4-7":   (5.00,  25.00),
-    "claude-opus-4-8":   (5.00,  25.00),
-    "claude-sonnet-4":   (3.00,  15.00),
-    "claude-sonnet-4-5": (3.00,  15.00),
-    "claude-haiku-4":    (0.80,   4.00),
-    "claude-haiku-4-5":  (1.00,   5.00),
-    # Anthropic — Claude 3.7
-    "claude-3-7-sonnet": (3.00,  15.00),
-    # Anthropic — Claude 3.5
-    "claude-3-5-sonnet": (3.00,  15.00),
-    "claude-3-5-haiku":  (0.80,   4.00),
-    # Anthropic — Claude 3
-    "claude-3-opus":    (15.00,  75.00),
-    "claude-3-sonnet":   (3.00,  15.00),
-    "claude-3-haiku":    (0.25,   1.25),
-    # Google Gemini
-    "gemini-2.5-pro":    (1.25,  10.00),
-    "gemini-2.5-flash":  (0.30,   2.50),
-    "gemini-2.5-flash-lite": (0.10, 0.40),
-    "gemini-2.0-flash":  (0.10,   0.40),
-    "gemini-1.5-pro":    (1.25,   5.00),
-    "gemini-1.5-flash":  (0.075,  0.30),
-}
+# Prices per million tokens, loaded from agenticledger/pricing_data/*.json.
+_PRICES: dict[str, tuple[float, float]] = {}
 
 # (cache_read_per_million, cache_write_per_million) in USD — explicit entries
 # only; models without one fall back to provider-convention multipliers in
-# compute_cost(). Populated from 4-element pricing overrides.
+# compute_cost(). Populated from packs and 4-element pricing overrides.
 _CACHE_PRICES: dict[str, tuple[float, float]] = {}
+
+_PACK_KEYS = {"input", "output", "cache_read", "cache_write", "note"}
+
+
+def _load_packs() -> None:
+    """Load every pricing pack. A malformed pack is skipped with a loud
+    warning rather than taking the proxy down — but the test suite parses
+    packs strictly, so a bad PR fails CI before it can ship."""
+    from importlib import resources
+
+    try:
+        root = resources.files("agenticledger.pricing_data")
+    except Exception as exc:  # packs missing from an unusual install
+        logger.warning("pricing packs unavailable: %s", exc)
+        return
+    for entry in sorted(root.iterdir(), key=lambda e: e.name):
+        if not entry.name.endswith(".json"):
+            continue
+        try:
+            pack = json.loads(entry.read_text())
+            for pattern, spec in pack.get("models", {}).items():
+                _PRICES[pattern.lower()] = (float(spec["input"]), float(spec["output"]))
+                if "cache_read" in spec or "cache_write" in spec:
+                    _CACHE_PRICES[pattern.lower()] = (
+                        float(spec.get("cache_read", 0.0)),
+                        float(spec.get("cache_write", 0.0)),
+                    )
+        except Exception as exc:
+            logger.warning("pricing pack %s could not be loaded: %s", entry.name, exc)
+
+
+_load_packs()
 
 # Provider-convention cache multipliers applied to the input rate.
 _CACHE_READ_MULT  = {"anthropic": 0.10, "openai": 0.50}
