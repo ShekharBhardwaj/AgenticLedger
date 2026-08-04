@@ -150,6 +150,27 @@ export async function put<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+/** Download the model report CSV via blob to keep credentials in headers instead of URLs. */
+export function downloadReportsCsv(days: number, tzOffset: number): Promise<void> {
+  return fetch(`/api/reports.csv?days=${days}&tz_offset_minutes=${tzOffset}`, {
+    headers: headers(),
+  })
+    .then((resp) => {
+      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+      return resp.blob();
+    })
+    .then((blob) => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `agenticledger-models-${days}d.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    });
+}
+
 /** Name, pin, or file a session/run under a project (#47). */
 export function setLabel(
   scope: "session" | "run", refId: string,
