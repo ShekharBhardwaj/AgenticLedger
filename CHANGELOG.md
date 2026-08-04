@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The price-drift bot.** A weekly workflow compares the pricing packs
+  against the community price database (LiteLLM's MIT-licensed file)
+  and opens a review PR when a comparable model's price moved: applied
+  to the packs, never merged by a machine, and intentionally red in CI
+  until the golden assertions are updated alongside. Zero-price
+  community entries are treated as placeholders, not reprices. Packs
+  also gained a "checked" date: when a human last verified them against
+  the provider's page. Runs in the repo only; installed ledgers fetch
+  nothing.
+
 ## [0.9.0] - 2026-08-04
 
 The trust release. Every claim in it is enforced by CI: the full suite

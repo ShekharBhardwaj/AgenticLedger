@@ -1,5 +1,6 @@
 {
   "provider": "google",
+  "checked": "2026-08-04",
   "pricing_page": "https://ai.google.dev/pricing",
   "notes": [
     "Prices are USD per million tokens: {\"input\": in, \"output\": out}."

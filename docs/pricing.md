@@ -42,6 +42,16 @@ like `us.anthropic.claude-3-5-sonnet-20241022-v2:0` or
 rate without its own entry. Add the most specific pattern that is stable
 across gateways, usually the model family name without date suffixes.
 
+## Freshness: the drift bot and the checked date
+
+Every pack carries a top-level "checked" date: when a human last
+verified its prices against the provider's page. A weekly GitHub Action
+compares our packs against the community price database (LiteLLM's
+file) and opens a review PR when a comparable model's price moved; the
+PR stays red until its golden assertions are updated, which is the
+review working as designed. When you touch a pack, bump its checked
+date.
+
 ## Notes and effective dates
 
 JSON has no comments, so packs carry a top-level `"notes"` list and each

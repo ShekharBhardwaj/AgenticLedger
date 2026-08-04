@@ -1,5 +1,6 @@
 {
   "provider": "openai",
+  "checked": "2026-08-04",
   "pricing_page": "https://platform.openai.com/docs/pricing",
   "notes": [
     "Prices are USD per million tokens: {\"input\": in, \"output\": out}.",

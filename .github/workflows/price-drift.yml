@@ -1,0 +1,54 @@
+# Weekly price-drift watch: compares our pricing packs against the
+# community price database (LiteLLM's file, MIT) and opens a REVIEW PR
+# when a comparable model's price moved. Never merges anything itself:
+# prices are money, a human verifies against the provider's own page.
+# The applied PR intentionally fails the golden pricing tests until the
+# reviewer updates them: pack change and golden change travel together.
+name: price-drift
+on:
+  schedule:
+    - cron: "0 9 * * 1"   # Mondays 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check for drift
+        id: drift
+        run: |
+          set +e
+          python scripts/price_drift.py | tee drift_report.md
+          echo "drifted=$?" >> "$GITHUB_OUTPUT"
+      - name: Apply drift and open review PR
+        if: steps.drift.outputs.drifted == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/price_drift.py --apply
+          BRANCH="price-drift/$(date -u +%Y-%m-%d)"
+          git config user.name "price-drift-bot"
+          git config user.email "actions@github.com"
+          git checkout -b "$BRANCH"
+          git add agenticledger/pricing_data/
+          git commit -m "Price drift: community file disagrees with our packs"
+          git push origin "$BRANCH"
+          {
+            echo "Weekly drift check found price changes. Review each against"
+            echo "the provider's own pricing page before merging, update the"
+            echo "goldens in tests/test_pricing_packs.py (CI is red on this"
+            echo "PR until you do: that is the review surface working), and"
+            echo "bump the packs' checked dates."
+            echo
+            cat drift_report.md
+          } > pr_body.md
+          gh pr create --title "Price drift: weekly community comparison" \
+            --body-file pr_body.md --base main --head "$BRANCH"
