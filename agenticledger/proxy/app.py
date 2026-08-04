@@ -2593,3 +2593,4 @@ def _spawn_capture(app: FastAPI, capture, job: _CaptureJob, action_id: Optional[
     task = asyncio.get_running_loop().create_task(_run())
     _BG_CAPTURE_TASKS.add(task)
     task.add_done_callback(_BG_CAPTURE_TASKS.discard)
+
