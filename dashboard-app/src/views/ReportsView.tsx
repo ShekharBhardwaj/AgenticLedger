@@ -1,6 +1,5 @@
-```tsx
 import { useCallback, useEffect, useState } from "react";
-import { apiKey, fmtNum, fmtUsd, get, liveUpdates } from "../api";
+import { downloadReportsCsv, fmtNum, fmtUsd, get, liveUpdates } from "../api";
 import ProviderMark from "./ProviderMark";
 
 interface DailyRow {
@@ -213,15 +212,14 @@ export default function ReportsView() {
 
       <div className="section-title" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
         <span>By model</span>
-        <a
-          href={`/api/reports.csv?days=${days}&tz_offset_minutes=${tzOffset}${apiKey ? `&token=${encodeURIComponent(apiKey)}` : ""}`}
-          download
-          className="muted"
-          style={{ fontSize: 12, textDecoration: "none" }}
+        <button
+          onClick={() => downloadReportsCsv(days, tzOffset).catch(() => {})}
+          className="muted link-btn"
+          style={{ fontSize: 12, marginTop: 0, padding: "2px 8px" }}
           title="Download model spend as CSV"
         >
           ↓ CSV
-        </a>
+        </button>
       </div>
       <table className="rtable">
         <thead>
@@ -352,4 +350,3 @@ export default function ReportsView() {
     </div>
   );
 }
-```
