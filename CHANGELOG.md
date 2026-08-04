@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **CSV export for the by-model report.** `GET /api/reports.csv?days=N`
+  and a download link on the Reports tab, credentials kept in headers.
+  Contributed by @matheusfrta, the project's first outside contributor.
 - **ARCHITECTURE.md.** One page for contributors: the shape of a call
   through the proxy (diagrams included), a module map with a "change it
   when" column, the design rules the code holds itself to, and an honest
