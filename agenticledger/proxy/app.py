@@ -766,16 +766,15 @@ def create_app(
         principal = await _require(request, ROLE_EDITOR)
         store = request.app.state.store
         examined = updated = 0
-        last_batch_ids: set[str] = set()
+        cursor = None
         while True:
-            batch = await store.get_unattributed_calls(limit=500)
-            # Rows detection cannot name stay unattributed; stop once a
-            # sweep makes no progress instead of spinning on them.
-            batch_ids = {r["action_id"] for r in batch}
-            if not batch or batch_ids == last_batch_ids:
+            # Cursor sweep, not first-page-forever: thousands of
+            # undetectable rows in front must not hide detectable ones
+            # behind them, and strict cursor advance guarantees the loop
+            # terminates after visiting every gap row exactly once.
+            batch = await store.get_unattributed_calls(limit=500, after=cursor)
+            if not batch:
                 break
-            last_batch_ids = batch_ids
-            progressed = False
             for row in batch:
                 examined += 1
                 body = {"system": row.get("system_prompt") or "",
@@ -785,9 +784,7 @@ def create_app(
                     await store.update_attribution(
                         row["action_id"], found["framework"], found["agent_name"])
                     updated += 1
-                    progressed = True
-            if not progressed:
-                break
+            cursor = (batch[-1]["timestamp"], batch[-1]["action_id"])
         await _audit(principal, request, "redetect", "-",
                      f"re-ran detection: {updated} of {examined} calls newly attributed")
         return JSONResponse({"examined": examined, "updated": updated})

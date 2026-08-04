@@ -277,10 +277,15 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def get_unattributed_calls(self, limit: int = 500) -> list[dict[str, Any]]:
-        """Calls missing framework or agent_name, oldest first: the raw
-        material for re-running detection after the detector learns a new
-        framework. Returns action_id, system_prompt, messages."""
+    async def get_unattributed_calls(
+        self, limit: int = 500,
+        after: Optional[tuple[float, str]] = None,
+    ) -> list[dict[str, Any]]:
+        """Calls missing framework or agent_name, oldest first, strictly
+        after the (timestamp, action_id) cursor: the raw material for
+        re-running detection. Cursor pagination (not offset, not
+        first-page-forever) so a sweep visits every gap row exactly once
+        even when thousands of them are undetectable."""
         ...
 
     @abstractmethod
@@ -817,11 +822,16 @@ class _SqliteStore(Store):
         await self._db.commit()
         return cur.rowcount
 
-    async def get_unattributed_calls(self, limit: int = 500) -> list[dict[str, Any]]:
+    async def get_unattributed_calls(self, limit=500, after=None) -> list[dict[str, Any]]:
+        where = "(framework IS NULL OR agent_name IS NULL)"
+        params: list = []
+        if after is not None:
+            where += " AND (timestamp > ? OR (timestamp = ? AND action_id > ?))"
+            params += [after[0], after[0], after[1]]
         async with self._db.execute(
-            "SELECT action_id, system_prompt, messages FROM llm_calls"
-            " WHERE framework IS NULL OR agent_name IS NULL"
-            " ORDER BY timestamp ASC LIMIT ?", (limit,),
+            f"SELECT action_id, timestamp, system_prompt, messages FROM llm_calls"
+            f" WHERE {where} ORDER BY timestamp ASC, action_id ASC LIMIT ?",
+            (*params, limit),
         ) as cur:
             rows = await cur.fetchall()
         out = []
@@ -1578,12 +1588,22 @@ class _PostgresStore(Store):
                 "DELETE FROM labels WHERE scope = $1 AND ref_id = $2", scope, ref_id)
         return int(result.split()[-1])
 
-    async def get_unattributed_calls(self, limit: int = 500) -> list[dict[str, Any]]:
+    async def get_unattributed_calls(self, limit=500, after=None) -> list[dict[str, Any]]:
+        where = "(framework IS NULL OR agent_name IS NULL)"
+        params: list = [limit]
+        if after is not None:
+            where += (" AND (timestamp > $2 OR (timestamp = $2 AND action_id > $3))")
+            ts = after[0]
+            if isinstance(ts, str):
+                ts = _dt.datetime.fromisoformat(ts)
+            elif isinstance(ts, (int, float)):
+                ts = _dt.datetime.fromtimestamp(ts, _dt.timezone.utc)
+            params += [ts, after[1]]
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT action_id, system_prompt, messages FROM llm_calls"
-                " WHERE framework IS NULL OR agent_name IS NULL"
-                " ORDER BY timestamp ASC LIMIT $1", limit)
+                f"SELECT action_id, timestamp, system_prompt, messages FROM llm_calls"
+                f" WHERE {where} ORDER BY timestamp ASC, action_id ASC LIMIT $1",
+                *params)
         out = []
         for r in rows:
             d = _pg_plain(r)
