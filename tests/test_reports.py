@@ -216,3 +216,38 @@ def test_whatif_endpoint(proxy):
                                              "model": "gpt-4o"}).status_code == 404
     assert client.get("/api/whatif", params={"session_id": "wi-1",
                                              "model": "mystery-9000"}).status_code == 400
+
+
+def test_reports_csv_endpoint(proxy):
+    client = proxy()
+    now_ns = int(time.time() * 1e9)
+    span = {
+        "resourceSpans": [{
+            "scopeSpans": [{"spans": [{
+                "traceId": "0af7651916cd43dd8448eb211c80319c",
+                "spanId": "d7ad6b7169203331",
+                "name": "chat gpt-4o",
+                "startTimeUnixNano": str(now_ns),
+                "endTimeUnixNano": str(now_ns + 1_000_000_000),
+                "attributes": [
+                    {"key": "gen_ai.system", "value": {"stringValue": "openai"}},
+                    {"key": "gen_ai.request.model", "value": {"stringValue": "gpt-4o"}},
+                    {"key": "gen_ai.usage.input_tokens", "value": {"intValue": "1200"}},
+                    {"key": "gen_ai.usage.output_tokens", "value": {"intValue": "300"}},
+                    {"key": "gen_ai.conversation.id", "value": {"stringValue": "rep-csv"}},
+                ],
+            }]}],
+        }]
+    }
+    assert client.post("/v1/traces", json=span,
+                       headers={"content-type": "application/json"}).status_code == 200
+
+    data = client.get("/api/reports.csv?days=7")
+    assert data.status_code == 200
+    assert "text/csv" in data.headers["content-type"]
+    assert "attachment" in data.headers["content-disposition"]
+
+    text = data.text
+    assert "model_id,provider,call_count" in text
+    assert "gpt-4o,openai,1," in text
+    assert "gpt-4o" in text

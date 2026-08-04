@@ -24,6 +24,7 @@ Endpoints:
     GET  /api/sessions                 List recent sessions
     GET  /api/runs                     List loop runs (explicit or inferred)
     GET  /api/reports?days=N           Spend insights: daily trend, model mix, cache savings
+    GET  /api/reports.csv?days=N       Model spend insights as CSV
     GET  /api/search?q=...             Full-text search across calls
     POST /v1/traces                    OTLP/HTTP ingest (JSON + protobuf) — GenAI spans
     GET  /explain/{action_id}          Single captured call
@@ -38,8 +39,10 @@ Or via CLI:
 """
 
 import asyncio
+import csv
 import datetime
 import hmac
+import io
 import json
 import logging
 import os
@@ -1572,6 +1575,49 @@ def create_app(
             projects=sorted(projects.values(),
                             key=lambda p: -p["cost_usd"])))
 
+    @app.get("/api/reports.csv")
+    async def api_reports_csv(request: Request, days: int = 30,
+                              tz_offset_minutes: int = 0) -> Response:
+        await _require(request, ROLE_VIEWER)
+        days = max(1, min(days, 365))
+        tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
+        raw = await request.app.state.store.get_report_aggregates(
+            time.time() - days * 86400, tz_offset_minutes=tz_offset_minutes)
+        report = build_report(
+            raw["daily"], raw["models"], raw["agents"], days)
+
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow([
+            "model_id", "provider", "call_count", "cost_usd", "tokens_in",
+            "tokens_out", "cache_read_tokens", "cache_write_tokens",
+            "cache_savings_usd", "error_calls", "blocked_calls",
+            "p50_latency_ms", "p95_latency_ms", "p99_latency_ms"
+        ])
+        for m in report["models"]:
+            writer.writerow([
+                m.get("model_id"),
+                m.get("provider"),
+                m.get("call_count"),
+                m.get("cost_usd"),
+                m.get("tokens_in"),
+                m.get("tokens_out"),
+                m.get("cache_read_tokens"),
+                m.get("cache_write_tokens"),
+                m.get("cache_savings_usd"),
+                m.get("error_calls"),
+                m.get("blocked_calls"),
+                m.get("p50_latency_ms") if m.get("p50_latency_ms") is not None else "",
+                m.get("p95_latency_ms") if m.get("p95_latency_ms") is not None else "",
+                m.get("p99_latency_ms") if m.get("p99_latency_ms") is not None else ""
+            ])
+
+        return Response(
+            content=out.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="agenticledger-models-{days}d.csv"'},
+        )
+
     @app.get("/api/sessions/{session_id}/tools")
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:
         """Derived tool executions for a session — the proxy pairs each
@@ -2547,3 +2593,4 @@ def _spawn_capture(app: FastAPI, capture, job: _CaptureJob, action_id: Optional[
     task = asyncio.get_running_loop().create_task(_run())
     _BG_CAPTURE_TASKS.add(task)
     task.add_done_callback(_BG_CAPTURE_TASKS.discard)
+

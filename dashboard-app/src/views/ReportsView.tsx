@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fmtNum, fmtUsd, get, liveUpdates } from "../api";
+import { downloadReportsCsv, fmtNum, fmtUsd, get, liveUpdates } from "../api";
 import ProviderMark from "./ProviderMark";
 
 interface DailyRow {
@@ -210,7 +210,17 @@ export default function ReportsView() {
         </>
       )}
 
-      <div className="section-title">By model</div>
+      <div className="section-title" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <span>By model</span>
+        <button
+          onClick={() => downloadReportsCsv(days, tzOffset).catch(() => {})}
+          className="muted link-btn"
+          style={{ fontSize: 12, marginTop: 0, padding: "2px 8px" }}
+          title="Download model spend as CSV"
+        >
+          ↓ CSV
+        </button>
+      </div>
       <table className="rtable">
         <thead>
           <tr>
