@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-04
+
+The trust release. Every claim in it is enforced by CI: the full suite
+runs against real Postgres, performance numbers are measured by a
+script anyone can rerun, cost math is pinned by golden tests, and
+databases from old releases must open forever. Also the release where
+the first outside contributor arrived: welcome, @matheusfrta.
+
 ### Added
 - **CSV export for the by-model report.** `GET /api/reports.csv?days=N`
   and a download link on the Reports tab, credentials kept in headers.
@@ -864,7 +872,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.7.0...v0.8.0

@@ -164,7 +164,7 @@ http://localhost:8000
 
 The web app updates live via WebSocket as calls come in. No refresh needed.
 
-- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete`), a cost-per-iteration chart, per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
+- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete` / `stopped`), a cost-per-iteration chart, a **stop button** that refuses a running loop's further calls at the wall (and a resume to lift it; the agent being stopped cannot), per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
 - **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Session cards say whose they are and how they're doing at a glance: team badge, red "N failed" for real errors, amber "N blocked" for budget walls, purple tiles for replays. Hover a card for one-click delete.
 - **Replay the whole run** — the question that decides a model switch isn't "how did it handle one call?" but "would my loop have survived?" Pick a run or session, pick a destination (a local model is free), and every step re-runs with its original inputs. You get a report card, not homework: **"34 / 40 moments matched"**, the fumbles named ("dropped the tools"), and the cost both ways. Each step is a real captured moment replayed honestly — after step one a different model would have steered a different conversation, so the ledger compares moments, not fairy tales.
 - **Names, pins, projects** — call it "the overnight auth fix" instead of `cc-73a26366`, ★ pin what matters to the top, file work under a project and filter every list by it.
@@ -228,13 +228,16 @@ Claude Code (and most coding agents) can be pointed at the proxy with a single
 environment variable — no headers, no code changes:
 
 ```bash
-AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com uv run python -m agenticledger.proxy
+agenticledger start
 ```
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8000
 claude
 ```
+
+No upstream config needed: calls route to the provider matching their
+wire format.
 
 Agentic Ledger fingerprints Claude Code traffic automatically: every call is
 tagged `framework=claude-code`, and instead of one undifferentiated bucket,

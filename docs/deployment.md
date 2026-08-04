@@ -173,7 +173,11 @@ half the truth. What that costs you in practice is small: the proxy is an
 async passthrough, and a single instance comfortably handles the request
 rates agent fleets generate (LLM calls are seconds-long; the proxy's added
 work is milliseconds). Scale vertically first; shared state for
-multi-replica deployments (Redis) is on the roadmap.
+multi-replica deployments (Redis) is on the roadmap. The 0.9 kill
+switch follows the same stance: a stop takes effect instantly on the
+replica that receives it and persists in the database, but other
+replicas only load stop markers at startup, so with multiple replicas a
+stopped run is fully blocked only after they restart.
 
 What you *can* do today:
 
