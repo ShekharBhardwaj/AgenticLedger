@@ -246,7 +246,7 @@ def test_reports_csv_endpoint(proxy):
     assert data.status_code == 200
     assert "text/csv" in data.headers["content-type"]
     assert "attachment" in data.headers["content-disposition"]
-    
+
     text = data.text
     assert "model_id,provider,call_count" in text
     assert "gpt-4o,openai,1," in text
