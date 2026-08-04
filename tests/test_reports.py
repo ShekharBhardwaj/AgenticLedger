@@ -1,4 +1,3 @@
-```python
 """Reports: store aggregates, cache savings, digest text, and the API."""
 
 import time
@@ -251,4 +250,4 @@ def test_reports_csv_endpoint(proxy):
     text = data.text
     assert "model_id,provider,call_count" in text
     assert "gpt-4o,openai,1," in text
-```
+    assert "gpt-4o" in text
