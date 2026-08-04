@@ -268,6 +268,11 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.store = await Store.connect(dsn)
+        # Operator kill switch: run ids whose calls are refused at the wall.
+        # Loaded once, kept in memory (the hot path must not pay a query),
+        # persisted as marker rows so a restart keeps the wall up.
+        app.state.stopped_runs = set(
+            (await app.state.store.get_labels("stopped")).keys())
         app.state.client = httpx.AsyncClient(
             base_url=upstream_url,
             timeout=httpx.Timeout(120.0),
@@ -709,7 +714,9 @@ def create_app(
         runs = _annotate_labels(runs, await store.get_labels("run"), "run_id",
                                 await store.get_project_rules())
         return JSONResponse([
-            _with_run_status(r, loop_run_gap_seconds, explicitly_ended=r["run_id"] in ended)
+            _with_run_status(r, loop_run_gap_seconds,
+                             explicitly_ended=r["run_id"] in ended,
+                             stopped=r["run_id"] in request.app.state.stopped_runs)
             for r in runs
         ])
 
@@ -724,6 +731,30 @@ def create_app(
         await store.mark_run_ended(run_id, time.time())
         await _audit(principal, request, "run_end", run_id, "runner exit signal")
         return JSONResponse({"run_id": run_id, "status": "ended"})
+
+    @app.post("/api/runs/{run_id}/stop")
+    async def api_run_stop(run_id: str, request: Request) -> JSONResponse:
+        """The kill switch: refuse this run's further calls at the wall
+        until resumed. The run keeps its history; nothing is deleted."""
+        principal = await _require(request, ROLE_EDITOR)
+        store = request.app.state.store
+        if await store.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="run_id not found")
+        await store.set_label("stopped", run_id, name="operator")
+        request.app.state.stopped_runs.add(run_id)
+        await _audit(principal, request, "run_stop", run_id,
+                     "operator kill switch engaged")
+        return JSONResponse({"run_id": run_id, "status": "stopped"})
+
+    @app.delete("/api/runs/{run_id}/stop")
+    async def api_run_resume(run_id: str, request: Request) -> JSONResponse:
+        """Lift the kill switch. Idempotent."""
+        principal = await _require(request, ROLE_EDITOR)
+        await request.app.state.store.delete_label("stopped", run_id)
+        request.app.state.stopped_runs.discard(run_id)
+        await _audit(principal, request, "run_resume", run_id,
+                     "operator kill switch lifted")
+        return JSONResponse({"run_id": run_id, "status": "resumed"})
 
     @app.put("/api/labels/{scope}/{ref_id}")
     async def api_set_label(scope: str, ref_id: str, request: Request) -> JSONResponse:
@@ -1526,7 +1557,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="run not found")
         ended = await request.app.state.store.get_run_end_markers([run["run_id"]])
         return JSONResponse(_with_run_status(
-            run, loop_run_gap_seconds, explicitly_ended=run["run_id"] in ended))
+            run, loop_run_gap_seconds, explicitly_ended=run["run_id"] in ended,
+            stopped=run["run_id"] in request.app.state.stopped_runs))
 
     @app.get("/api/runs/{run_id}/iterations")
     async def api_run_iterations(run_id: str, request: Request) -> JSONResponse:
@@ -1931,6 +1963,38 @@ def create_app(
                     status_code=429,
                     headers={"Retry-After": "60"},
                 )
+
+        # ── Operator kill switch ─────────────────────────────────────────────
+        # A stopped run's calls are refused before they cost anything. Same
+        # semantics as the budget wall: captured with a "blocked:" detail
+        # (amber in the dashboard, never counted as an agent error).
+        _stopped_run = meta.get("run_id")
+        if (is_llm_path and not is_count_tokens and _stopped_run
+                and _stopped_run in request.app.state.stopped_runs):
+            reason = (f"run '{_stopped_run}' was stopped by the operator; "
+                      "resume it from the dashboard to allow calls")
+            try:
+                canonical_req = normalize_request(body_json, path)
+                blocked_resp = _empty_response(0)
+                apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
+                await request.app.state.store.save(
+                    action_id, canonical_req, blocked_resp,
+                    status_code=budget_status,
+                    error_detail=f"blocked: {reason}", **meta,
+                )
+                await broadcaster.broadcast({
+                    "type": "call",
+                    "action_id": action_id,
+                    "session_id": meta.get("session_id"),
+                    "status_code": budget_status,
+                    "budget_warning": False,
+                })
+            except Exception:
+                _record_capture_drop(request.app, action_id)
+            return JSONResponse(
+                {"error": {"type": "run_stopped", "message": reason}},
+                status_code=budget_status,
+            )
 
         # ── Budget check ─────────────────────────────────────────────────────
         # Fail open: if the store is unavailable the agent must not be blocked.
@@ -2390,14 +2454,17 @@ def _int_or_none(value) -> Optional[int]:
 
 
 def _with_run_status(run: dict, run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
-                     explicitly_ended: bool = False) -> dict:
+                     explicitly_ended: bool = False, stopped: bool = False) -> dict:
     """Derive a runner-facing status from the aggregate row.
 
-    Precedence: completion promise → flags → an explicit end marker (the
-    runner told us the loop exited) → inactivity inference (last call older
-    than the run-gap window) → running."""
+    Precedence: operator stop (the kill switch outranks everything: the
+    human said stop) → completion promise → flags → an explicit end marker
+    (the runner told us the loop exited) → inactivity inference (last call
+    older than the run-gap window) → running."""
     promise_seen = bool(run.pop("promise_seen", 0))
-    if promise_seen:
+    if stopped:
+        run["status"] = "stopped"
+    elif promise_seen:
         run["status"] = "complete"
     elif run.get("flagged_calls"):
         run["status"] = "flagged"

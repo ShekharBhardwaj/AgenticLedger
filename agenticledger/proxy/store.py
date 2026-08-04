@@ -272,6 +272,11 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def delete_label(self, scope: str, ref_id: str) -> int:
+        """Remove one marker row; returns rows deleted (0 or 1)."""
+        ...
+
+    @abstractmethod
     async def list_projects(self) -> list[str]:
         """Distinct project names — filed-under names plus declared
         (possibly still empty) projects, alphabetical."""
@@ -790,6 +795,12 @@ class _SqliteStore(Store):
             rows = await cur.fetchall()
         return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
                               "project": r["project"]} for r in rows}
+
+    async def delete_label(self, scope: str, ref_id: str) -> int:
+        cur = await self._db.execute(
+            "DELETE FROM labels WHERE scope = ? AND ref_id = ?", (scope, ref_id))
+        await self._db.commit()
+        return cur.rowcount
 
     async def list_projects(self) -> list[str]:
         async with self._db.execute(
@@ -1522,6 +1533,12 @@ class _PostgresStore(Store):
                 "SELECT ref_id, name, pinned, project FROM labels WHERE scope = $1", scope)
         return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
                               "project": r["project"]} for r in rows}
+
+    async def delete_label(self, scope: str, ref_id: str) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM labels WHERE scope = $1 AND ref_id = $2", scope, ref_id)
+        return int(result.split()[-1])
 
     async def list_projects(self) -> list[str]:
         async with self._pool.acquire() as conn:

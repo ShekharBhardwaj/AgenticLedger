@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The kill switch.** A running loop gets a stop button. Stopping a run
+  refuses its further calls at the wall before they cost anything, with
+  the budget wall's own semantics: captured with a "blocked:" reason,
+  amber in the dashboard, never counted as an agent error, and the
+  configured refusal status (429, or 402 for clients that retry). The
+  wall survives proxy restarts, resume lifts it with one click, both
+  actions are audit-logged, and the run wears a "stopped" badge
+  everywhere, MCP included. The agent being stopped cannot lift the
+  wall, because it lives outside the agent's reach.
 - **Upgrade-safety tests.** Databases created by past releases must open,
   migrate, and keep their history under current code, forever: CI now
   proves it against frozen schema snapshots from real release tags (a

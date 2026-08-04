@@ -103,7 +103,8 @@ def proxy() -> Callable[..., ProxyClient]:
         # Tests may declare a specific upstream (e.g. to exercise wire-format
         # mismatch detection); traffic still goes to the mock transport.
         app_kwargs.setdefault("upstream_url", UPSTREAM_URL)
-        app = create_app(dsn=_default_test_dsn(), **app_kwargs)
+        dsn = app_kwargs.pop("dsn", None) or _default_test_dsn()
+        app = create_app(dsn=dsn, **app_kwargs)
         tc: ProxyClient = TestClient(app)  # type: ignore[assignment]
         tc.__enter__()  # runs lifespan → sets app.state.store and app.state.client
         # Replace the real upstream client with one backed by the mock transport.

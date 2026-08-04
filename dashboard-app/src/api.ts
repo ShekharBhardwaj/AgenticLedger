@@ -255,7 +255,7 @@ export interface Run {
   framework: string | null;
   models: string | null;   // comma-separated distinct models in the run
   flagged_calls: number;
-  status: "running" | "flagged" | "complete" | "ended";
+  status: "running" | "flagged" | "complete" | "ended" | "stopped";
   label: string | null;
   pinned: boolean;
   project: string | null;
@@ -270,6 +270,7 @@ export function runStatusInfo(status: string): string {
     case "complete": return "the run declared victory — its completion promise (its own \"I'm done\" signal) was seen";
     case "ended": return "the run stopped (runner exited or calls went quiet) — no claim about success either way";
     case "flagged": return "loop-pathology flags were raised — open the run to see which calls";
+    case "stopped": return "stopped by you: further calls are refused at the wall until you resume";
     default: return status;
   }
 }

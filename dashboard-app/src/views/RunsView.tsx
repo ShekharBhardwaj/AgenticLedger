@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  del as apiDel,
   FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  Iteration, liveUpdates, Run, runStatusInfo,
+  Iteration, liveUpdates, post, Run, runStatusInfo,
  listProjects,
 } from "../api";
 import CompareView from "./CompareView";
@@ -64,9 +65,12 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   const [iterations, setIterations] = useState<Iteration[]>([]);
   const [flags, setFlags] = useState<FlaggedCall[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [confirmStop, setConfirmStop] = useState(false);
   const [projects, setProjects] = useState<string[]>([]);
   const [projectFilter, setProjectFilter] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+
+  useEffect(() => { setConfirmStop(false); }, [selected]);
 
   const refresh = useCallback(() => {
     get<Run[]>("/api/runs").then(setRuns).catch((e) => setError(String(e)));
@@ -188,6 +192,27 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             <h2 className="page-title">
               {detail.run_id}{" "}
               <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{detail.status}</span>
+              {detail.status === "stopped" ? (
+                <button className="link-btn" style={{ marginLeft: 10 }}
+                        title="Lift the kill switch: calls flow again"
+                        onClick={() => { apiDel(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`).then(refresh); }}>
+                  resume
+                </button>
+              ) : confirmStop ? (
+                <span className="key-actions" style={{ marginLeft: 10 }}>
+                  <button className="link-btn project-purge"
+                          onClick={() => { post(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`, {}).then(refresh); setConfirmStop(false); }}>
+                    stop this run
+                  </button>
+                  <button className="link-btn" onClick={() => setConfirmStop(false)}>Cancel</button>
+                </span>
+              ) : (
+                <button className="link-btn" style={{ marginLeft: 10 }}
+                        title="Kill switch: refuse this run's further calls until resumed. History stays."
+                        onClick={() => setConfirmStop(true)}>
+                  ⏻ stop
+                </button>
+              )}
             </h2>
             <div className="muted">
               started {fmtTime(detail.started_at)} · last call {fmtTime(detail.last_call_at)}
