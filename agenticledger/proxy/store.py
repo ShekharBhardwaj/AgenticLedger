@@ -277,6 +277,21 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def get_unattributed_calls(self, limit: int = 500) -> list[dict[str, Any]]:
+        """Calls missing framework or agent_name, oldest first: the raw
+        material for re-running detection after the detector learns a new
+        framework. Returns action_id, system_prompt, messages."""
+        ...
+
+    @abstractmethod
+    async def update_attribution(self, action_id: str,
+                                 framework: Optional[str],
+                                 agent_name: Optional[str]) -> None:
+        """Fill attribution gaps on one call. Only NULL columns are
+        written: values set at capture time are never overwritten."""
+        ...
+
+    @abstractmethod
     async def list_projects(self) -> list[str]:
         """Distinct project names — filed-under names plus declared
         (possibly still empty) projects, alphabetical."""
@@ -801,6 +816,29 @@ class _SqliteStore(Store):
             "DELETE FROM labels WHERE scope = ? AND ref_id = ?", (scope, ref_id))
         await self._db.commit()
         return cur.rowcount
+
+    async def get_unattributed_calls(self, limit: int = 500) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT action_id, system_prompt, messages FROM llm_calls"
+            " WHERE framework IS NULL OR agent_name IS NULL"
+            " ORDER BY timestamp ASC LIMIT ?", (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            if isinstance(d.get("messages"), str):
+                with contextlib.suppress(Exception):
+                    d["messages"] = json.loads(d["messages"])
+            out.append(d)
+        return out
+
+    async def update_attribution(self, action_id, framework, agent_name) -> None:
+        await self._db.execute(
+            "UPDATE llm_calls SET framework = COALESCE(framework, ?),"
+            " agent_name = COALESCE(agent_name, ?) WHERE action_id = ?",
+            (framework, agent_name, action_id))
+        await self._db.commit()
 
     async def list_projects(self) -> list[str]:
         async with self._db.execute(
@@ -1539,6 +1577,28 @@ class _PostgresStore(Store):
             result = await conn.execute(
                 "DELETE FROM labels WHERE scope = $1 AND ref_id = $2", scope, ref_id)
         return int(result.split()[-1])
+
+    async def get_unattributed_calls(self, limit: int = 500) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT action_id, system_prompt, messages FROM llm_calls"
+                " WHERE framework IS NULL OR agent_name IS NULL"
+                " ORDER BY timestamp ASC LIMIT $1", limit)
+        out = []
+        for r in rows:
+            d = _pg_plain(r)
+            if isinstance(d.get("messages"), str):
+                with contextlib.suppress(Exception):
+                    d["messages"] = json.loads(d["messages"])
+            out.append(d)
+        return out
+
+    async def update_attribution(self, action_id, framework, agent_name) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE llm_calls SET framework = COALESCE(framework, $1),"
+                " agent_name = COALESCE(agent_name, $2) WHERE action_id = $3",
+                framework, agent_name, action_id)
 
     async def list_projects(self) -> list[str]:
         async with self._pool.acquire() as conn:

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { get } from "../api";
+import { get, post } from "../api";
 
 interface SettingRow {
   section: string; label: string; value: string; source: string;
@@ -65,6 +65,40 @@ export default function SettingsView() {
           </table>
         </div>
       ))}
+      <Maintenance />
+    </div>
+  );
+}
+
+/** Actions, not settings: product-shipped data maintenance. */
+function Maintenance() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  return (
+    <div className="settings-section">
+      <div className="section-title">Maintenance</div>
+      <div className="muted" style={{ maxWidth: 640, marginBottom: 8 }}>
+        When the ledger learns to recognize a new framework, calls captured
+        before that knowledge show as unattributed. Re-running detection
+        names them in place; attribution set at capture time is never
+        changed.
+      </div>
+      <div className="key-actions">
+        <button className="link-btn" disabled={busy}
+                onClick={() => {
+                  setBusy(true); setResult(null);
+                  post<{ examined: number; updated: number }>("/api/redetect", {})
+                    .then((r) => setResult(
+                      r.updated
+                        ? `${r.updated} of ${r.examined} unattributed calls newly named.`
+                        : `Nothing to do: ${r.examined} unattributed calls, none newly recognizable.`))
+                    .catch((e) => setResult(`Failed: ${e.message}`))
+                    .finally(() => setBusy(false));
+                }}>
+          {busy ? "re-running detection…" : "re-run detection over history"}
+        </button>
+        {result && <span className="muted">{result}</span>}
+      </div>
     </div>
   );
 }

@@ -756,6 +756,42 @@ def create_app(
                      "operator kill switch lifted")
         return JSONResponse({"run_id": run_id, "status": "resumed"})
 
+    @app.post("/api/redetect")
+    async def api_redetect(request: Request) -> JSONResponse:
+        """Re-run framework detection over history. When the detector
+        learns a new framework, calls captured before that knowledge sit
+        as "(unattributed)"; this fills them in. Gaps only: attribution
+        set at capture time is never overwritten, and the pass is
+        idempotent (a second run finds nothing left to name)."""
+        principal = await _require(request, ROLE_EDITOR)
+        store = request.app.state.store
+        examined = updated = 0
+        last_batch_ids: set[str] = set()
+        while True:
+            batch = await store.get_unattributed_calls(limit=500)
+            # Rows detection cannot name stay unattributed; stop once a
+            # sweep makes no progress instead of spinning on them.
+            batch_ids = {r["action_id"] for r in batch}
+            if not batch or batch_ids == last_batch_ids:
+                break
+            last_batch_ids = batch_ids
+            progressed = False
+            for row in batch:
+                examined += 1
+                body = {"system": row.get("system_prompt") or "",
+                        "messages": row.get("messages") or []}
+                found = detect_agent({}, body)
+                if found["framework"] or found["agent_name"]:
+                    await store.update_attribution(
+                        row["action_id"], found["framework"], found["agent_name"])
+                    updated += 1
+                    progressed = True
+            if not progressed:
+                break
+        await _audit(principal, request, "redetect", "-",
+                     f"re-ran detection: {updated} of {examined} calls newly attributed")
+        return JSONResponse({"examined": examined, "updated": updated})
+
     @app.put("/api/labels/{scope}/{ref_id}")
     async def api_set_label(scope: str, ref_id: str, request: Request) -> JSONResponse:
         """Name, pin, or file a session/run under a project — ids stay

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Re-run detection over history.** When the detector learns a new
+  framework (OpenClaw last week, whoever is next), calls captured before
+  that knowledge sit as "(unattributed)". A settings-page action (and
+  `POST /api/redetect`) re-runs detection over history and names them in
+  place: gaps only, attribution set at capture time is never touched,
+  idempotent, audit-logged. Data fixes ship as product, not as somebody's
+  hand-run SQL.
 - **The kill switch.** A running loop gets a stop button. Stopping a run
   refuses its further calls at the wall before they cost anything, with
   the budget wall's own semantics: captured with a "blocked:" reason,
