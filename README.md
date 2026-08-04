@@ -20,7 +20,9 @@ Works with **any agent framework**, **any LLM provider**, **any model gateway**.
 
 ## How it works
 
-Agentic Ledger runs as a transparent proxy between your agent and the LLM provider. It intercepts every request and response, assigns it an `action_id`, stores it, and returns the upstream response unmodified. Your agent never knows the proxy is there.
+Agentic Ledger runs as a transparent proxy between your agent and the LLM provider. It intercepts every request and response, assigns it an `action_id`, stores it, and returns the upstream response unmodified. Your agent never knows the proxy is there. The full picture, with
+diagrams and a module map for contributors, lives in
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```
 Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any LLM

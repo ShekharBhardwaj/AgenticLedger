@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **ARCHITECTURE.md.** One page for contributors: the shape of a call
+  through the proxy (diagrams included), a module map with a "change it
+  when" column, the design rules the code holds itself to, and an honest
+  limitations section. Linked from the README and CONTRIBUTING.
 - **Re-run detection over history.** When the detector learns a new
   framework (OpenClaw last week, whoever is next), calls captured before
   that knowledge sit as "(unattributed)". A settings-page action (and

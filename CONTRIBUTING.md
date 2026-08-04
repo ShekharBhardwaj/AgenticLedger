@@ -4,6 +4,13 @@ Thanks for your interest in improving Agentic Ledger! This project is an observa
 proxy for AI agents — small, dependency-light, and meant to be easy to read. Contributions
 of all sizes are welcome: bug fixes, tests, docs, new provider support, and features.
 
+## Start with the map
+
+[ARCHITECTURE.md](ARCHITECTURE.md) is one page: the shape of a call,
+every module, and a "change it when" table that points your idea at the
+right file. The friendliest first contribution is a pricing pack update
+(one JSON line, no Python: see [docs/pricing.md](docs/pricing.md)).
+
 ## Quick start (development setup)
 
 Agentic Ledger uses [`uv`](https://github.com/astral-sh/uv) for fast, reproducible environments,
