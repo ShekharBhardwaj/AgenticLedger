@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`agenticledger pricing update`.** Fresh prices without upgrading:
+  one explicit command fetches the current packs from the repository
+  into `~/.agenticledger/pricing/`, strictly validated before anything
+  is installed, overriding the built-ins on the next proxy start. The
+  only network call the CLI makes, and only when you run it; the ledger
+  still never fetches anything on its own.
 - **The price-drift bot.** A weekly workflow compares the pricing packs
   against the community price database (LiteLLM's MIT-licensed file)
   and opens a review PR when a comparable model's price moved: applied

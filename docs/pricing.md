@@ -58,6 +58,16 @@ JSON has no comments, so packs carry a top-level `"notes"` list and each
 model accepts a `"note"` string (for example an introductory rate with
 its end date). Notes are for humans; the loader ignores them.
 
+## Refreshing prices without upgrading
+
+`agenticledger pricing update` fetches the current packs from the
+repository into `~/.agenticledger/pricing/`, where they override the
+built-ins at startup. Everything is validated before a single byte is
+installed, and a bad response changes nothing. This is the only network
+call the CLI makes, and only when you run it: the ledger never fetches
+anything on its own. Restart the proxy to apply; delete the folder to
+return to the built-in prices.
+
 ## Runtime overrides (users, not contributors)
 
 `AGENTICLEDGER_PRICING` (inline JSON) and `AGENTICLEDGER_PRICING_FILE`

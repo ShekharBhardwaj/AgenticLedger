@@ -70,6 +70,33 @@ def _load_packs() -> None:
 
 _load_packs()
 
+
+def _load_user_packs() -> None:
+    """Packs installed by `agenticledger pricing update` override the
+    built-ins pattern by pattern. Same forgiving posture as the built-in
+    loader; the update command validated strictly before installing."""
+    from pathlib import Path
+
+    user_dir = Path.home() / ".agenticledger" / "pricing"
+    if not user_dir.is_dir():
+        return
+    for entry in sorted(user_dir.glob("*.json")):
+        try:
+            pack = json.loads(entry.read_text())
+            for pattern, spec in pack.get("models", {}).items():
+                _PRICES[pattern.lower()] = (float(spec["input"]), float(spec["output"]))
+                if "cache_read" in spec or "cache_write" in spec:
+                    _CACHE_PRICES[pattern.lower()] = (
+                        float(spec.get("cache_read", 0.0)),
+                        float(spec.get("cache_write", 0.0)),
+                    )
+        except Exception as exc:
+            logger.warning("user pricing pack %s could not be loaded: %s",
+                           entry.name, exc)
+
+
+_load_user_packs()
+
 # Provider-convention cache multipliers applied to the input rate.
 _CACHE_READ_MULT  = {"anthropic": 0.10, "openai": 0.50}
 _CACHE_WRITE_MULT = {"anthropic": 1.25, "openai": 0.0}

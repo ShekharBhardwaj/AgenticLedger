@@ -215,6 +215,15 @@ def main(argv: Optional[list] = None) -> int:
         help="Run the proxy in the background — terminal freed, survives the "
              "window closing; logs to ~/.agenticledger/proxy.log.",
     )
+    pricing_p = sub.add_parser(
+        "pricing", help="Price pack utilities.")
+    pricing_sub = pricing_p.add_subparsers(dest="pricing_cmd", required=True)
+    pricing_sub.add_parser(
+        "update",
+        help="Fetch the latest price packs from the repository into "
+             "~/.agenticledger/pricing/ (overrides built-ins; restart to apply). "
+             "The only network call the CLI makes, and only when you run it.")
+
     sub.add_parser("stop", help="Stop the background proxy.")
     sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
     logs_p = sub.add_parser("logs", help="Show the background proxy's log.")
@@ -272,6 +281,10 @@ def main(argv: Optional[list] = None) -> int:
             return 0
         cfg_p.print_help()
         return 2
+    if args.subcommand == "pricing":
+        from .pricing_update import update
+        return update()
+
     if args.subcommand == "init":
         from agenticledger.config import init_config
         target = init_config(args.path)
