@@ -558,6 +558,7 @@ env-always-wins rule.
 
 | Variable | Default | Description |
 |---|---|---|
+| `agenticledger pricing update` | | Fetch the current price packs from the repository into `~/.agenticledger/pricing/` (overrides built-ins on next start). The only network call the CLI makes, and only when you run it. |
 | `AGENTICLEDGER_PRICING` | _(none)_ | Inline JSON map of model → `[input_per_million, output_per_million]` USD. E.g. `'{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'`. |
 | `AGENTICLEDGER_PRICING_FILE` | _(none)_ | Path to a JSON file with the same format. Applied after `AGENTICLEDGER_PRICING`. |
 

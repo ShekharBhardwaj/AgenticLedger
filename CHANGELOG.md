@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-04
+
 ### Added
 - **`agenticledger pricing update`.** Fresh prices without upgrading:
   one explicit command fetches the current packs from the repository
@@ -889,7 +891,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.0...v0.8.1
