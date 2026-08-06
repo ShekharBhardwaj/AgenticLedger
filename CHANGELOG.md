@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The kill-switch buttons say what they do (#81).** "Stop" and
+  "resume" both promised process control the ledger does not have. A
+  running run now offers "block calls", an ended run offers "block
+  future calls", and a blocked run offers "allow calls again", with
+  tooltips that spell out the truth: blocking refuses calls at the
+  proxy so they cost nothing, it does not kill your process; allowing
+  restarts nothing. The refusal message and status tooltip use the same
+  words.
+
 ### Fixed
 - **The kill switch now stops inferred runs (#74).** Stopping an
   `auto-run-*` run detected by the loop engine used to change the badge

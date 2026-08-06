@@ -203,14 +203,14 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{detail.status}</span>
               {detail.status === "stopped" ? (
                 <button className="link-btn" style={{ marginLeft: 10 }}
-                        title="Lift the kill switch: calls flow again"
+                        title="Lifts the block: calls under this run id flow again. Restarts nothing; if your loop exited, start it yourself."
                         onClick={() => {
                           apiDel(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`)
                             .then(() => get<Run>(`/api/runs/${encodeURIComponent(detail.run_id)}`))
                             .then((r) => setRunStatus(r.run_id, r.status))
                             .then(refresh);
                         }}>
-                  resume
+                  allow calls again
                 </button>
               ) : confirmStop ? (
                 <span className="key-actions" style={{ marginLeft: 10 }}>
@@ -221,21 +221,22 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                               .then(refresh);
                             setConfirmStop(false);
                           }}>
-                    {detail.status === "running" || detail.status === "flagged" ? "stop this run" : "wall this run id"}
+                    {detail.status === "running" || detail.status === "flagged"
+                      ? "block this run's calls" : "block future calls under this id"}
                   </button>
                   <button className="link-btn" onClick={() => setConfirmStop(false)}>Cancel</button>
                 </span>
               ) : detail.status === "running" || detail.status === "flagged" ? (
                 <button className="link-btn" style={{ marginLeft: 10 }}
-                        title="Kill switch: refuse this run's further calls until resumed. History stays."
+                        title="Refuses this run's next calls at the proxy, so they cost nothing. Does not kill your process: a loop that cannot call usually exits on its own. History stays."
                         onClick={() => setConfirmStop(true)}>
-                  ⏻ stop
+                  ⊘ block calls
                 </button>
               ) : (
                 <button className="link-btn" style={{ marginLeft: 10 }}
-                        title="This run is not running now, but if new calls ever arrive under this run id (an always-on agent, a restarted loop), they will be refused until you resume. History stays."
+                        title="This run is not running now. If calls ever arrive under this run id again (an always-on agent, a restarted loop), they will be refused until you allow them. History stays."
                         onClick={() => setConfirmStop(true)}>
-                  ⏻ wall
+                  ⊘ block future calls
                 </button>
               )}
             </h2>

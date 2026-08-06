@@ -32,7 +32,7 @@ def test_stopped_run_is_refused_and_filed_as_blocked(proxy):
     rows = client.get("/session/ks-session").json()
     blocked = [r for r in rows if (r.get("error_detail") or "").startswith("blocked:")]
     assert len(blocked) == 1
-    assert "stopped by the operator" in blocked[0]["error_detail"]
+    assert "blocked by the operator" in blocked[0]["error_detail"]
 
     # The run wears its status.
     runs = {r["run_id"]: r for r in client.get("/api/runs").json()}

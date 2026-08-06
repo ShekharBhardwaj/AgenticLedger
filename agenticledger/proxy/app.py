@@ -2065,8 +2065,8 @@ def create_app(
                     normalize_request(body_json, path), meta)
         if (is_llm_path and not is_count_tokens and _stopped_run
                 and _stopped_run in request.app.state.stopped_runs):
-            reason = (f"run '{_stopped_run}' was stopped by the operator; "
-                      "resume it from the dashboard to allow calls")
+            reason = (f"calls under run '{_stopped_run}' are blocked by the "
+                      "operator; allow them again from the dashboard")
             try:
                 canonical_req = normalize_request(body_json, path)
                 blocked_resp = _empty_response(0)
