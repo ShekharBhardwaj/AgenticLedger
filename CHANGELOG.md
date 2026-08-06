@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The bookkeeper raccoon.** Every run in the Loop Lens has a small
   hand-drawn cartoon raccoon whose expression is the run's status:
   bright-eyed with the faintest bob while the loop spends, a curious
-  head-tilt on flagged runs, happy eyes when the loop declares victory,
+  head-tilt and a little amber flag in hand on flagged runs, happy eyes when the loop declares victory,
   asleep and slow-breathing when it goes quiet, and knocked out cold
   (X eyes, holds perfectly still) while its calls are blocked. Inline
   SVG, no assets fetched, no layout shift, and it stands still for

@@ -215,6 +215,16 @@ body {
   50%      { transform: translateY(-0.7px); }
 }
 .rac-flagged .rac-head { animation: rac-peek 4.5s ease-in-out infinite; }
+/* The little amber flag stays planted while the head tilts; the cloth
+   sways as slowly as the rest of the raccoon moves. */
+.rac-flag-cloth {
+  transform-origin: 22.4px 3.2px; transform-box: view-box;
+  animation: rac-wave 3.4s ease-in-out infinite;
+}
+@keyframes rac-wave {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(-9deg); }
+}
 @keyframes rac-peek {
   0%, 78%, 100% { transform: rotate(0deg); }
   84% { transform: rotate(-7deg); }
@@ -236,7 +246,7 @@ body {
   opacity: 0.6; filter: saturate(0.4);
 }
 @media (prefers-reduced-motion: reduce) {
-  .rac-head { animation: none !important; }
+  .rac-head, .rac-flag-cloth { animation: none !important; }
 }
 
 /* #76 — a renamed run's tile keeps its raw id visible, so the tile and
