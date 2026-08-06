@@ -197,6 +197,48 @@ body {
   display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
   font-variant-numeric: tabular-nums;
 }
+/* The bookkeeper raccoon. Decorative only. The rules: animation so slow
+   and small it reads as life, not motion; dead things do not move at all;
+   reduced-motion users get a perfectly still raccoon. Fixed-size inline
+   box, so it never shifts layout. */
+.rac {
+  display: inline-block; width: 20px; height: 18px;
+  margin-left: 7px; vertical-align: -3px;
+  cursor: default; user-select: none;
+}
+.rac-sm { width: 15px; height: 14px; margin-left: 5px; vertical-align: -2px; }
+.rac svg { display: block; overflow: visible; }
+.rac-head { transform-origin: 12px 13px; transform-box: view-box; }
+.rac-running .rac-head { animation: rac-bob 3s ease-in-out infinite; }
+@keyframes rac-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-0.7px); }
+}
+.rac-flagged .rac-head { animation: rac-peek 4.5s ease-in-out infinite; }
+@keyframes rac-peek {
+  0%, 78%, 100% { transform: rotate(0deg); }
+  84% { transform: rotate(-7deg); }
+  90% { transform: rotate(4deg); }
+  95% { transform: rotate(0deg); }
+}
+.rac-ended .rac-head {
+  animation: rac-breathe 4.5s ease-in-out infinite;
+  opacity: 0.75;
+}
+@keyframes rac-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(0.975); }
+}
+/* Blocked: knocked out. X eyes, a slump, and nothing animates, which is
+   the joke. */
+.rac-stopped {
+  transform: rotate(17deg) translateY(1px);
+  opacity: 0.6; filter: saturate(0.4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rac-head { animation: none !important; }
+}
+
 /* #76 — a renamed run's tile keeps its raw id visible, so the tile and
    the detail header can never read as two different runs. */
 .card-id {
