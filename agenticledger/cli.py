@@ -16,10 +16,13 @@ agent end the loop early by printing the promise in its final response.
 """
 
 import argparse
+import contextlib
+import json
 import os
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -53,6 +56,57 @@ def _decide_stop(
     if iteration >= max_iterations:
         return f"max iterations reached ({max_iterations})"
     return None
+
+
+_AL_MARKER = "_agenticledger_run"
+
+
+class _ClaudeLocalSettings:
+    """Claude Code applies a project's .claude/settings.json env OVER the
+    process environment, which silently strips the runner's /r/<run>/<iter>
+    attribution from the base URL (walkthrough finding #73). Local project
+    settings outrank shared ones in Claude Code's documented precedence, so
+    for the duration of a run we maintain .claude/settings.local.json with
+    the tagged URL, preserving any real local settings and cleaning up
+    after ourselves. A marker key identifies our file so a crash's
+    leftovers are recognized and replaced on the next run, never treasured.
+    """
+
+    def __init__(self, cwd: Path) -> None:
+        self.path = cwd / ".claude" / "settings.local.json"
+        self.active = (cwd / ".claude" / "settings.json").is_file()
+        self.original: Optional[str] = None
+        if not self.active:
+            return
+        if self.path.is_file():
+            text = self.path.read_text()
+            try:
+                stale = _AL_MARKER in json.loads(text)
+            except Exception:
+                stale = False
+            self.original = None if stale else text
+
+    def point_at(self, tagged_url: str) -> None:
+        if not self.active:
+            return
+        base: dict = {}
+        if self.original is not None:
+            with contextlib.suppress(Exception):
+                base = json.loads(self.original)
+        env = dict(base.get("env") or {})
+        env["ANTHROPIC_BASE_URL"] = tagged_url
+        base["env"] = env
+        base[_AL_MARKER] = True
+        self.path.write_text(json.dumps(base, indent=2) + "\n")
+
+    def restore(self) -> None:
+        if not self.active:
+            return
+        with contextlib.suppress(FileNotFoundError):
+            if self.original is not None:
+                self.path.write_text(self.original)
+            else:
+                self.path.unlink()
 
 
 def _iteration_env(proxy: str, run_id: str, iteration: int) -> dict:
@@ -104,10 +158,18 @@ def run_command(args: argparse.Namespace) -> int:
           f"{f', budget ${args.budget:.2f}' if args.budget else ''}) via {proxy}",
           file=sys.stderr)
 
+    local_settings = _ClaudeLocalSettings(Path.cwd())
+    if local_settings.active:
+        print("agenticledger: project has .claude/settings.json; using "
+              "settings.local.json for run attribution (restored on exit)",
+              file=sys.stderr)
+
     iteration = 0
-    while True:
+    try:
+      while True:
         iteration += 1
         print(f"agenticledger: iteration {iteration}/{args.max_iterations}", file=sys.stderr)
+        local_settings.point_at(f"{proxy}/r/{run_id}/{iteration}")
         try:
             result = subprocess.run(  # noqa: S603 — running the user's own command is the point
                 args.command, env=_iteration_env(proxy, run_id, iteration),
@@ -135,6 +197,8 @@ def run_command(args: argparse.Namespace) -> int:
         if stop:
             reason = stop
             break
+    finally:
+        local_settings.restore()
 
     status = _fetch_status(proxy, run_id, api_key) or status
     # The runner knows the loop exited — tell the ledger so the run reads

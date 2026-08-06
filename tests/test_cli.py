@@ -74,3 +74,104 @@ def test_main_strips_leading_dashdash(tmp_path):
     ])
     assert code == 0
     assert marker.read_text() == "y"
+
+
+# --- #73: project .claude/settings.json must not steal run attribution ---
+#
+# Claude Code applies a project's shared settings env over the process
+# environment, which erased the runner's /r/<run>/<iter> tag. The runner
+# now maintains .claude/settings.local.json (higher precedence) with the
+# tagged URL for the duration of the run. These tests drive run_command
+# in a scratch project and read what the local-settings file said during
+# each iteration — exactly what Claude Code itself would have read.
+
+_READ_LOCAL = (
+    "import json,pathlib;"
+    "d=json.loads(pathlib.Path('.claude/settings.local.json').read_text());"
+    "open('seen.txt','a').write(d['env']['ANTHROPIC_BASE_URL']+'\\n')"
+)
+
+
+def _project_with_shared_settings(tmp_path):
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text(
+        '{"env": {"ANTHROPIC_BASE_URL": "http://localhost:8000"}}')
+    return tmp_path
+
+
+def _run(tmp_path, monkeypatch, iterations=2, run_id="t-attr"):
+    monkeypatch.chdir(tmp_path)
+    args = argparse.Namespace(
+        command=[sys.executable, "-c", _READ_LOCAL],
+        run_id=run_id, max_iterations=iterations, budget=None,
+        proxy="http://127.0.0.1:1", stop_on_error=False,
+    )
+    return run_command(args)
+
+
+def test_runner_outranks_project_settings_with_tagged_local_settings(
+        tmp_path, monkeypatch):
+    _project_with_shared_settings(tmp_path)
+    assert _run(tmp_path, monkeypatch) == 0
+    assert (tmp_path / "seen.txt").read_text().splitlines() == [
+        "http://127.0.0.1:1/r/t-attr/1",
+        "http://127.0.0.1:1/r/t-attr/2",
+    ]
+    # Cleaned up: the run's overlay does not outlive the run.
+    assert not (tmp_path / ".claude" / "settings.local.json").exists()
+
+
+def test_runner_preserves_real_local_settings(tmp_path, monkeypatch):
+    _project_with_shared_settings(tmp_path)
+    original = '{"permissions": {"allow": ["Bash"]}, "env": {"FOO": "bar"}}'
+    (tmp_path / ".claude" / "settings.local.json").write_text(original)
+    assert _run(tmp_path, monkeypatch, iterations=1) == 0
+    # During the run the user's own keys rode along with the tag.
+    seen = (tmp_path / "seen.txt").read_text().strip()
+    assert seen == "http://127.0.0.1:1/r/t-attr/1"
+    # After the run the file is byte-for-byte what the user had.
+    assert (tmp_path / ".claude" / "settings.local.json").read_text() == original
+
+
+def test_runner_merge_keeps_user_keys_during_run(tmp_path, monkeypatch):
+    _project_with_shared_settings(tmp_path)
+    (tmp_path / ".claude" / "settings.local.json").write_text(
+        '{"env": {"FOO": "bar"}}')
+    read_all = (
+        "import json,pathlib,shutil;"
+        "shutil.copy('.claude/settings.local.json','during.json')"
+    )
+    monkeypatch.chdir(tmp_path)
+    args = argparse.Namespace(
+        command=[sys.executable, "-c", read_all],
+        run_id="t-merge", max_iterations=1, budget=None,
+        proxy="http://127.0.0.1:1", stop_on_error=False,
+    )
+    assert run_command(args) == 0
+    import json
+    during = json.loads((tmp_path / "during.json").read_text())
+    assert during["env"]["FOO"] == "bar"
+    assert during["env"]["ANTHROPIC_BASE_URL"].endswith("/r/t-merge/1")
+
+
+def test_runner_replaces_stale_overlay_from_a_crash(tmp_path, monkeypatch):
+    _project_with_shared_settings(tmp_path)
+    (tmp_path / ".claude" / "settings.local.json").write_text(
+        '{"_agenticledger_run": true, "env": {"ANTHROPIC_BASE_URL": "http://dead/r/old/9"}}')
+    assert _run(tmp_path, monkeypatch, iterations=1, run_id="t-new") == 0
+    assert (tmp_path / "seen.txt").read_text().strip() == \
+        "http://127.0.0.1:1/r/t-new/1"
+    # The stale leftover is not mistaken for user data: it is removed.
+    assert not (tmp_path / ".claude" / "settings.local.json").exists()
+
+
+def test_runner_leaves_projects_without_shared_settings_alone(
+        tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    args = argparse.Namespace(
+        command=[sys.executable, "-c", "pass"],
+        run_id="t-none", max_iterations=1, budget=None,
+        proxy="http://127.0.0.1:1", stop_on_error=False,
+    )
+    assert run_command(args) == 0
+    assert not (tmp_path / ".claude").exists()

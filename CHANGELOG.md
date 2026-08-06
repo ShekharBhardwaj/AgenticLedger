@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The kill switch now stops inferred runs (#74).** Stopping an
+  `auto-run-*` run detected by the loop engine used to change the badge
+  and nothing else: the next iterations sailed through, because they
+  arrive as brand-new sessions carrying no run id. The enforcement gate
+  now resolves incoming calls to their inferred run the same way the
+  loop engine groups them (session state, then the fresh-context
+  signature), so a stopped loop's next iteration hits the wall no
+  matter how it identifies itself. Other agents are untouched, and
+  resume restores flow.
+- **`agenticledger run` attribution survives `.claude/settings.json`
+  (#73).** Claude Code applies a project's shared settings env over the
+  process environment, which silently erased the runner's tagged base
+  URL: the terminal said one run, the dashboard recorded another. The
+  runner now maintains `.claude/settings.local.json` (which outranks
+  the shared file) with the tagged URL for the duration of the run,
+  preserving any real local settings byte for byte and cleaning up
+  after itself, including leftovers from a crash.
+- **Stop and resume update both panes together (#75).** The sidebar
+  tile and the detail header now flip in the same render; the tile no
+  longer keeps its old badge until something else refreshes it.
+- **A renamed run can no longer read as two runs (#76).** The detail
+  header shows the custom name with the raw id right under it (click to
+  copy), the sidebar tile shows the id as a second line, and the
+  single-run API now carries the name just like the list does.
+- **The stop button says what it will do (#72).** A running run offers
+  "stop". A run that already ended offers "wall" instead, with the
+  honest explanation: future calls arriving under this run id will be
+  refused until you resume. Same capability, no more "stopping a
+  stopped run".
+
 ## [0.9.1] - 2026-08-04
 
 ### Added

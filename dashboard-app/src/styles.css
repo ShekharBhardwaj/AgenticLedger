@@ -197,6 +197,13 @@ body {
   display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
   font-variant-numeric: tabular-nums;
 }
+/* #76 — a renamed run's tile keeps its raw id visible, so the tile and
+   the detail header can never read as two different runs. */
+.card-id {
+  color: var(--text-dim); font-size: 11px; margin-top: 2px; opacity: 0.75;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-right: 74px;
+}
 
 /* Sidebar tints: replays are lineage (purple), real failures are red. */
 .sidebar .card.replay     { border-left: 2px solid rgba(183, 138, 245, 0.65); }

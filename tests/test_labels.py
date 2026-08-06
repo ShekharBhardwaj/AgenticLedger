@@ -55,6 +55,10 @@ def test_runs_carry_labels_too(proxy):
     runs = {r["run_id"]: r for r in client.get("/api/runs").json()}
     assert runs["my-run"]["label"] == "the good run"
     assert runs["my-run"]["pinned"] is True
+    # #76 — the single-run endpoint carries the name too, so the Loop Lens
+    # detail header and the sidebar tile can never disagree about identity.
+    detail = client.get("/api/runs/my-run").json()
+    assert detail["label"] == "the good run"
 
 
 def test_label_validation_and_roles(proxy, monkeypatch):

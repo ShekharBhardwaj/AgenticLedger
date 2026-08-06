@@ -1631,10 +1631,15 @@ def create_app(
         """Run status for loop runners: poll this between iterations and stop
         when status is 'complete' (completion promise seen) or on budget."""
         await _require(request, ROLE_VIEWER)
-        run = await request.app.state.store.get_run(run_id)
+        store = request.app.state.store
+        run = await store.get_run(run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="run not found")
-        ended = await request.app.state.store.get_run_end_markers([run["run_id"]])
+        ended = await store.get_run_end_markers([run["run_id"]])
+        # #76 — the detail view must know the run's custom name too, or a
+        # renamed run reads as two different runs (tile vs header).
+        run = _annotate_labels([run], await store.get_labels("run"), "run_id",
+                               await store.get_project_rules())[0]
         return JSONResponse(_with_run_status(
             run, loop_run_gap_seconds, explicitly_ended=run["run_id"] in ended,
             stopped=run["run_id"] in request.app.state.stopped_runs))
@@ -2047,7 +2052,17 @@ def create_app(
         # A stopped run's calls are refused before they cost anything. Same
         # semantics as the budget wall: captured with a "blocked:" detail
         # (amber in the dashboard, never counted as an agent error).
+        # Inferred runs carry no id in the request, so when anything is
+        # stopped, resolve through the loop tracker's live state (session
+        # continuity, or the fresh-context run signature the next iteration
+        # of an organic loop arrives with). Same grouping capture applies,
+        # read-only. (#74)
         _stopped_run = meta.get("run_id")
+        if (_stopped_run is None and is_llm_path and not is_count_tokens
+                and request.app.state.stopped_runs):
+            with suppress(Exception):
+                _stopped_run = _loop_tracker.resolve_run(
+                    normalize_request(body_json, path), meta)
         if (is_llm_path and not is_count_tokens and _stopped_run
                 and _stopped_run in request.app.state.stopped_runs):
             reason = (f"run '{_stopped_run}' was stopped by the operator; "
@@ -2056,10 +2071,14 @@ def create_app(
                 canonical_req = normalize_request(body_json, path)
                 blocked_resp = _empty_response(0)
                 apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
+                # File the refusal under the stopped run even when the id
+                # was inferred, so the amber trail lands where the operator
+                # is looking.
+                _kill_meta = {**meta, "run_id": _stopped_run}
                 await request.app.state.store.save(
                     action_id, canonical_req, blocked_resp,
                     status_code=budget_status,
-                    error_detail=f"blocked: {reason}", **meta,
+                    error_detail=f"blocked: {reason}", **_kill_meta,
                 )
                 await broadcaster.broadcast({
                     "type": "call",

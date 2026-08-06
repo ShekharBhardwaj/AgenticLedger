@@ -69,8 +69,16 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   const [projects, setProjects] = useState<string[]>([]);
   const [projectFilter, setProjectFilter] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  useEffect(() => { setConfirmStop(false); }, [selected]);
+  useEffect(() => { setConfirmStop(false); setCopied(false); }, [selected]);
+
+  // #75 — stop/resume must flip the sidebar tile and the detail badge in
+  // the same render: update both local copies first, then re-fetch.
+  const setRunStatus = (id: string, status: Run["status"]) => {
+    setRuns((cur) => cur.map((r) => (r.run_id === id ? { ...r, status } : r)));
+    setDetail((cur) => (cur && cur.run_id === id ? { ...cur, status } : cur));
+  };
 
   const refresh = useCallback(() => {
     get<Run[]>("/api/runs").then(setRuns).catch((e) => setError(String(e)));
@@ -143,6 +151,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             <div className="card-title" title={r.run_id}>
               {r.label ?? r.run_id} <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
             </div>
+            {r.label && <div className="card-id mono">{r.run_id}</div>}
             {editing === r.run_id && (
               <LabelEditor scope="run" refId={r.run_id}
                            label={r.label} project={r.project} projects={projects}
@@ -190,32 +199,60 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
         ) : (
           <>
             <h2 className="page-title">
-              {detail.run_id}{" "}
+              {detail.label ?? detail.run_id}{" "}
               <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{detail.status}</span>
               {detail.status === "stopped" ? (
                 <button className="link-btn" style={{ marginLeft: 10 }}
                         title="Lift the kill switch: calls flow again"
-                        onClick={() => { apiDel(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`).then(refresh); }}>
+                        onClick={() => {
+                          apiDel(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`)
+                            .then(() => get<Run>(`/api/runs/${encodeURIComponent(detail.run_id)}`))
+                            .then((r) => setRunStatus(r.run_id, r.status))
+                            .then(refresh);
+                        }}>
                   resume
                 </button>
               ) : confirmStop ? (
                 <span className="key-actions" style={{ marginLeft: 10 }}>
                   <button className="link-btn project-purge"
-                          onClick={() => { post(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`, {}).then(refresh); setConfirmStop(false); }}>
-                    stop this run
+                          onClick={() => {
+                            post(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`, {})
+                              .then(() => setRunStatus(detail.run_id, "stopped"))
+                              .then(refresh);
+                            setConfirmStop(false);
+                          }}>
+                    {detail.status === "running" || detail.status === "flagged" ? "stop this run" : "wall this run id"}
                   </button>
                   <button className="link-btn" onClick={() => setConfirmStop(false)}>Cancel</button>
                 </span>
-              ) : (
+              ) : detail.status === "running" || detail.status === "flagged" ? (
                 <button className="link-btn" style={{ marginLeft: 10 }}
                         title="Kill switch: refuse this run's further calls until resumed. History stays."
                         onClick={() => setConfirmStop(true)}>
                   ⏻ stop
                 </button>
+              ) : (
+                <button className="link-btn" style={{ marginLeft: 10 }}
+                        title="This run is not running now, but if new calls ever arrive under this run id (an always-on agent, a restarted loop), they will be refused until you resume. History stays."
+                        onClick={() => setConfirmStop(true)}>
+                  ⏻ wall
+                </button>
               )}
             </h2>
             <div className="muted">
-              started {fmtTime(detail.started_at)} · last call {fmtTime(detail.last_call_at)}
+              <button
+                className="session-id mono"
+                title="click to copy the run id"
+                onClick={() => {
+                  navigator.clipboard?.writeText(detail.run_id).then(() => {
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1200);
+                  }).catch(() => {});
+                }}
+              >
+                {detail.run_id} {copied ? "✓ copied" : "⧉"}
+              </button>
+              {" · "}started {fmtTime(detail.started_at)} · last call {fmtTime(detail.last_call_at)}
               {detail.models && <> · <span className="mono">{detail.models}</span></>}
             </div>
 

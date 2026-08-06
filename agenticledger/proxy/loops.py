@@ -197,6 +197,34 @@ class LoopTracker:
         # (app-or-framework, system-prompt hash) → run grouping state
         self._run_sigs: dict[tuple, dict] = {}
 
+    # ── enforcement-time resolution (the kill switch's eyes) ─────────────────
+
+    def resolve_run(self, req, meta: dict) -> Optional[str]:
+        """Which run would this incoming call belong to? Read-only twin of
+        the capture-time grouping, for the enforcement gate: explicit
+        attribution wins; a session the tracker has seen keeps its run; a
+        fresh-context call resolves through the live run-signature table
+        (same key _assign_run uses) without mutating anything. Returns None
+        when the tracker cannot know — enforcement then has nothing to
+        match, which fails open by design."""
+        try:
+            explicit = meta.get("run_id")
+            if explicit:
+                return explicit
+            state = self._sessions.get(meta.get("session_id") or "-")
+            if state is not None and state.run_id:
+                return state.run_id
+            sys_digest = _system_digest(req)
+            if sys_digest is None:
+                return None
+            key = (meta.get("app_id") or meta.get("framework") or "-", sys_digest)
+            sig = self._run_sigs.get(key)
+            if sig is not None and self._clock() - sig["last_seen"] <= self._run_gap:
+                return sig["run_id"]
+            return None
+        except Exception:
+            return None
+
     # ── capture-time annotation ──────────────────────────────────────────────
 
     def annotate(self, action_id: str, req, resp, meta: dict) -> dict:
