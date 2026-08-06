@@ -58,6 +58,14 @@ function RunMascot({ status, small }: { status: Run["status"]; small?: boolean }
     <span className={`rac rac-${status} ${small ? "rac-sm" : ""}`}
           aria-hidden="true" title={mood[status]}>
       <svg viewBox="0 0 24 22" width="100%" height="100%">
+        {status === "running" && (
+          <g className="rac-speed" stroke="var(--text-dim)" strokeWidth="1.1"
+             strokeLinecap="round">
+            <line x1="0.2" y1="8.6" x2="4.2" y2="8.6" />
+            <line x1="-0.8" y1="12.6" x2="3.6" y2="12.6" />
+            <line x1="0.6" y1="16.6" x2="4.4" y2="16.6" />
+          </g>
+        )}
         {status === "flagged" && (
           <g className="rac-flag">
             <line x1="22" y1="16" x2="22" y2="3.4" stroke="var(--text-dim)"

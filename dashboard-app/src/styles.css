@@ -223,6 +223,18 @@ body {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-0.7px); }
 }
+/* Speed lines: the raccoon is going somewhere. Staggered streaks that
+   drift back and fade, comic-book style; a static drawing convention,
+   so under reduced motion they simply hold still. */
+.rac-speed line { opacity: 0.45; }
+.rac-running .rac-speed line { animation: rac-zoom 1.6s ease-in-out infinite; }
+.rac-running .rac-speed line:nth-child(2) { animation-delay: 0.55s; }
+.rac-running .rac-speed line:nth-child(3) { animation-delay: 1.1s; }
+@keyframes rac-zoom {
+  0%   { transform: translateX(2px); opacity: 0; }
+  35%  { opacity: 0.6; }
+  100% { transform: translateX(-2.5px); opacity: 0; }
+}
 .rac-flagged .rac-head { animation: rac-peek 4.5s ease-in-out infinite; }
 /* The little amber flag stays planted while the head tilts; the cloth
    sways as slowly as the rest of the raccoon moves. */
@@ -255,7 +267,7 @@ body {
   opacity: 0.6; filter: saturate(0.4);
 }
 @media (prefers-reduced-motion: reduce) {
-  .rac-head, .rac-flag-cloth { animation: none !important; }
+  .rac-head, .rac-flag-cloth, .rac-speed line { animation: none !important; }
 }
 
 /* #76 — a renamed run's tile keeps its raw id visible, so the tile and
