@@ -42,11 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header shows the custom name with the raw id right under it (click to
   copy), the sidebar tile shows the id as a second line, and the
   single-run API now carries the name just like the list does.
-- **The stop button says what it will do (#72).** A running run offers
-  "stop". A run that already ended offers "wall" instead, with the
-  honest explanation: future calls arriving under this run id will be
-  refused until you resume. Same capability, no more "stopping a
-  stopped run".
+- **The kill-switch control matches the run's state (#72).** A running
+  run and an already-ended run no longer share one ambiguous button:
+  blocking an ended run id is a pre-emptive wall for calls that may
+  arrive under it later (an always-on agent, a restarted loop), and the
+  control now says so. No more "stopping a stopped run". The final
+  button wording is #81's, above.
 
 ## [0.9.1] - 2026-08-04
 
