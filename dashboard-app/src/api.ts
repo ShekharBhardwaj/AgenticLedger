@@ -307,6 +307,7 @@ export interface Iteration {
   cache_read_tokens: number;
   flagged_calls: number;
   error_calls: number;
+  blocked_calls: number;
   session_id: string | null;
 }
 

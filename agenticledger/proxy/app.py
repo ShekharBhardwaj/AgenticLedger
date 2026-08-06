@@ -2069,6 +2069,12 @@ def create_app(
                       "operator; allow them again from the dashboard")
             try:
                 canonical_req = normalize_request(body_json, path)
+                # The tracker must see refusals too: without this, the
+                # session's follow-up calls (client retries, companion
+                # calls) resolve to nothing and sail through the wall, and
+                # the loop's next iterations launder into a fresh auto-run
+                # (#77/#78, both observed live).
+                _loop_tracker.observe_blocked(canonical_req, meta, _stopped_run)
                 blocked_resp = _empty_response(0)
                 apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
                 # File the refusal under the stopped run even when the id

@@ -192,6 +192,15 @@ body {
    Reserve that space permanently so a long id ellipsises clear of them —
    and so the title doesn't reflow when hovering reveals the buttons. */
 .sidebar .card-title { padding-right: 74px; }
+/* Runs tiles: only the NAME may truncate. The status badge and the
+   raccoon are flex siblings, never eaten by a long run id's ellipsis. */
+.card-title-row { display: flex; align-items: center; gap: 6px; }
+.card-title-row .card-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
+}
+.card-title-row .badge, .card-title-row .rac { flex-shrink: 0; }
+.card-title-row .rac { margin-left: 0; }
 .card-sub {
   color: var(--text-dim); font-size: 12px; margin-top: 5px;
   display: flex; gap: 10px; flex-wrap: wrap; align-items: center;

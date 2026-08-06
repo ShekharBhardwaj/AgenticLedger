@@ -81,13 +81,41 @@ def _count_turns(messages: list) -> int:
     return turns
 
 
+# Claude Code salts its system prompts with per-invocation noise: a billing
+# header block whose version suffix changes every run, and session-unique
+# paths (scratchpad directories carrying a session UUID). Hashing the raw
+# prompt made two invocations of the SAME agent look like different agents,
+# so fresh-context grouping became a lottery (observed live: a 5-iteration
+# loop fragmented across 3 inferred runs). The signature must survive the
+# noise: drop metadata-bearing blocks, mask UUIDs, then hash.
+_UUID_RE = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_VOLATILE_BLOCK_PREFIXES = ("x-anthropic-billing-header",)
+
+
+def _stable_system_text(sys_prompt) -> str:
+    # Block arrays are normalized to one newline-joined string before they
+    # reach us (normalize_request), so volatile blocks arrive as lines.
+    if isinstance(sys_prompt, list):
+        text = "\n".join(
+            (b.get("text", "") if isinstance(b, dict) else str(b))
+            for b in sys_prompt)
+    else:
+        text = sys_prompt if isinstance(sys_prompt, str) else str(sys_prompt)
+    lines = [ln for ln in text.split("\n")
+             if not ln.startswith(_VOLATILE_BLOCK_PREFIXES)]
+    return _UUID_RE.sub("*", "\n".join(lines))
+
+
 def _system_digest(req) -> Optional[str]:
-    """Stable hash of the system prompt in any wire shape, or None."""
+    """Hash of the system prompt's stable content, in any wire shape, or
+    None. Per-invocation salt (billing headers, session-unique UUIDs) is
+    stripped first so the same agent hashes the same across invocations."""
     if req.system_prompt:
-        return _digest(req.system_prompt)
+        return _digest(_stable_system_text(req.system_prompt))
     for m in req.messages[:1]:
         if isinstance(m, dict) and m.get("role") == "system":
-            return _digest(m.get("content"))
+            return _digest(_stable_system_text(m.get("content")))
     return None
 
 
@@ -246,20 +274,31 @@ class LoopTracker:
         now = self._clock()
         session_id = meta.get("session_id") or "-"
         state = self._session(session_id)
-        new_session = state.last_seen == 0.0
         state.last_seen = now
 
         # ── Run grouping (explicit headers win; else fresh-context inference)
         run_id = meta.get("run_id")
         iteration = _as_int(meta.get("iteration"))
         if run_id is None:
-            if new_session:
+            # Shallow-context calls may group; deep conversations never do.
+            # Retrying on later calls (not just the session's first) heals
+            # sessions whose opening call carried no usable signature.
+            if state.run_id is None and _count_turns(req.messages) <= 2:
                 self._assign_run(state, req, meta, now)
             run_id = state.run_id
             if iteration is None:
                 iteration = state.iteration
         else:
             state.run_id, state.iteration = run_id, iteration
+
+        # Signature bridging: one agent invocation fires more than one call
+        # shape (Claude Code: the main call plus a context companion), and
+        # which lands first is a race. Registering EVERY digest a session
+        # exhibits against its inferred run means the next iteration joins
+        # the same run no matter which call of its pair arrives first.
+        if run_id and run_id.startswith("auto-run-"):
+            self._register_sig(_system_digest(req), meta, run_id,
+                               state.iteration or 1, now)
 
         # ── Thread stitching via message-chain prefix match
         chain = _message_chain(req.messages)
@@ -398,6 +437,38 @@ class LoopTracker:
             state = _SessionState()
             self._sessions[session_id] = state
         return state
+
+    def observe_blocked(self, req, meta: dict, run_id: str) -> None:
+        """A refusal happened at the wall for `run_id`. Record enough state
+        that the session's follow-up calls (client retries, companion calls)
+        resolve to the same walled run, and keep the run's signature alive
+        while its loop keeps knocking: a stop must never launder a loop into
+        a fresh identity. Never raises."""
+        try:
+            now = self._clock()
+            state = self._session(meta.get("session_id") or "-")
+            state.last_seen = now
+            if state.run_id is None:
+                state.run_id = run_id
+            self._register_sig(_system_digest(req), meta, run_id,
+                               state.iteration or 1, now)
+        except Exception:
+            pass
+
+    def _register_sig(self, sys_digest: Optional[str], meta: dict,
+                      run_id: str, iteration: int, now: float) -> None:
+        """Point a signature at a run: claim it if free or expired, refresh
+        it if already ours. A live signature owned by a DIFFERENT run is
+        never stolen — that is what keeps simultaneous loops separate."""
+        if sys_digest is None:
+            return
+        key = (meta.get("app_id") or meta.get("framework") or "-", sys_digest)
+        sig = self._run_sigs.get(key)
+        if sig is None or now - sig["last_seen"] > self._run_gap:
+            self._run_sigs[key] = {
+                "run_id": run_id, "iteration": iteration, "last_seen": now}
+        elif sig["run_id"] == run_id:
+            sig["last_seen"] = now
 
     def _assign_run(self, state: _SessionState, req, meta: dict, now: float) -> None:
         """Group fresh-context sessions sharing a system prompt into a run."""

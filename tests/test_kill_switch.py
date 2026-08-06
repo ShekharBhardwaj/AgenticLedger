@@ -136,3 +136,149 @@ def test_stopping_an_inferred_run_walls_its_next_iterations(proxy):
     # Resume lifts the wall for the loop's next iteration.
     assert client.delete(f"/api/runs/{run_id}/stop").status_code == 200
     assert _fresh_context_call(client, "iter-d").status_code == 200
+
+
+# ── #77/#78/#80: refusals must never launder a loop's identity ───────────────
+#
+# Ground truth from wiretapping `claude -p` (2026-08-06): each invocation
+# fires TWO calls — the main call, whose system prompt LEADS with an
+# x-anthropic-billing-header block carrying a per-invocation nonce, and a
+# context companion with a DIFFERENT system prompt embedding session-unique
+# UUID paths. Which call lands first is a race. These tests replay that
+# exact traffic shape.
+
+_WORKER = "You are the retest loop worker."
+_COMPANION = ("Analyze the recent context. Scratchpad: "
+              "/tmp/claude/{u}/scratchpad for temporary files.")
+
+
+def _main_call(client, session_id, nonce):
+    return client.post("/v1/messages", json={
+        "model": "claude-sonnet-5", "max_tokens": 64000,
+        "system": [
+            {"type": "text", "text": ("x-anthropic-billing-header: "
+                                      f"cc_version=2.1.220.{nonce}; cc_entrypoint=cli;")},
+            {"type": "text", "text": _WORKER},
+        ],
+        "messages": [{"role": "user", "content": f"iteration {nonce}: continue"}],
+    }, headers={"x-agenticledger-session-id": session_id})
+
+
+def _companion_call(client, session_id, sess_uuid):
+    return client.post("/v1/messages", json={
+        "model": "claude-sonnet-5", "max_tokens": 64000,
+        "system": _COMPANION.format(u=sess_uuid),
+        "messages": [{"role": "user", "content": "<system-reminder>context</system-reminder>"}],
+    }, headers={"x-agenticledger-session-id": session_id})
+
+
+def _the_auto_run(client):
+    return next(r["run_id"] for r in client.get("/api/runs").json()
+                if r["run_id"].startswith("auto-run-"))
+
+
+def _anthropic_ok():
+    import httpx as _hx
+
+    from .conftest import anthropic_response
+    return lambda r: _hx.Response(200, json=anthropic_response())
+
+
+def test_salted_prompts_and_call_order_still_group_one_run(proxy):
+    """#80 — per-invocation billing nonces, session-unique UUID paths, and
+    the main/companion arrival race fragmented one loop into three runs.
+    All of it must group into a single inferred run."""
+    client = proxy(handler=_anthropic_ok())
+    assert _main_call(client, "s1", "aaa").status_code == 200
+    assert _companion_call(client, "s1", "11111111-1111-4111-8111-111111111111").status_code == 200
+    # Invocation 2 loses the race: the companion lands first.
+    assert _companion_call(client, "s2", "22222222-2222-4222-8222-222222222222").status_code == 200
+    assert _main_call(client, "s2", "bbb").status_code == 200
+    assert _main_call(client, "s3", "ccc").status_code == 200
+
+    run_ids = set()
+    for sid in ("s1", "s2", "s3"):
+        run_ids.update(r["run_id"] for r in client.get(f"/session/{sid}").json())
+    assert len(run_ids) == 1, f"one loop, one run — got {run_ids}"
+    assert next(iter(run_ids)).startswith("auto-run-")
+
+
+def test_wall_holds_against_retries_and_companion_calls(proxy):
+    """#77 — the observed leak: block the main call, and 1.5s later the
+    client's retry (or the companion) sailed through under a fresh
+    identity. Every follow-up of a walled session must hit the wall."""
+    client = proxy(handler=_anthropic_ok())
+    _main_call(client, "k1", "aaa")
+    _main_call(client, "k2", "bbb")
+    run_id = _the_auto_run(client)
+    client.post(f"/api/runs/{run_id}/stop")
+    upstream_before = len(client.upstream.requests)
+
+    assert _main_call(client, "k3", "ccc").status_code == 429
+    assert _companion_call(client, "k3", "33333333-3333-4333-8333-333333333333").status_code == 429
+    assert _main_call(client, "k3", "ccc").status_code == 429
+    # Nothing reached upstream; nothing was billed.
+    assert len(client.upstream.requests) == upstream_before
+
+    # Every refusal filed under the walled run, not a fresh identity.
+    rows = client.get("/session/k3").json()
+    assert len(rows) == 3
+    assert {r["run_id"] for r in rows} == {run_id}
+
+    # #79 — the wall's aggregate row is amber (blocked), never red (error).
+    iters = client.get(f"/api/runs/{run_id}/iterations").json()
+    walled = [i for i in iters if i["blocked_calls"]]
+    assert walled and all(i["error_calls"] == 0 for i in walled)
+
+
+def test_resume_restores_the_loops_identity(proxy):
+    """#78 — observed live: the post-resume iteration answered fine but
+    landed in a brand-new auto-run; the resumed run looked dead. The next
+    iteration must continue the SAME run."""
+    client = proxy(handler=_anthropic_ok())
+    _main_call(client, "r1", "aaa")
+    _main_call(client, "r2", "bbb")
+    run_id = _the_auto_run(client)
+    client.post(f"/api/runs/{run_id}/stop")
+    assert _main_call(client, "r3", "ccc").status_code == 429  # knocks while walled
+    client.delete(f"/api/runs/{run_id}/stop")
+
+    assert _main_call(client, "r4", "ddd").status_code == 200
+    rows = client.get("/session/r4").json()
+    assert rows and all(r["run_id"] == run_id for r in rows)
+
+
+def test_simultaneous_loops_block_and_resume_independently(proxy):
+    """Two loops interleaved (the untested scenario the user called out):
+    walling one must not touch the other's flow, grouping, or identity."""
+    client = proxy(handler=_anthropic_ok())
+
+    def loop_b(session_id, n):
+        return client.post("/v1/messages", json={
+            "model": "claude-sonnet-5", "max_tokens": 64000,
+            "system": "You are loop B, the nightly summarizer.",
+            "messages": [{"role": "user", "content": f"pass {n}"}],
+        }, headers={"x-agenticledger-session-id": session_id})
+
+    _main_call(client, "a1", "aaa")
+    loop_b("b1", 1)
+    _main_call(client, "a2", "bbb")
+    loop_b("b2", 2)
+    runs = {r["run_id"] for r in client.get("/api/runs").json()
+            if r["run_id"].startswith("auto-run-")}
+    assert len(runs) == 2
+    run_a = client.get("/session/a1").json()[0]["run_id"]
+    run_b = client.get("/session/b1").json()[0]["run_id"]
+    assert run_a != run_b
+
+    client.post(f"/api/runs/{run_a}/stop")
+    assert _main_call(client, "a3", "ccc").status_code == 429
+    assert loop_b("b3", 3).status_code == 200
+    assert client.get("/session/b3").json()[0]["run_id"] == run_b
+
+    client.delete(f"/api/runs/{run_a}/stop")
+    assert _main_call(client, "a4", "ddd").status_code == 200
+    assert client.get("/session/a4").json()[0]["run_id"] == run_a
+    # Loop B never blinked.
+    assert loop_b("b4", 4).status_code == 200
+    assert client.get("/session/b4").json()[0]["run_id"] == run_b

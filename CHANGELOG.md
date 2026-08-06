@@ -28,6 +28,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   words.
 
 ### Fixed
+- **The wall now holds against retries and companion calls (#77).**
+  Observed live in the retest: blocking a loop's main call let the
+  client's automatic retry through 1.5 seconds later, billed. Refusals
+  now register with the loop engine, so every follow-up a walled
+  session fires (retries, Claude Code's context companion) hits the
+  same wall, files under the same run, and costs nothing.
+- **Stopping a loop no longer launders its identity (#78).** The
+  iteration after a resume used to appear as a brand-new auto-run
+  while the resumed run played dead. A walled run's signature now
+  stays alive while its loop keeps knocking, so the next iteration
+  after resume continues the same run.
+- **Loop grouping survives Claude Code's salted prompts (#80).**
+  Claude Code stamps every invocation's system prompt with unique
+  noise (a billing-header nonce, session-UUID paths) and races two
+  differently-shaped calls per invocation, which fragmented one
+  5-iteration loop across three inferred runs. The loop signature now
+  hashes only the prompt's stable content, and every signature a
+  session exhibits points at its run, so the whole loop lands on one
+  tile no matter which call wins the race. Simultaneous distinct
+  loops keep separate identities: a live signature is never stolen.
+- **Blocked calls are amber in the iterations table too (#79).** The
+  wall's refusals in a run's per-iteration breakdown now show as
+  "blocked", not as red errors, matching everywhere else; their row
+  is marked with a wall sign instead of a phantom iteration number.
+- **The raccoon no longer vanishes behind long run ids.** The status
+  badge and mascot are laid out beside the name instead of inside its
+  truncation, so only the name ellipsizes.
 - **The kill switch now stops inferred runs (#74).** Stopping an
   `auto-run-*` run detected by the loop engine used to change the badge
   and nothing else: the next iterations sailed through, because they

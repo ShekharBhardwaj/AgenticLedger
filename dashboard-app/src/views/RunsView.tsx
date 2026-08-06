@@ -225,8 +225,9 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             >
               ⇆
             </button>
-            <div className="card-title" title={r.run_id}>
-              {r.label ?? r.run_id} <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
+            <div className="card-title card-title-row" title={r.run_id}>
+              <span className="card-name">{r.label ?? r.run_id}</span>
+              <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
               <RunMascot status={r.status} small />
             </div>
             {r.label && <div className="card-id mono">{r.run_id}</div>}
@@ -398,13 +399,24 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                         title={it.session_id ? "Open this iteration's session" : undefined}
                         onClick={() => it.session_id && onOpenSession(it.session_id)}
                       >
-                        <td>{it.iteration ?? "—"}</td>
+                        <td>{it.iteration ?? (it.blocked_calls
+                          ? <span title="the wall: these calls were refused before any iteration ran">⊘</span>
+                          : "—")}</td>
                         <td>{it.call_count}</td>
                         <td>{fmtUsd(it.cost_usd)}</td>
                         <td>{fmtNum(it.tokens_in)} / {fmtNum(it.tokens_out)}</td>
                         <td>{fmtNum(it.cache_read_tokens)}</td>
                         <td>{it.flagged_calls ? <span className="badge flagged">{it.flagged_calls}</span> : "—"}</td>
-                        <td>{it.error_calls ? <span className="badge error">{it.error_calls}</span> : "—"}</td>
+                        <td>
+                          {it.error_calls ? <span className="badge error">{it.error_calls}</span> : null}
+                          {it.blocked_calls ? (
+                            <span className="badge blocked"
+                                  title="refused at the wall (kill switch or budget): the block working, not the agent failing. These cost nothing.">
+                              {it.blocked_calls} blocked
+                            </span>
+                          ) : null}
+                          {!it.error_calls && !it.blocked_calls && "—"}
+                        </td>
                         <td>{fmtTime(it.started_at)}</td>
                         <td className="session-link">
                           {it.session_id
