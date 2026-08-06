@@ -423,8 +423,14 @@ export function liveUpdates(onEvent: () => void): () => void {
     };
   };
   connect();
+  // #82 — silence must not freeze the page. Without traffic there are no
+  // websocket events, so "ago" strings and inactivity-derived statuses
+  // (running → ended) kept whatever the last render said. A slow steady
+  // tick re-fetches even when nothing is happening.
+  const tick = window.setInterval(onEvent, 60_000);
   return () => {
     closed = true;
+    window.clearInterval(tick);
     ws?.close();
   };
 }

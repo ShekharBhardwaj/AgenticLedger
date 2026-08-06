@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   words.
 
 ### Fixed
+- **A silent dashboard no longer freezes in time (#82).** With no traffic
+  there were no websocket events, so "ago" timestamps and
+  inactivity-derived statuses kept whatever the last render said: an
+  always-on agent's run read "running · 1m ago" over an hour after its
+  last heartbeat. The page now re-fetches once a minute even when
+  nothing is happening, so what you read is what is true.
 - **The wall now holds against retries and companion calls (#77).**
   Observed live in the retest: blocking a loop's main call let the
   client's automatic retry through 1.5 seconds later, billed. Refusals
