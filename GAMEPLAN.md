@@ -223,6 +223,12 @@ ships first and needs no code.
 calls arriving, cost ticking, flags firing, on the existing websocket.
 The ten-second demo.
 
+**Phase T — Trusted application (#100), woven through.** Enterprise
+posture by design, not patches: multi-replica-correct enforcement
+(designed in #99 with the attribution pipeline), retention as product,
+/metrics + structured logs + backup/restore, SECURITY.md + threat
+model. SSO/RBAC/multi-tenancy deferred to 0.11 deliberately.
+
 **Phase D — Companions.** #65 DeepSeek/Mistral packs, #67 Gemini CLI
 fingerprint, #70 re-detect breakdown, #90 first-call stitch residue,
 #91 session run chips, #92 self-upgrade, #93 httpx 1.x migration.
