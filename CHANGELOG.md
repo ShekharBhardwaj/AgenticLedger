@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-08-19
+
+The retest release. Every entry below exists because the project's
+first user sat down, tried the primary scenario of each feature with
+their own hands, and filed what actually happened. Nineteen findings
+across two rounds; the kill switch, the loop engine, and the runner
+all keep their word now, and a raccoon keeps the books.
+
 ### Added
 - **Sidebar lists flip between newest and oldest first (#87).** A small
   toggle above the run and session lists reverses the time order;
@@ -14,9 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The bookkeeper raccoon.** Every run in the Loop Lens has a small
   hand-drawn cartoon raccoon whose expression is the run's status:
   bright-eyed with the faintest bob and comic speed lines while the
-  loop spends, a curious
-  head-tilt and a little amber flag in hand on flagged runs, happy eyes when the loop declares victory,
-  asleep and slow-breathing when it goes quiet, and knocked out cold
+  loop spends, a curious head-tilt and a little amber flag in hand on
+  flagged runs, happy eyes when the loop declares victory, asleep and
+  slow-breathing when it goes quiet, and knocked out cold
   (X eyes, holds perfectly still) while its calls are blocked. Inline
   SVG, no assets fetched, no layout shift, and it stands still for
   anyone who prefers reduced motion.
@@ -63,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by the user's stuck-loop test raising no flag: Claude Code
   re-salts the SAME conversation on every request (a billing-header
   nonce that changes per call, cache markers that migrate between
-  blocks), so every call hashed as a brand-new thread — silently
+  blocks), so every call hashed as a brand-new thread, silently
   disabling step counts, tool pairing, the repeat detector, step
   budgets, and the block-mode circuit breaker. Message hashing now
   ignores the salt, so a stuck agent flags at the third identical
