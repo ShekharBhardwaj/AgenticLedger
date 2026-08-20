@@ -195,6 +195,12 @@ Two pillars, one story: the ledger records every provider, and shows you
 the loop while it runs. Milestone:
 https://github.com/ShekharBhardwaj/AgenticLedger/milestone/1
 
+**Phase A.0 — Harden the ground (#97, #98).** Before the refactor: a
+wire-truth corpus of real captured traffic (quirks intact) plus a
+parity harness — old and new pipelines must produce identical records,
+enforced in CI forever after. Loadtest re-measured as Phase A's exit
+criterion; a dashboard smoke test lands before Phase C.
+
 **Phase A — Provider adapters (#94), the foundation.** One architecture
 for every wire format; OpenAI/Anthropic move into adapters behind shims;
 Azure OpenAI priced correctly as the first proof. Gate: zero behavior
