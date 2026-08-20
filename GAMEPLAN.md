@@ -188,3 +188,34 @@ Kit-per-week cadence down the ranked list; MCP registry + package one-liners + b
 ## How this composes with ROADMAP.md
 
 The ROADMAP's Phase 1–2 work (ingest auth, tokens/roles, redaction, retention) is not displaced — it's *load-bearing* for this plan: the new positioning is unattended agents with real spend and full prompts on disk, which makes trustworthy capture and a closed relay more urgent, not less. The pragmatic merge: ROADMAP quick wins ride along in Phase A; token/RBAC and redaction land with Phase C when the SPA needs a real auth story anyway; multi-tenancy and enterprise stay downstream — framework adoption (this plan) is what creates the fleet operators the enterprise edition later monetizes.
+
+## 0.10 — "Everywhere, live" (locked 2026-08-19)
+
+Two pillars, one story: the ledger records every provider, and shows you
+the loop while it runs. Milestone:
+https://github.com/ShekharBhardwaj/AgenticLedger/milestone/1
+
+**Phase A — Provider adapters (#94), the foundation.** One architecture
+for every wire format; OpenAI/Anthropic move into adapters behind shims;
+Azure OpenAI priced correctly as the first proof. Gate: zero behavior
+change against the full suite and replayed fixtures.
+
+**Phase B — Direct AWS Bedrock (#95), the flagship.** The ledger holds
+AWS credentials and re-signs each call (SigV4 via botocore, optional
+[bedrock] extra), so boto3 agents and Claude Code in Bedrock mode get
+recorded, budgeted, and kill-switched. The Bedrock-via-gateway guide
+ships first and needs no code.
+
+**Phase C — Live Loop view (#96), the wow.** Watch a run while it runs:
+calls arriving, cost ticking, flags firing, on the existing websocket.
+The ten-second demo.
+
+**Phase D — Companions.** #65 DeepSeek/Mistral packs, #67 Gemini CLI
+fingerprint, #70 re-detect breakdown, #90 first-call stitch residue,
+#91 session run chips, #92 self-upgrade, #93 httpx 1.x migration.
+
+Deliberately deferred to 0.11: CrewAI/LangGraph detection, the semantic
+report card, settings editing from the UI.
+
+Build order A → B → C → D, user-zero hands on every seam, tag on the
+word — the 0.9.2 retest discipline is the permanent process now.
