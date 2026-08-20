@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Sidebar lists flip between newest and oldest first (#87).** A small
+  toggle above the run and session lists reverses the time order;
+  pinned items keep floating to the top either way.
 - **The bookkeeper raccoon.** Every run in the Loop Lens has a small
   hand-drawn cartoon raccoon whose expression is the run's status:
   bright-eyed with the faintest bob and comic speed lines while the
@@ -17,11 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (X eyes, holds perfectly still) while its calls are blocked. Inline
   SVG, no assets fetched, no layout shift, and it stands still for
   anyone who prefers reduced motion.
-
-### Added
-- **Sidebar lists flip between newest and oldest first (#87).** A small
-  toggle above the run and session lists reverses the time order;
-  pinned items keep floating to the top either way.
 
 ### Changed
 - **Bare runner invocations get readable names (#84).**
