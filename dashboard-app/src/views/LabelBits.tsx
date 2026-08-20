@@ -231,10 +231,14 @@ export function TimeSortToggle({ oldestFirst, onChange }: {
   oldestFirst: boolean; onChange: (v: boolean) => void;
 }) {
   return (
-    <button className="link-btn sort-toggle"
-            title="Flip the list between newest first and oldest first"
-            onClick={() => onChange(!oldestFirst)}>
-      {oldestFirst ? "↑ oldest first" : "↓ newest first"}
-    </button>
+    <div className="sort-row">
+      <button className="sort-toggle"
+              title={oldestFirst
+                ? "oldest first — click for newest first"
+                : "newest first — click for oldest first"}
+              onClick={() => onChange(!oldestFirst)}>
+        {oldestFirst ? "↑ old" : "↓ new"}
+      </button>
+    </div>
   );
 }
