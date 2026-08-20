@@ -165,7 +165,7 @@ http://localhost:8000
 
 The web app updates live via WebSocket as calls come in. No refresh needed.
 
-- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete` / `stopped`), a cost-per-iteration chart, a **block-calls button** that refuses a running loop's further calls at the wall (and an allow-calls-again to lift it; the agent being blocked cannot), per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
+- **Loop Lens** — every loop run with status (`running` / `flagged` / `complete` / `ended` / `stopped`), a cost-per-iteration chart, a **block-calls button** that refuses a running loop's further calls at the wall (and an allow-calls-again to lift it; the agent being blocked cannot), per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
 - **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Session cards say whose they are and how they're doing at a glance: team badge, red "N failed" for real errors, amber "N blocked" for budget walls, purple tiles for replays. Hover a card for one-click delete.
 - **Replay the whole run** — the question that decides a model switch isn't "how did it handle one call?" but "would my loop have survived?" Pick a run or session, pick a destination (a local model is free), and every step re-runs with its original inputs. You get a report card, not homework: **"34 / 40 moments matched"**, the fumbles named ("dropped the tools"), and the cost both ways. Each step is a real captured moment replayed honestly — after step one a different model would have steered a different conversation, so the ledger compares moments, not fairy tales.
 - **Names, pins, projects** — call it "the overnight auth fix" instead of `cc-73a26366`, ★ pin what matters to the top, file work under a project and filter every list by it.
@@ -264,7 +264,10 @@ agenticledger run --max-iterations 50 --budget 25 -- \
 
 Each iteration shows up as *iteration N of the run* in `/api/runs`; when the
 agent prints the completion promise in a response, run status flips to
-`complete` and the loop exits with a cost/token summary. Any existing loop
+`complete` and the loop exits with a cost/token summary. Without `--run-id`
+the run is named after the folder and the minute (`myproject-0819-1936`),
+and rerunning the same run id continues its iteration count instead of
+restarting at 1. Any existing loop
 script works too — poll `GET /api/runs/{run_id}` yourself, or let the proxy's
 budgets (`AGENTICLEDGER_BUDGET_DAILY=25.00`) hard-stop a runaway loop.
 
@@ -374,7 +377,7 @@ Every LLM call is stored with:
 | `WS` | `/ws` | WebSocket stream — powers live dashboard updates |
 | `GET` | `/api/sessions` | List recent sessions with aggregated stats |
 | `GET` | `/api/runs` | List loop runs (explicit or auto-inferred) with iterations, cost, status, and flagged-call counts |
-| `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete`) — poll this from loop scripts |
+| `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete` / `ended` / `stopped`) — poll this from loop scripts |
 | `GET` | `/api/sessions/{session_id}/tools` | Derived tool executions — each tool call paired with its result, latency, and error status |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
 | `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent and per-team totals |
