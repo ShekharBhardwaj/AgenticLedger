@@ -6,7 +6,7 @@ import {
  listProjects,
 } from "../api";
 import CompareView from "./CompareView";
-import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, TimeSortToggle, timeSorted } from "./LabelBits";
 import ProviderMark from "./ProviderMark";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
@@ -155,6 +155,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   const [projectFilter, setProjectFilter] = useState("");
   const [editing, setEditing] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [oldestFirst, setOldestFirst] = useState(false);
 
   useEffect(() => { setConfirmStop(false); setCopied(false); }, [selected]);
 
@@ -207,7 +208,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                        knownApps={[...new Set(runs.map((x) => x.app_id).filter(Boolean))] as string[]}
                        onCreated={refresh}
                        sessionCount={runs.filter((x) => matchesFilter(x, projectFilter)).length} />
-        {pinnedFirst(runs.filter((r) => matchesFilter(r, projectFilter))).map((r) => (
+        <TimeSortToggle oldestFirst={oldestFirst} onChange={setOldestFirst} />
+        {pinnedFirst(timeSorted(runs.filter((r) => matchesFilter(r, projectFilter)), oldestFirst)).map((r) => (
           <div
             key={r.run_id}
             className={`card ${selected === r.run_id ? "selected" : ""}`}

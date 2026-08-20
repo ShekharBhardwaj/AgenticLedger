@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SVG, no assets fetched, no layout shift, and it stands still for
   anyone who prefers reduced motion.
 
+### Added
+- **Sidebar lists flip between newest and oldest first (#87).** A small
+  toggle above the run and session lists reverses the time order;
+  pinned items keep floating to the top either way.
+
 ### Changed
 - **Bare runner invocations get readable names (#84).**
   `agenticledger run` without `--run-id` used to mint `run-3f2a9c1d`;

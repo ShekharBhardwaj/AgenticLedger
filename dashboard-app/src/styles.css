@@ -206,6 +206,13 @@ body {
   display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
   font-variant-numeric: tabular-nums;
 }
+/* #87 — the sidebar's clock direction toggle. Quiet by design. */
+.sort-toggle {
+  display: block; margin: 0 0 8px 2px; font-size: 11.5px;
+  color: var(--text-dim);
+}
+.sort-toggle:hover { color: var(--accent); }
+
 /* The bookkeeper raccoon. Decorative only. The rules: animation so slow
    and small it reads as life, not motion; dead things do not move at all;
    reduced-motion users get a perfectly still raccoon. Fixed-size inline

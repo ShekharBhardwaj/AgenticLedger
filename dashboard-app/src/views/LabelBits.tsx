@@ -215,3 +215,26 @@ export function matchesFilter<T extends { pinned: boolean; project: string | nul
 export function pinnedFirst<T extends { pinned: boolean }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => Number(b.pinned) - Number(a.pinned));
 }
+
+/** #87 — the sidebar's clock direction. Newest first is the default;
+ *  the toggle flips to oldest first. Pinned rows still float to the top
+ *  in either direction (apply pinnedFirst AFTER this). */
+export function timeSorted<T extends { last_call_at?: string | null; started_at?: string | null }>(
+  rows: T[], oldestFirst: boolean,
+): T[] {
+  const when = (r: T) => r.last_call_at ?? r.started_at ?? "";
+  return [...rows].sort((a, b) =>
+    when(a).localeCompare(when(b)) * (oldestFirst ? 1 : -1));
+}
+
+export function TimeSortToggle({ oldestFirst, onChange }: {
+  oldestFirst: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <button className="link-btn sort-toggle"
+            title="Flip the list between newest first and oldest first"
+            onClick={() => onChange(!oldestFirst)}>
+      {oldestFirst ? "↑ oldest first" : "↓ newest first"}
+    </button>
+  );
+}

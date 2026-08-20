@@ -4,7 +4,7 @@ import {
   getCall, interactionTags, listProjects, liveUpdates, post, ReplayResult,
   replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
-import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter } from "./LabelBits";
+import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, TimeSortToggle, timeSorted } from "./LabelBits";
 import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
 
@@ -404,6 +404,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
   const [mode, setMode] = useState<Mode>("calls");
   const [projects, setProjects] = useState<string[]>([]);
   const [projectFilter, setProjectFilter] = useState("");
+  const [oldestFirst, setOldestFirst] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -452,7 +453,8 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
                        knownApps={[...new Set(sessions.map((x) => x.app_id).filter(Boolean))] as string[]}
                        onCreated={refresh}
                        sessionCount={sessions.filter((x) => matchesFilter(x, projectFilter)).length} />
-        {pinnedFirst(sessions.filter((s) => matchesFilter(s, projectFilter))).map((s) => (
+        <TimeSortToggle oldestFirst={oldestFirst} onChange={setOldestFirst} />
+        {pinnedFirst(timeSorted(sessions.filter((s) => matchesFilter(s, projectFilter)), oldestFirst)).map((s) => (
           <div
             key={s.session_id}
             className={`card ${selected === s.session_id ? "selected" : ""} ${s.session_id.startsWith("replay-") ? "replay" : ""} ${(s.error_count ?? 0) > 0 ? "has-errors" : ""}`}
