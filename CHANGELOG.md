@@ -59,6 +59,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   always-on agent's run read "running · 1m ago" over an hour after its
   last heartbeat. The page now re-fetches once a minute even when
   nothing is happening, so what you read is what is true.
+- **Thread stitching survives Claude Code's per-request salt (#89).**
+  Found by the user's stuck-loop test raising no flag: Claude Code
+  re-salts the SAME conversation on every request (a billing-header
+  nonce that changes per call, cache markers that migrate between
+  blocks), so every call hashed as a brand-new thread — silently
+  disabling step counts, tool pairing, the repeat detector, step
+  budgets, and the block-mode circuit breaker. Message hashing now
+  ignores the salt, so a stuck agent flags at the third identical
+  tool call the way it always claimed to.
 - **The wall now holds against retries and companion calls (#77).**
   Observed live in the retest: blocking a loop's main call let the
   client's automatic retry through 1.5 seconds later, billed. Refusals

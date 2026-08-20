@@ -294,3 +294,64 @@ def test_utility_call_detection():
     assert is_utility_call(_cc_req("claude-haiku-4-5-20251001", 512), {"framework": None}) is False
     # max_tokens absent → never utility.
     assert is_utility_call(_cc_req("claude-opus-5", None), cc) is False
+
+
+# ── #89: Claude Code re-salts the SAME conversation on every request ─────────
+#
+# Ground truth from the user's live stuck-loop test: consecutive requests of
+# one conversation differ in (a) a billing-header block whose nonce changes
+# per REQUEST and (b) cache_control markers that migrate between blocks as
+# the cache window moves. Hashing that noise made every call its own thread,
+# which silently disabled steps, tool pairing, and the stuck-loop flags.
+
+def _salted_msg(role, text, nonce, cached=False):
+    blocks = [
+        {"type": "text",
+         "text": f"x-anthropic-billing-header: cc_version=2.1.220.{nonce}; cc_entrypoint=sdk-cli;"},
+        {"type": "text", "text": text},
+    ]
+    if cached:
+        blocks[1] = {**blocks[1], "cache_control": {"ttl": "1h", "type": "ephemeral"}}
+    return {"role": role, "content": blocks}
+
+
+def test_resalted_conversation_stays_one_thread_and_flags_repeats():
+    tracker = LoopTracker(repeat_threshold=3)
+    tool = [{"name": "Bash", "arguments": '{"command": "date"}'}]
+    tool_msg = {"role": "tool", "tool_call_id": "x", "content": "Wed Aug 19"}
+
+    flags = []
+    threads = set()
+    steps = []
+    history = [_salted_msg("user", "run date 5 times", "aaa", cached=True)]
+    for i in range(5):
+        # Every request re-salts message 0: fresh nonce, marker moved.
+        salted = [_salted_msg("user", "run date 5 times", f"n{i}", cached=(i % 2 == 0))]
+        salted += history[1:]
+        f = tracker.annotate(f"a{i}", _req(list(salted)), _resp(tool), _meta())
+        threads.add(f["thread_id"])
+        steps.append(f["step_index"])
+        if f["loop_flags"]:
+            flags.extend(json.loads(f["loop_flags"]))
+        history = salted + [
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": f"c{i}", "function": {"name": "Bash",
+                             "arguments": '{"command": "date"}'}}]},
+            {**tool_msg, "tool_call_id": f"c{i}"},
+        ]
+
+    assert len(threads) == 1, f"one conversation, one thread — got {len(threads)}"
+    assert steps == [1, 2, 3, 4, 5]
+    assert "repeat_tool_call" in flags
+
+
+def test_cache_marker_migration_alone_does_not_split_threads():
+    tracker = LoopTracker()
+    m_marked = {"role": "user", "content": [
+        {"type": "text", "text": "hello", "cache_control": {"type": "ephemeral"}}]}
+    m_plain = {"role": "user", "content": [{"type": "text", "text": "hello"}]}
+    f1 = tracker.annotate("a1", _req([m_marked]), _resp(), _meta())
+    f2 = tracker.annotate("a2", _req([m_plain, {"role": "assistant", "content": "hi"},
+                                      {"role": "user", "content": "more"}]), _resp(), _meta())
+    assert f1["thread_id"] == f2["thread_id"]
+    assert f2["step_index"] == 2

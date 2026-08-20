@@ -56,9 +56,31 @@ def _digest(value: object) -> str:
     return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
 
 
+def _stable_content(content):
+    """Message content minus per-request decoration (#89). Claude Code
+    re-salts the SAME conversation on every request: the billing-header
+    block's nonce changes per call, and cache_control markers migrate
+    between blocks as the cache window moves. Hashing them made every
+    request look like a brand-new conversation, which silently killed
+    thread stitching — and with it steps, tool pairing, and the
+    stuck-loop flags."""
+    if not isinstance(content, list):
+        return content
+    out = []
+    for block in content:
+        if isinstance(block, dict):
+            text = block.get("text")
+            if isinstance(text, str) and text.startswith(_VOLATILE_BLOCK_PREFIXES):
+                continue
+            if "cache_control" in block:
+                block = {k: v for k, v in block.items() if k != "cache_control"}
+        out.append(block)
+    return out
+
+
 def _message_chain(messages: list) -> tuple[str, ...]:
     return tuple(
-        _digest({"role": m.get("role"), "content": m.get("content"),
+        _digest({"role": m.get("role"), "content": _stable_content(m.get("content")),
                  "tool_calls": m.get("tool_calls")})
         if isinstance(m, dict) else _digest(m)
         for m in messages
