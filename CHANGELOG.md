@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agenticledger run` without `--run-id` used to mint `run-3f2a9c1d`;
   now it names the run after the folder and the minute
   (`bmad-test-0819-1936`). An explicit `--run-id` still wins.
+- **Compare runs names its columns and colors only judgments (#88).**
+  The delta column's "B − A" now points at columns labeled "A · run"
+  and "B · run", and colors mean opinion, not arithmetic: money, time,
+  and flags go green or red; shape metrics (iterations, calls, tokens)
+  stay neutral, because a 1-iteration ReAct run is not "better" than a
+  3-iteration Ralph run, it is just built differently.
 - **The kill-switch buttons say what they do (#81).** "Stop" and
   "resume" both promised process control the ledger does not have. A
   running run now offers "block calls", an ended run offers "block

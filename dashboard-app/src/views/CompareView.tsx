@@ -380,8 +380,11 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
 
   const rows: Row[] = [
     { label: "total cost", a: ra.detail?.total_cost_usd ?? null, b: rb.detail?.total_cost_usd ?? null, fmt: fmtUsd, lowerIsBetter: true },
-    { label: "iterations", a: ra.detail?.iterations ?? null, b: rb.detail?.iterations ?? null, fmt: String, lowerIsBetter: true },
-    { label: "llm calls", a: ra.detail?.call_count ?? null, b: rb.detail?.call_count ?? null, fmt: fmtNum, lowerIsBetter: true },
+    // Structural metrics describe a run's SHAPE, not its quality — a
+    // 1-iteration ReAct run is not "better" than a 3-iteration Ralph run.
+    // Only judgment metrics (money, time, flags) carry delta colors.
+    { label: "iterations", a: ra.detail?.iterations ?? null, b: rb.detail?.iterations ?? null, fmt: String },
+    { label: "llm calls", a: ra.detail?.call_count ?? null, b: rb.detail?.call_count ?? null, fmt: fmtNum },
     { label: "tokens in", a: ra.detail?.total_tokens_in ?? null, b: rb.detail?.total_tokens_in ?? null, fmt: fmtNum },
     { label: "tokens out", a: ra.detail?.total_tokens_out ?? null, b: rb.detail?.total_tokens_out ?? null, fmt: fmtNum },
     { label: "flagged calls", a: ra.detail?.flagged_calls ?? null, b: rb.detail?.flagged_calls ?? null, fmt: String, lowerIsBetter: true },
@@ -414,9 +417,9 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
         <thead>
           <tr>
             <th>metric</th>
-            <th className="mono">{a.length > 18 ? a.slice(0, 17) + "…" : a}</th>
-            <th className="mono">{b.length > 18 ? b.slice(0, 17) + "…" : b}</th>
-            <th>Δ (b − a)</th>
+            <th className="mono">A · {a.length > 16 ? a.slice(0, 15) + "…" : a}</th>
+            <th className="mono">B · {b.length > 16 ? b.slice(0, 15) + "…" : b}</th>
+            <th>Δ (B − A)</th>
           </tr>
         </thead>
         <tbody>
