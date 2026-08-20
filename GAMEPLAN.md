@@ -195,6 +195,13 @@ Two pillars, one story: the ledger records every provider, and shows you
 the loop while it runs. Milestone:
 https://github.com/ShekharBhardwaj/AgenticLedger/milestone/1
 
+**Phase A.-1 — Design first (#99).** The cycle's fifteen findings were
+four bug classes; the design doc retires the classes: one
+canonicalization contract, one attribution pipeline, written UI honesty
+rules, and a per-provider attribution story in the adapter contract
+(Bedrock signs outbound, so tags ride inbound). User-reviewed before
+any Phase A code.
+
 **Phase A.0 — Harden the ground (#97, #98).** Before the refactor: a
 wire-truth corpus of real captured traffic (quirks intact) plus a
 parity harness — old and new pipelines must produce identical records,
