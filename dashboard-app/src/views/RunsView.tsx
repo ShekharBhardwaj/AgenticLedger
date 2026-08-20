@@ -403,9 +403,9 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                     {iterations.map((it) => (
                       <tr
                         key={String(it.iteration)}
-                        className={it.session_id ? "row-link" : ""}
-                        title={it.session_id ? "Open this iteration's session" : undefined}
-                        onClick={() => it.session_id && onOpenSession(it.session_id)}
+                        className={it.session_id && it.session_count <= 1 ? "row-link" : ""}
+                        title={it.session_id && it.session_count <= 1 ? "Open this iteration's session" : undefined}
+                        onClick={() => it.session_id && it.session_count <= 1 && onOpenSession(it.session_id)}
                       >
                         <td>{it.iteration ?? (it.blocked_calls
                           ? <span title="the wall: these calls were refused before any iteration ran">⊘</span>
@@ -427,7 +427,12 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                         </td>
                         <td>{fmtTime(it.started_at)}</td>
                         <td className="session-link">
-                          {it.session_id
+                          {it.session_count > 1 ? (
+                            <span className="muted"
+                                  title="This iteration number holds calls from several sessions (a reused run id, or merged identical loops). Find them all in the Sessions tab.">
+                              {it.session_count} sessions
+                            </span>
+                          ) : it.session_id
                             ? (it.session_id.length > 14 ? it.session_id.slice(0, 13) + "…" : it.session_id) + " →"
                             : "—"}
                         </td>

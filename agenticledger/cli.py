@@ -19,8 +19,10 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -56,6 +58,19 @@ def _decide_stop(
     if iteration >= max_iterations:
         return f"max iterations reached ({max_iterations})"
     return None
+
+
+_RUN_ID_SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
+
+
+def _default_run_id() -> str:
+    """A run id a human can read in the sidebar: the folder's name plus a
+    short timestamp (#84). Running again the same minute reuses the id,
+    which simply continues the run — with iteration numbering carrying on
+    (#85). Random hex only if the folder name sanitizes away entirely."""
+    folder = _RUN_ID_SAFE.sub("-", Path.cwd().name).strip("-.")
+    stamp = time.strftime("%m%d-%H%M")
+    return f"{folder}-{stamp}" if folder else f"run-{uuid.uuid4().hex[:8]}"
 
 
 _AL_MARKER = "_agenticledger_run"
@@ -147,7 +162,7 @@ def run_command(args: argparse.Namespace) -> int:
         return 2
 
     proxy = args.proxy.rstrip("/")
-    run_id = args.run_id or f"run-{uuid.uuid4().hex[:8]}"
+    run_id = args.run_id or _default_run_id()
     api_key = os.environ.get("AGENTICLEDGER_API_KEY")
     last_exit = 0
     status: Optional[dict] = None
@@ -157,6 +172,17 @@ def run_command(args: argparse.Namespace) -> int:
           f"(max {args.max_iterations} iterations"
           f"{f', budget ${args.budget:.2f}' if args.budget else ''}) via {proxy}",
           file=sys.stderr)
+
+    # A reused run id continues the run, so the numbering continues too:
+    # ask the ledger where the run left off (#85). Offline or brand new,
+    # the answer is silence and we start at 1, exactly as before.
+    base_iteration = 0
+    prior = _fetch_status(proxy, run_id, api_key)
+    if prior and isinstance(prior.get("iterations"), int) and prior["iterations"] > 0:
+        base_iteration = prior["iterations"]
+        print(f"agenticledger: run {run_id} already has {base_iteration} "
+              f"iteration(s) recorded; continuing at {base_iteration + 1}",
+              file=sys.stderr)
 
     local_settings = _ClaudeLocalSettings(Path.cwd())
     if local_settings.active:
@@ -169,10 +195,11 @@ def run_command(args: argparse.Namespace) -> int:
       while True:
         iteration += 1
         print(f"agenticledger: iteration {iteration}/{args.max_iterations}", file=sys.stderr)
-        local_settings.point_at(f"{proxy}/r/{run_id}/{iteration}")
+        tagged = base_iteration + iteration
+        local_settings.point_at(f"{proxy}/r/{run_id}/{tagged}")
         try:
             result = subprocess.run(  # noqa: S603 — running the user's own command is the point
-                args.command, env=_iteration_env(proxy, run_id, iteration),
+                args.command, env=_iteration_env(proxy, run_id, tagged),
             )
             last_exit = result.returncode
         except KeyboardInterrupt:

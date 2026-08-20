@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anyone who prefers reduced motion.
 
 ### Changed
+- **Bare runner invocations get readable names (#84).**
+  `agenticledger run` without `--run-id` used to mint `run-3f2a9c1d`;
+  now it names the run after the folder and the minute
+  (`bmad-test-0819-1936`). An explicit `--run-id` still wins.
 - **The kill-switch buttons say what they do (#81).** "Stop" and
   "resume" both promised process control the ledger does not have. A
   running run now offers "block calls", an ended run offers "block
@@ -29,6 +33,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   words.
 
 ### Fixed
+- **Re-running a run id continues its iteration count (#85).** Each
+  runner execution used to number its iterations from 1, so reruns of
+  the same `--run-id` piled new calls onto old iteration numbers ("2
+  iterations" hiding five executions). The runner now asks the ledger
+  where the run left off and continues: 3, 4, 5. Offline or brand-new
+  runs start at 1, exactly as before.
+- **An iteration row says how many sessions it holds (#86).** A row
+  aggregating several sessions (a reused run id, merged identical
+  loops) used to show a single session id as if it were the whole
+  story; the user drilled in, found 2 of the row's 10 calls, and
+  rightly called it wrong. Such rows now read "5 sessions".
 - **A silent dashboard no longer freezes in time (#82).** With no traffic
   there were no websocket events, so "ago" timestamps and
   inactivity-derived statuses kept whatever the last render said: an

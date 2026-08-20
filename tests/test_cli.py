@@ -175,3 +175,53 @@ def test_runner_leaves_projects_without_shared_settings_alone(
     )
     assert run_command(args) == 0
     assert not (tmp_path / ".claude").exists()
+
+
+# --- #84/#85: readable default run ids, and reruns that continue counting ---
+
+def test_default_run_id_is_folder_plus_timestamp(tmp_path, monkeypatch, capsys):
+    proj = tmp_path / "night shift!"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    args = argparse.Namespace(
+        command=[sys.executable, "-c", "pass"],
+        run_id=None, max_iterations=1, budget=None,
+        proxy="http://127.0.0.1:1", stop_on_error=False,
+    )
+    assert run_command(args) == 0
+    err = capsys.readouterr().err
+    # Spaces and punctuation sanitized, timestamp appended, no hex soup.
+    assert "starting run night-shift-" in err
+    assert "run-" not in err.split("starting run ")[1].split(" ")[0]
+
+
+def test_rerun_continues_iteration_numbering(tmp_path, monkeypatch):
+    import agenticledger.cli as cli
+    monkeypatch.chdir(tmp_path)
+    # The ledger says this run already has 4 iterations recorded.
+    monkeypatch.setattr(cli, "_fetch_status", lambda proxy, run_id, key: {
+        "status": "running", "iterations": 4, "total_cost_usd": 0.0})
+    seen = tmp_path / "seen.txt"
+    args = argparse.Namespace(
+        command=[sys.executable, "-c",
+                 f"import os; open(r'{seen}','a').write(os.environ['AGENTICLEDGER_ITERATION']+'\\n')"],
+        run_id="carry-on", max_iterations=2, budget=None,
+        proxy="http://127.0.0.1:1", stop_on_error=False,
+    )
+    assert run_command(args) == 0
+    # Execution-local loop ran twice, but the tagged iterations continue.
+    assert seen.read_text().splitlines() == ["5", "6"]
+
+
+def test_fresh_or_offline_run_still_starts_at_one(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    seen = tmp_path / "seen.txt"
+    args = argparse.Namespace(
+        command=[sys.executable, "-c",
+                 f"import os; open(r'{seen}','a').write(os.environ['AGENTICLEDGER_ITERATION']+'\\n')"],
+        run_id="fresh", max_iterations=2, budget=None,
+        proxy="http://127.0.0.1:1",  # nothing listens: status is None
+        stop_on_error=False,
+    )
+    assert run_command(args) == 0
+    assert seen.read_text().splitlines() == ["1", "2"]

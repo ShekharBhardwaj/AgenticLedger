@@ -299,6 +299,7 @@ export function runStatusInfo(status: string): string {
 export interface Iteration {
   iteration: number | null;
   call_count: number;
+  session_count: number;
   started_at: string;
   last_call_at: string;
   cost_usd: number;

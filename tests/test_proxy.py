@@ -657,9 +657,23 @@ def test_run_iterations_endpoint(proxy):
     assert its[0]["call_count"] == 2
     assert its[1]["call_count"] == 1
     assert its[0]["cost_usd"] > 0
-    # Each iteration carries a session id for the Loop Lens click-through.
+    # Each iteration carries a session id for the Loop Lens click-through,
+    # and says how many sessions it really holds (#86).
     assert its[0]["session_id"] == "ri-1"
     assert its[1]["session_id"] == "ri-2"
+    assert [it["session_count"] for it in its] == [1, 1]
+
+    # A reused iteration number across a DIFFERENT session (rerun run id,
+    # or merged identical loops) must be counted honestly, not shown as
+    # one session.
+    client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
+        "x-agenticledger-session-id": "ri-other",
+        "x-agenticledger-run-id": "iter-run",
+        "x-agenticledger-iteration": "1",
+    })
+    its = client.get("/api/runs/iter-run/iterations").json()
+    assert its[0]["call_count"] == 3
+    assert its[0]["session_count"] == 2
 
 
 def test_spa_served_or_explains_absence(proxy):

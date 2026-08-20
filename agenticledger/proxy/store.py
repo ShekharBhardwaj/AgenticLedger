@@ -79,6 +79,7 @@ _RUN_AGGREGATE_COLUMNS_PG = _RUN_AGGREGATE_COLUMNS_BASE.format(
 _ITERATION_AGGREGATE_COLUMNS = """
                 iteration,
                 COUNT(*)                      AS call_count,
+                COUNT(DISTINCT session_id)    AS session_count,
                 MIN(timestamp)                AS started_at,
                 MAX(timestamp)                AS last_call_at,
                 SUM(COALESCE(cost_usd, 0))    AS cost_usd,
