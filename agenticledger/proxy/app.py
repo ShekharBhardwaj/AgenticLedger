@@ -1059,6 +1059,13 @@ def create_app(
             row("Capture", "retention (days)", retention_days,
                 "AGENTICLEDGER_RETENTION_DAYS",
                 means="Delete captured calls older than this many days."),
+            row("Bedrock", "direct capture",
+                (f"signing as the ledger in {request.app.state.bedrock_signer.region}"
+                 if getattr(request.app.state, "bedrock_signer", None) else "off"),
+                "AWS_ACCESS_KEY_ID / AWS_PROFILE + AWS_REGION",
+                means=("on: the ledger holds AWS credentials (standard chain) and re-signs "
+                       "Bedrock calls itself. off: Bedrock calls are refused with the fix named. "
+                       "The key itself is never shown or stored.")),
             row("Loops", "circuit breaker", _loop_action, "AGENTICLEDGER_LOOP_ACTION",
                 means="warn flags a stuck loop in the dashboard; block actually "
                       "stops it before it burns more quota."),
