@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-08-22
+
+A patch for a bug the new wire-truth corpus caught on its first day.
+
 ### Added
 - **A wire-truth corpus and parity harness.** Real captured exchanges
   (Claude Code's main, companion, tool-round, and status-summary calls,
