@@ -173,3 +173,33 @@ jobs:
         with:
           context: .
           push: false
+
+  dashboard-smoke:
+    # #98 — the frontend's floor: the real proxy on a seeded ledger, the
+    # built SPA driven headlessly. Minimal by design.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install the ledger
+        run: pip install -e .
+
+      - name: Build web app and install the browser
+        run: |
+          cd dashboard-app
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+
+      - name: Smoke the dashboard
+        run: |
+          cd dashboard-app
+          SMOKE_PYTHON=python npx playwright test --reporter=line

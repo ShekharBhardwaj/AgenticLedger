@@ -50,3 +50,7 @@ agenticledger/proxy/static/
 
 # User-local proxy config — never committed
 agenticledger.toml
+
+# Playwright smoke artifacts
+dashboard-app/test-results/
+dashboard-app/playwright-report/
