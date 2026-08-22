@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Anonymous agents no longer share a fallback session (#103).** Calls
+  with no session header and no detectable fingerprint used to fall
+  into one daily bucket, `auto-<date>`, and since runs ride sessions, a
+  stranger's calls could inherit another agent's run: observed live
+  when Claude Code's Bedrock utility calls were filed under
+  openclaw-main, on its bill. The bucket is per-agent now
+  (`auto-openclaw-<date>`, `auto-unattributed-<date>`).
 - **A conversation's first call no longer splits from its thread (#90).**
   The last of Claude Code's per-request salt: an injected system message
   arrives as a block array on the opener and as a plain string on the
