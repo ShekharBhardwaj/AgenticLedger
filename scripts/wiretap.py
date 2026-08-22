@@ -56,15 +56,19 @@ def _scrub_headers(headers) -> dict:
             for k, v in headers.items()}
 
 
-def build(forward: str, out: Path, tag: str) -> Starlette:
+def build(forward: str, out: Path, tag: str, record_all: bool = False) -> Starlette:
     out.mkdir(parents=True, exist_ok=True)
     counter = {"n": 0}
     client = httpx.AsyncClient(base_url=forward, timeout=120.0)
 
     async def relay(request: Request):
-        counter["n"] += 1
-        n = counter["n"]
         body = await request.body()
+        # Record LLM exchanges only unless asked otherwise: a dashboard tab
+        # pointed at the tap once swept 29 asset GETs into the corpus.
+        record_this = record_all or request.url.path.startswith("/v1/")
+        if record_this:
+            counter["n"] += 1
+        n = counter["n"]
         started = time.time()
         upstream = client.build_request(
             request.method, request.url.path + (f"?{request.url.query}" if request.url.query else ""),
@@ -83,6 +87,8 @@ def build(forward: str, out: Path, tag: str) -> Starlette:
                 chunks.append(chunk)
                 yield chunk
             await resp.aclose()
+            if not record_this:
+                return
             record = {
                 "tag": tag,
                 "captured_at": started,
@@ -119,6 +125,7 @@ if __name__ == "__main__":
     ap.add_argument("--forward", default="http://127.0.0.1:8057")
     ap.add_argument("--out", default="tests/fixtures/wire")
     ap.add_argument("--tag", default=os.environ.get("WIRETAP_TAG", "capture"))
+    ap.add_argument("--all", action="store_true", help="record non-LLM paths too")
     args = ap.parse_args()
-    uvicorn.run(build(args.forward, Path(args.out), args.tag),
+    uvicorn.run(build(args.forward, Path(args.out), args.tag, record_all=args.all),
                 host="127.0.0.1", port=args.listen, log_level="warning")
