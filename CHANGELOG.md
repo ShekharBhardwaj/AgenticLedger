@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layer, where text-only block arrays now hash as the string they mean.
 
 ### Added
+- **The sessions sidebar reads as projects (#105).** The all-projects view
+  now shows a heading per project with its sessions beneath, ordered by
+  most recent activity, and the unfiled pile waits at the bottom instead
+  of burying filed work. Clicking a heading focuses that project.
 - **`agenticledger run <name> -- <command>` names the loop (#104).** One
   word in front of the command you already run: the command runs once per
   launch, each launch counts as the next iteration of the same run tile,

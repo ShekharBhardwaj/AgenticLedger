@@ -192,6 +192,23 @@ body {
    Reserve that space permanently so a long id ellipsises clear of them —
    and so the title doesn't reflow when hovering reveals the buttons. */
 .sidebar .card-title { padding-right: 74px; }
+
+/* #105 — the all-projects view reads as sections: a heading per project,
+ * sessions beneath, the unfiled ones under their own quiet heading. */
+.proj-heading {
+  display: flex; align-items: baseline; gap: 6px;
+  margin: 14px 2px 6px; cursor: pointer;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.proj-group:first-of-type .proj-heading { margin-top: 4px; }
+.proj-heading:hover { color: var(--accent); }
+.proj-heading.unfiled { cursor: default; }
+.proj-heading.unfiled:hover { color: var(--text-dim); }
+.proj-count {
+  font-weight: 500; letter-spacing: normal; text-transform: none;
+  color: var(--text-dim); opacity: 0.75;
+}
 /* Runs tiles: only the NAME may truncate. The status badge and the
    raccoon are flex siblings, never eaten by a long run id's ellipsis. */
 .card-title-row { display: flex; align-items: center; gap: 6px; }

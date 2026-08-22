@@ -454,7 +454,47 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
                        onCreated={refresh}
                        sessionCount={sessions.filter((x) => matchesFilter(x, projectFilter)).length} />
         <TimeSortToggle oldestFirst={oldestFirst} onChange={setOldestFirst} />
-        {pinnedFirst(timeSorted(sessions.filter((s) => matchesFilter(s, projectFilter)), oldestFirst)).map((s) => (
+        {(() => {
+          const list = pinnedFirst(timeSorted(sessions.filter((s) => matchesFilter(s, projectFilter)), oldestFirst));
+          // The "all projects" view reads as sections: a heading per
+          // project, sessions beneath, the unfiled ones under their own
+          // heading (#105). Groups keep the list's order, so the project
+          // that spoke most recently sits on top. A chosen project (or
+          // the starred view) is already one group — no headings there.
+          const groups: { title: string | null; items: typeof list }[] = [];
+          if (projectFilter !== "") {
+            groups.push({ title: null, items: list });
+          } else {
+            const byKey = new Map<string, typeof list>();
+            for (const sess of list) {
+              const key = sess.project ?? "";
+              if (!byKey.has(key)) byKey.set(key, []);
+              byKey.get(key)!.push(sess);
+            }
+            // Projects lead, in order of most recent activity; the
+            // unfiled pile — usually the biggest — waits at the bottom
+            // so filed work is never buried under it.
+            for (const [key, items] of byKey) {
+              if (key) groups.push({ title: key, items });
+            }
+            if (byKey.has("")) {
+              groups.push({ title: "unfiled", items: byKey.get("")! });
+            }
+          }
+          return groups.map((g) => (
+            <div key={g.title ?? "all"} className="proj-group">
+              {g.title && (
+                <div
+                  className={`proj-heading ${g.title === "unfiled" ? "unfiled" : ""}`}
+                  title={g.title === "unfiled"
+                    ? "sessions not filed under any project"
+                    : "click to focus this project"}
+                  onClick={() => { if (g.title !== "unfiled") setProjectFilter(g.title!); }}
+                >
+                  {g.title}<span className="proj-count">{g.items.length}</span>
+                </div>
+              )}
+              {g.items.map((s) => (
           <div
             key={s.session_id}
             className={`card ${selected === s.session_id ? "selected" : ""} ${s.session_id.startsWith("replay-") ? "replay" : ""} ${(s.error_count ?? 0) > 0 ? "has-errors" : ""}`}
@@ -541,7 +581,10 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               )}
             </div>
           </div>
-        ))}
+              ))}
+            </div>
+          ));
+        })()}
       </div>
       <div className="main">
         {results === null && selected && (
