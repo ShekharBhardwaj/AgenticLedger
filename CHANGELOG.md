@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of forwarding them to api.openai.com. Guide: docs/integrations/azure-openai.md.
 
 ### Changed
+- **Phase A's exit gate: the published numbers hold.** After the
+  canonicalization layer, the provider package, the attribution
+  pipeline, and Azure, `scripts/loadtest.py` was re-run interleaved
+  against v0.9.3 on the same machine: 2,580 to 2,800 calls/s for both,
+  p50 within a millisecond, no systematic difference. The adapter layer
+  costs nothing measurable on the hot path.
 - **One attribution pipeline (0.10 Phase A, step 3).** "Which run is
   this call?" is answered by one resolver with two verbs: the kill gate
   reads, capture reads then commits, and a refusal at the wall commits
