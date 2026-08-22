@@ -29,13 +29,22 @@ boundary.
 """
 
 import contextlib
-import hashlib
 import json
 import re
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Optional
+
+# Identity signals come from the canonicalization layer only (#99 contract
+# 1): this module never hashes wire bytes itself. The underscore aliases
+# keep older call sites and tests working; is_utility_call is re-exported
+# for app.py.
+from .canonical import count_turns as _count_turns
+from .canonical import digest as _digest
+from .canonical import is_utility_call  # noqa: F401  (re-export)
+from .canonical import message_chain as _message_chain
+from .canonical import system_digest as _system_digest
 
 # Consecutive identical tool-call signatures before a thread is flagged stuck.
 DEFAULT_REPEAT_THRESHOLD = 3
@@ -45,124 +54,6 @@ DEFAULT_RUN_GAP_SECONDS = 900.0
 
 _MAX_SESSIONS = 10_000       # LRU bound on tracked sessions
 _MAX_THREADS_PER_SESSION = 64
-_HASH_CONTENT_CAP = 4_000    # per-message bytes hashed — enough to disambiguate
-
-
-def _digest(value: object) -> str:
-    try:
-        raw = json.dumps(value, sort_keys=True, default=str)[:_HASH_CONTENT_CAP]
-    except Exception:
-        raw = str(value)[:_HASH_CONTENT_CAP]
-    return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
-
-
-def _stable_content(content):
-    """Message content minus per-request decoration (#89). Claude Code
-    re-salts the SAME conversation on every request: the billing-header
-    block's nonce changes per call, and cache_control markers migrate
-    between blocks as the cache window moves. Hashing them made every
-    request look like a brand-new conversation, which silently killed
-    thread stitching — and with it steps, tool pairing, and the
-    stuck-loop flags."""
-    if not isinstance(content, list):
-        return content
-    out = []
-    for block in content:
-        if isinstance(block, dict):
-            text = block.get("text")
-            if isinstance(text, str) and text.startswith(_VOLATILE_BLOCK_PREFIXES):
-                continue
-            if "cache_control" in block:
-                block = {k: v for k, v in block.items() if k != "cache_control"}
-        out.append(block)
-    return out
-
-
-def _message_chain(messages: list) -> tuple[str, ...]:
-    return tuple(
-        _digest({"role": m.get("role"), "content": _stable_content(m.get("content")),
-                 "tool_calls": m.get("tool_calls")})
-        if isinstance(m, dict) else _digest(m)
-        for m in messages
-    )
-
-
-def _count_turns(messages: list) -> int:
-    """User turns — user messages that aren't pure tool-result carriers."""
-    turns = 0
-    for m in messages:
-        if not isinstance(m, dict) or m.get("role") != "user":
-            continue
-        content = m.get("content")
-        if (
-            isinstance(content, list) and content
-            and all(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
-        ):
-            continue
-        turns += 1
-    return turns
-
-
-# Claude Code salts its system prompts with per-invocation noise: a billing
-# header block whose version suffix changes every run, and session-unique
-# paths (scratchpad directories carrying a session UUID). Hashing the raw
-# prompt made two invocations of the SAME agent look like different agents,
-# so fresh-context grouping became a lottery (observed live: a 5-iteration
-# loop fragmented across 3 inferred runs). The signature must survive the
-# noise: drop metadata-bearing blocks, mask UUIDs, then hash.
-_UUID_RE = re.compile(
-    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-_VOLATILE_BLOCK_PREFIXES = ("x-anthropic-billing-header",)
-
-
-def _stable_system_text(sys_prompt) -> str:
-    # Block arrays are normalized to one newline-joined string before they
-    # reach us (normalize_request), so volatile blocks arrive as lines.
-    if isinstance(sys_prompt, list):
-        text = "\n".join(
-            (b.get("text", "") if isinstance(b, dict) else str(b))
-            for b in sys_prompt)
-    else:
-        text = sys_prompt if isinstance(sys_prompt, str) else str(sys_prompt)
-    lines = [ln for ln in text.split("\n")
-             if not ln.startswith(_VOLATILE_BLOCK_PREFIXES)]
-    return _UUID_RE.sub("*", "\n".join(lines))
-
-
-def _system_digest(req) -> Optional[str]:
-    """Hash of the system prompt's stable content, in any wire shape, or
-    None. Per-invocation salt (billing headers, session-unique UUIDs) is
-    stripped first so the same agent hashes the same across invocations."""
-    if req.system_prompt:
-        return _digest(_stable_system_text(req.system_prompt))
-    for m in req.messages[:1]:
-        if isinstance(m, dict) and m.get("role") == "system":
-            return _digest(_stable_system_text(m.get("content")))
-    return None
-
-
-# Claude Code fires small utility calls at the same endpoint as the main
-# loop: startup probes (a max_tokens=1 "quota" ping on the main model) and
-# haiku-class title/summary calls (max_tokens in the hundreds). Main calls
-# default to 32k-64k max_tokens, but users shrink that arbitrarily via
-# CLAUDE_CODE_MAX_OUTPUT_TOKENS — so a small cap alone cannot discriminate:
-# it must pair with a haiku-class model, except for the near-zero probes no
-# real completion could fit in.
-_PROBE_MAX_TOKENS = 8
-_UTILITY_MAX_TOKENS = 1024
-
-
-def is_utility_call(req, meta: dict) -> bool:
-    """True for framework housekeeping calls that must stay out of loop
-    inference — chaining them inflates step counts and resets repeat streaks."""
-    if meta.get("framework") != "claude-code" or req.max_tokens is None:
-        return False
-    if req.max_tokens <= _PROBE_MAX_TOKENS:
-        return True
-    return (
-        req.max_tokens <= _UTILITY_MAX_TOKENS
-        and "haiku" in (req.model_id or "").lower()
-    )
 
 
 # Claude Code's compaction rewrites history into a summary message with a

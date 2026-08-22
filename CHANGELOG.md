@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A conversation's first call no longer splits from its thread (#90).**
+  The last of Claude Code's per-request salt: an injected system message
+  arrives as a block array on the opener and as a plain string on the
+  follow-up. Same words, different shape, different hash. Found by
+  replaying the wire-truth corpus; fixed in the new canonicalization
+  layer, where text-only block arrays now hash as the string they mean.
+
+### Changed
+- **One canonicalization layer (0.10 Phase A, step 1).** Every rule
+  that turns wire content into stable meaning now lives in
+  `proxy/canonical.py`, in one documented table where each entry names
+  the real traffic that demanded it and the fixture that pins it. The
+  loop engine consumes the stable view and never hashes wire bytes
+  itself; a test enforces that invariant.
+
 ## [0.9.3] - 2026-08-22
 
 A patch for a bug the new wire-truth corpus caught on its first day.
