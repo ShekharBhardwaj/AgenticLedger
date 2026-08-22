@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for anyone who prefers reduced motion.
 
 ### Added
+- **AWS Bedrock, signed (0.10 Phase B, part 2).** The ledger holds its
+  own AWS credentials, read from the standard chain only (environment,
+  profile, instance role; nothing in its config file), strips whatever
+  signature the client attached, and re-signs the rebuilt request as the
+  very last step before sending, for plain and streaming calls alike.
+  Without credentials it refuses Bedrock calls with the fix named.
+  `pip install "agentic-ledger[bedrock]"` adds the signing library.
 - **AWS Bedrock, direct (0.10 Phase B, part 1).** The ledger speaks
   Bedrock's InvokeModel wire: `model/<id>/invoke` and its streaming
   twin are captured, the model comes from the path, Anthropic-shaped

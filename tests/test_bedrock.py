@@ -3,6 +3,7 @@ wire, model in the path, Anthropic-shaped bodies, binary event streams.
 Signing is the upstream layer's job and is tested there."""
 
 import httpx
+import pytest
 
 from agenticledger.proxy import providers
 from agenticledger.proxy.normalize import normalize_request, normalize_response
@@ -15,6 +16,17 @@ STREAM = f"model/{MODEL.replace(':', '%3A')}/invoke-with-response-stream"
 BODY = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": 256,
         "system": "You are the Bedrock worker.",
         "messages": [{"role": "user", "content": "ping"}]}
+
+
+@pytest.fixture
+def aws_env(monkeypatch):
+    """Fake credentials through the standard chain: enough for SigV4 to
+    sign, nothing a real AWS would accept."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIATESTKEY")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_SESSION_TOKEN", raising=False)
 
 
 def _anthropic_json(text="pong", tokens_in=1000, tokens_out=100):
@@ -72,9 +84,8 @@ def test_exception_frames_surface_as_stream_errors():
     assert detect_stream_error(raw, path=STREAM) == "Too many requests"
 
 
-def test_invoke_call_is_captured_end_to_end(proxy):
-    client = proxy(handler=lambda r: httpx.Response(200, json=_anthropic_json()),
-                   upstream_url="https://bedrock-runtime.us-east-1.amazonaws.com")
+def test_invoke_call_is_captured_end_to_end(proxy, aws_env):
+    client = proxy(handler=lambda r: httpx.Response(200, json=_anthropic_json()))
     resp = client.post(f"/{INVOKE}", json=BODY, headers={"x-agenticledger-session-id": "br-1"})
     assert resp.status_code == 200
     assert resp.json()["content"][0]["text"] == "pong"   # passthrough unchanged
@@ -84,11 +95,10 @@ def test_invoke_call_is_captured_end_to_end(proxy):
     assert record["cost_usd"] and record["cost_usd"] > 0
 
 
-def test_streaming_invoke_passes_bytes_through_and_captures_the_text(proxy):
+def test_streaming_invoke_passes_bytes_through_and_captures_the_text(proxy, aws_env):
     raw = _event_stream("streamed pong")
     client = proxy(handler=lambda r: httpx.Response(
-        200, content=raw, headers={"content-type": "application/vnd.amazon.eventstream"}),
-        upstream_url="https://bedrock-runtime.us-east-1.amazonaws.com")
+        200, content=raw, headers={"content-type": "application/vnd.amazon.eventstream"}))
     resp = client.post(f"/{STREAM}", json=BODY, headers={"x-agenticledger-session-id": "br-2"})
     assert resp.status_code == 200
     assert resp.content == raw                           # the client decodes the frames itself
@@ -96,3 +106,47 @@ def test_streaming_invoke_passes_bytes_through_and_captures_the_text(proxy):
     assert len(rows) == 1
     assert rows[0]["content"] == "streamed pong"
     assert rows[0]["tokens_in"] == 1000 and rows[0]["cost_usd"] > 0
+
+
+# ── Part 2: the ledger signs with its own credentials ────────────────────────
+
+def test_ledger_resigns_with_its_own_credentials_and_strips_the_clients(proxy, aws_env):
+    client = proxy(handler=lambda r: httpx.Response(200, json=_anthropic_json()))
+    resp = client.post(f"/{INVOKE}", json=BODY, headers={
+        # What a boto3 / Claude Code client sends: a signature for the LEDGER's host.
+        "authorization": "AWS4-HMAC-SHA256 Credential=AKIACLIENT/20260101/us-west-2/bedrock/aws4_request, Signature=junk",
+        "x-amz-date": "20260101T000000Z",
+        "x-amz-security-token": "client-session-token",
+    })
+    assert resp.status_code == 200
+    sent = client.upstream.requests[-1]
+    auth = sent.headers["authorization"]
+    assert auth.startswith("AWS4-HMAC-SHA256 Credential=AKIATESTKEY/")
+    assert "/us-east-1/bedrock/aws4_request" in auth
+    assert "AKIACLIENT" not in auth                          # the client's identity never travels
+    assert sent.headers.get("x-amz-security-token") is None  # nor its session token
+    assert sent.headers["x-amz-date"] != "20260101T000000Z"  # freshly signed
+    assert sent.url.host == "bedrock-runtime.us-east-1.amazonaws.com"
+
+
+def test_streaming_calls_are_signed_too(proxy, aws_env):
+    raw = _event_stream()
+    client = proxy(handler=lambda r: httpx.Response(
+        200, content=raw, headers={"content-type": "application/vnd.amazon.eventstream"}))
+    assert client.post(f"/{STREAM}", json=BODY).status_code == 200
+    assert client.upstream.requests[-1].headers["authorization"].startswith("AWS4-HMAC-SHA256 Credential=AKIATESTKEY/")
+
+
+def test_without_credentials_bedrock_is_refused_with_the_fix_named(proxy, monkeypatch):
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+                "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent")
+    monkeypatch.setenv("AWS_CONFIG_FILE", "/nonexistent")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    client = proxy(handler=lambda r: httpx.Response(200, json=_anthropic_json()))
+    resp = client.post(f"/{INVOKE}", json=BODY)
+    assert resp.status_code == 502
+    assert resp.json()["error"]["type"] == "upstream_not_configured"
+    assert "credentials" in resp.json()["error"]["message"]
+    assert client.upstream.requests == []

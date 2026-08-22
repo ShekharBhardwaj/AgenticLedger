@@ -113,6 +113,14 @@ def proxy() -> Callable[..., ProxyClient]:
             base_url=UPSTREAM_URL,
             timeout=httpx.Timeout(120.0),
         )
+        # The Bedrock client exists only when the ledger holds AWS
+        # credentials (tests set fake ones); route it to the mock too.
+        if getattr(app.state, "client_bedrock", None) is not None:
+            app.state.client_bedrock = httpx.AsyncClient(
+                transport=httpx.MockTransport(upstream),
+                base_url=app.state.bedrock_signer.endpoint,
+                timeout=httpx.Timeout(120.0),
+            )
         tc.upstream = upstream
         opened.append(tc)
         return tc

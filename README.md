@@ -150,6 +150,8 @@ client = anthropic.Anthropic(
 
 **Azure OpenAI:** point `AzureOpenAI(azure_endpoint="http://localhost:8000")` at the ledger with your resource set as the upstream; deployments are priced from the model the response names. See the [Azure guide](docs/integrations/azure-openai.md).
 
+**AWS Bedrock:** install `agentic-ledger[bedrock]`, give the ledger AWS credentials through the standard chain, and point `boto3` (`endpoint_url`) or Claude Code (`ANTHROPIC_BEDROCK_BASE_URL`) at it; the ledger re-signs each call itself. See the [Bedrock guide](docs/integrations/bedrock.md).
+
 **LiteLLM / OpenRouter / any gateway:**
 ```bash
 # Point Agentic Ledger at your gateway

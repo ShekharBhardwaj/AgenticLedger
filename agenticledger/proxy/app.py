@@ -72,6 +72,7 @@ from .auth import (
     role_satisfies,
     valid_role,
 )
+from .bedrock_auth import BedrockSigner
 from .detect import detect_agent
 from .export import build_export, render_html_report
 from .loops import DEFAULT_REPEAT_THRESHOLD, DEFAULT_RUN_GAP_SECONDS, LoopTracker, is_utility_call
@@ -291,6 +292,13 @@ def create_app(
             base_url="https://api.anthropic.com",
             timeout=httpx.Timeout(120.0),
         ) if upstream_auto else None
+        # Direct Bedrock capture: the ledger signs with its own credentials,
+        # read from the standard AWS chain. No signer, no Bedrock client;
+        # the guard below then refuses Bedrock calls with the fix named.
+        app.state.bedrock_signer = BedrockSigner.from_environment()
+        app.state.client_bedrock = httpx.AsyncClient(
+            base_url=app.state.bedrock_signer.endpoint, timeout=httpx.Timeout(120.0),
+        ) if app.state.bedrock_signer else None
         app.state.replay_clients = {
             prov: httpx.AsyncClient(base_url=cfg["url"], timeout=httpx.Timeout(120.0))
             for prov, cfg in (replay_targets or {}).items()
@@ -325,6 +333,8 @@ def create_app(
         await app.state.client.aclose()
         if app.state.client_anthropic is not None:
             await app.state.client_anthropic.aclose()
+        if getattr(app.state, "client_bedrock", None) is not None:
+            await app.state.client_bedrock.aclose()
         for rc in app.state.replay_clients.values():
             await rc.aclose()
 
@@ -2108,6 +2118,12 @@ def create_app(
         # Azure OpenAI has no default host: its upstream is the user's own
         # resource. Under zero-config routing we would forward to
         # api.openai.com and hand back a baffling 404, so refuse with the fix.
+        if is_llm_path and _is_bedrock(path) and getattr(request.app.state, "bedrock_signer", None) is None:
+            return JSONResponse(
+                {"error": {"type": "upstream_not_configured",
+                           "message": BedrockSigner.why_unavailable()}},
+                status_code=502,
+            )
         if is_llm_path and upstream_auto and providers.for_path(path).name == "azure-openai":
             return JSONResponse(
                 {"error": {"type": "upstream_not_configured",
@@ -2206,12 +2222,15 @@ def create_app(
 
         start = time.monotonic()
         client = _upstream_client(request.app, path)
+        query = dict(request.query_params)
+        forward_headers = _outbound_headers(request.app, client, path, request.method,
+                                            forward_headers, body_bytes, query)
         upstream_resp = await client.request(
             method=request.method,
             url=f"/{path}",
             content=body_bytes,
             headers=forward_headers,
-            params=dict(request.query_params),
+            params=query,
         )
         latency_ms = (time.monotonic() - start) * 1000
 
@@ -2265,13 +2284,16 @@ async def _streaming_proxy(
     budget_warning: Optional[str] = None,
 ) -> StreamingResponse:
     client: httpx.AsyncClient = _upstream_client(request.app, path)
+    query = dict(request.query_params)
+    forward_headers = _outbound_headers(request.app, client, path, request.method,
+                                        forward_headers, body_bytes, query)
 
     stream_ctx = client.stream(
         method=request.method,
         url=f"/{path}",
         content=body_bytes,
         headers=forward_headers,
-        params=dict(request.query_params),
+        params=query,
     )
 
     upstream = await stream_ctx.__aenter__()
@@ -2465,10 +2487,32 @@ def _upstream_client(app, path: str) -> httpx.AsyncClient:
     client when it exists (auto mode); everything else uses the default
     client. Explicit configuration never creates the second client, so an
     explicit upstream always wins."""
+    if _is_bedrock(path):
+        bedrock = getattr(app.state, "client_bedrock", None)
+        if bedrock is not None:
+            return bedrock
     anthropic = getattr(app.state, "client_anthropic", None)
     if anthropic is not None and _wire_format(path) == "anthropic":
         return anthropic
     return app.state.client
+
+
+def _is_bedrock(path: str) -> bool:
+    return providers.for_path(path).wire == "bedrock-invoke"
+
+
+def _outbound_headers(app, client: httpx.AsyncClient, path: str, method: str,
+                      headers: dict, body: bytes, query: dict) -> dict:
+    """The headers that actually go upstream. For Bedrock this is where the
+    ledger signs: after the final body and headers, over the exact URL the
+    client is about to send, with the inbound signature stripped."""
+    signer = getattr(app.state, "bedrock_signer", None)
+    if signer is None or not _is_bedrock(path):
+        return headers
+    url = str(client.base_url).rstrip("/") + f"/{path}"
+    if query:
+        url += "?" + httpx.QueryParams(query).__str__()
+    return signer.sign(method, url, headers, body)
 
 
 def wire_format_mismatch(path: str, upstream_url: str) -> str:
