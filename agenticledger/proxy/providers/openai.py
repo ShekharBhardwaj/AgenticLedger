@@ -4,7 +4,7 @@ and most gateways speak. The registry's fallback adapter."""
 from typing import Optional
 
 from ..normalize import CanonicalRequest, CanonicalResponse
-from ..pricing import compute_cost
+from ..pricing import compute_cost, has_price
 from .base import build_request, empty_response, iter_sse_json
 
 
@@ -20,6 +20,21 @@ class OpenAIProvider:
     def matches_path(self, path: str) -> bool:
         return True  # fallback: anything the other adapters did not claim
 
+    def captures_path(self, path: str) -> bool:
+        return False  # the exact LLM-path set decides for this wire
+
+    def _model_id(self, body: dict, path: str) -> str:
+        return body.get("model", "unknown")
+
+    @staticmethod
+    def _effective_model(model_id: str, body: dict) -> str:
+        # Azure requests name a DEPLOYMENT, and the real model id arrives in
+        # the response; prefer it whenever the request's id is not priceable.
+        # For plain OpenAI the request id prices, so nothing changes.
+        if model_id and has_price(model_id):
+            return model_id
+        return body.get("model") or model_id
+
     def matches_response(self, body: dict) -> bool:
         return True  # fallback: choices, or nothing recognizable
 
@@ -30,7 +45,7 @@ class OpenAIProvider:
         return "https://api.openai.com"
 
     def normalize_request(self, body: dict, path: str) -> CanonicalRequest:
-        model = body.get("model", "unknown")
+        model = self._model_id(body, path)
         messages = list(body.get("messages", []))
         system_prompt: Optional[str] = None
         for msg in messages:
@@ -50,6 +65,7 @@ class OpenAIProvider:
         choice = choices[0]
         msg = choice.get("message", {})
         content = msg.get("content")
+        model_id = self._effective_model(model_id, body)
 
         raw_tcs = msg.get("tool_calls") or []
         tool_calls: Optional[list[dict]] = [

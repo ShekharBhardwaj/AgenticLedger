@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sleeping bookkeeper's head on ended runs, one after another. Still
   for anyone who prefers reduced motion.
 
+### Added
+- **Azure OpenAI (0.10 Phase A, step 4).** The first provider added
+  through the new adapter contract. Deployment paths are captured, the
+  request's deployment name is kept as the model id while the price
+  comes from the model the response names (so `prod-chat` running
+  gpt-4o is billed as gpt-4o), and records wear their own `azure-openai`
+  label so Reports separate Azure from OpenAI. With no upstream
+  configured the ledger refuses Azure calls with the fix named instead
+  of forwarding them to api.openai.com. Guide: docs/integrations/azure-openai.md.
+
 ### Changed
 - **One attribution pipeline (0.10 Phase A, step 3).** "Which run is
   this call?" is answered by one resolver with two verbs: the kill gate

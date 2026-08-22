@@ -12,6 +12,7 @@ the parity harness replays.
 from typing import Optional
 
 from .anthropic import AnthropicProvider
+from .azure import AzureProvider
 from .base import Provider
 from .openai import OpenAIProvider
 from .responses import ResponsesProvider
@@ -19,6 +20,7 @@ from .responses import ResponsesProvider
 PROVIDERS: tuple[Provider, ...] = (
     ResponsesProvider(),
     AnthropicProvider(),
+    AzureProvider(),    # OpenAI's wire under a deployment path; claims by path only
     OpenAIProvider(),   # fallback: must stay last
 )
 
@@ -33,6 +35,11 @@ def for_response(body: dict) -> Provider:
 
 def for_stream(first_chunk: Optional[dict]) -> Provider:
     return next(p for p in PROVIDERS if p.matches_stream(first_chunk))
+
+
+def captures(path: str) -> bool:
+    """An adapter claims this path as an LLM call beyond the exact set."""
+    return any(p.captures_path(path) for p in PROVIDERS)
 
 
 def by_name(name: str) -> Optional[Provider]:

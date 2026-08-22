@@ -23,6 +23,9 @@ class AnthropicProvider:
         # /v1/chat/completions uses OpenAI wire format, not Anthropic format.
         return "messages" in path
 
+    def captures_path(self, path: str) -> bool:
+        return False
+
     def matches_response(self, body: dict) -> bool:
         count_tokens = ("input_tokens" in body and "content" not in body
                         and "choices" not in body)

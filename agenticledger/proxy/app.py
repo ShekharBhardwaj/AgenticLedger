@@ -58,6 +58,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
+from . import providers
 from .alerts import AlertConfig, check_and_fire
 from .attribution import AttributionResolver
 from .auth import (
@@ -2000,7 +2001,7 @@ def create_app(
         # capture, and normalization all need it, and coding-agent bodies can
         # be megabytes of context.
         body_json: Optional[dict] = None
-        if request.method == "POST" and path in _CAPTURED_PATHS and body_bytes:
+        if request.method == "POST" and body_bytes and (path in _CAPTURED_PATHS or providers.captures(path)):
             with suppress(Exception):
                 parsed = json.loads(body_bytes)
                 if isinstance(parsed, dict):
@@ -2102,6 +2103,19 @@ def create_app(
             return JSONResponse(
                 {"error": {"type": "run_stopped", "message": reason}},
                 status_code=budget_status,
+            )
+
+        # Azure OpenAI has no default host: its upstream is the user's own
+        # resource. Under zero-config routing we would forward to
+        # api.openai.com and hand back a baffling 404, so refuse with the fix.
+        if is_llm_path and upstream_auto and providers.for_path(path).name == "azure-openai":
+            return JSONResponse(
+                {"error": {"type": "upstream_not_configured",
+                           "message": ("Azure OpenAI calls need an explicit upstream: set "
+                                       "proxy.upstream_url to your resource, e.g. "
+                                       "https://<resource>.openai.azure.com, then restart "
+                                       "the ledger.")}},
+                status_code=502,
             )
 
         # ── Budget check ─────────────────────────────────────────────────────

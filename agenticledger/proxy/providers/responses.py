@@ -20,6 +20,9 @@ class ResponsesProvider:
     def matches_path(self, path: str) -> bool:
         return "responses" in path
 
+    def captures_path(self, path: str) -> bool:
+        return False
+
     def matches_response(self, body: dict) -> bool:
         return body.get("object") == "response" and "output" in body
 

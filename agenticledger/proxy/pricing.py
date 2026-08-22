@@ -210,6 +210,13 @@ def compute_cost(
     return round(cost, 8)
 
 
+def has_price(model_id: str) -> bool:
+    """True when the pricing table knows this model id (substring match,
+    the same rule compute_cost uses)."""
+    model_lower = (model_id or "").lower().replace(".", "-")
+    return any(pattern.replace(".", "-") in model_lower for pattern in _PRICES)
+
+
 def infer_provider(model_id: str) -> str:
     """Best-effort provider guess from a model name — used by cost what-if
     and cross-provider replay to pick the right cache convention and wire

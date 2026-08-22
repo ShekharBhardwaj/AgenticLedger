@@ -148,6 +148,8 @@ client = anthropic.Anthropic(
 )
 ```
 
+**Azure OpenAI:** point `AzureOpenAI(azure_endpoint="http://localhost:8000")` at the ledger with your resource set as the upstream; deployments are priced from the model the response names. See the [Azure guide](docs/integrations/azure-openai.md).
+
 **LiteLLM / OpenRouter / any gateway:**
 ```bash
 # Point Agentic Ledger at your gateway
