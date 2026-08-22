@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layer, where text-only block arrays now hash as the string they mean.
 
 ### Added
+- **`agenticledger upgrade` (#92).** Self-upgrade with the Python that owns
+  the install — no more guessing which pip. Prints old and new version and
+  the restart reminder; `--from <path>` upgrades from a local checkout;
+  pipx/uv-tool/Homebrew installs get the right one-liner instead of a
+  behind-the-back pip fight. Network touched only when you run it.
 - **The sessions sidebar reads as projects (#105).** The all-projects view
   now shows a heading per project with its sessions beneath, ordered by
   most recent activity, and the unfiled pile waits at the bottom instead

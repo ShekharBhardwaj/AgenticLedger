@@ -317,3 +317,61 @@ def test_project_filing_failure_never_breaks_the_run(tmp_path, monkeypatch):
         "--", sys.executable, "-c", "pass",
     ])
     assert code == 0
+
+
+# --- #92: agenticledger upgrade — self-upgrade with the owning Python ---
+
+class _Result:
+    def __init__(self, returncode=0, stdout=""):
+        self.returncode = returncode
+        self.stdout = stdout
+
+
+def test_upgrade_uses_the_owning_interpreters_pip(monkeypatch, capsys):
+    from agenticledger import cli as cli_mod
+    calls = []
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return _Result(stdout="9.9.9\n")
+    monkeypatch.setattr(cli_mod.subprocess, "run", fake_run)
+    code = main(["upgrade"])
+    assert code == 0
+    assert calls[0][:4] == [sys.executable, "-m", "pip", "install"]
+    assert calls[0][-1] == "agentic-ledger"
+    out = capsys.readouterr().out
+    assert "-> 9.9.9" in out
+    assert "agenticledger stop && agenticledger start" in out
+
+
+def test_upgrade_from_local_checkout(tmp_path, monkeypatch):
+    from agenticledger import cli as cli_mod
+    calls = []
+    monkeypatch.setattr(cli_mod.subprocess, "run",
+                        lambda cmd, **kw: (calls.append(cmd), _Result(stdout="x\n"))[1])
+    code = main(["upgrade", "--from", str(tmp_path)])
+    assert code == 0
+    assert calls[0][-1] == f"agentic-ledger @ {tmp_path.as_uri()}"
+
+
+def test_upgrade_refuses_missing_from_path(tmp_path, capsys):
+    code = main(["upgrade", "--from", str(tmp_path / "nope")])
+    assert code == 2
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_upgrade_names_the_manager_instead_of_fighting_it(monkeypatch, capsys):
+    from agenticledger import cli as cli_mod
+    monkeypatch.setattr(cli_mod.sys, "executable",
+                        "/home/u/.local/pipx/venvs/agentic-ledger/bin/python")
+    code = main(["upgrade"])
+    assert code == 1
+    assert "pipx upgrade agentic-ledger" in capsys.readouterr().err
+
+
+def test_upgrade_failure_suggests_uv_fallback(monkeypatch, capsys):
+    from agenticledger import cli as cli_mod
+    monkeypatch.setattr(cli_mod.subprocess, "run",
+                        lambda cmd, **kw: _Result(returncode=1))
+    code = main(["upgrade"])
+    assert code == 1
+    assert "uv pip install --python" in capsys.readouterr().err

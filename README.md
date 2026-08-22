@@ -936,8 +936,9 @@ This runs three jobs:
 **Old version / commands or env vars named `agentledger` (no "ic")** —
 you're running a pre-0.4 release, most likely from a venv that already had
 the package installed: plain `pip install agentic-ledger` says "requirement
-already satisfied" and does NOT upgrade. Run `pip install -U agentic-ledger`
-and restart. The proxy prints its version on the first line at startup, and
+already satisfied" and does NOT upgrade. Run `agenticledger upgrade` — it
+uses the Python environment that owns the install, so there's no guessing
+which pip is the right one — then restart. The proxy prints its version on the first line at startup, and
 `curl localhost:8000/health` reports it too. Since 0.4.0 everything is named
 `agenticledger` — see the migration notes in the CHANGELOG.
 

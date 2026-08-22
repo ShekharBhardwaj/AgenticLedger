@@ -400,3 +400,14 @@ def test_claude_5_family_priced():
     # 4.6-4.8 take the repriced rate, not the claude-opus-4 legacy rate
     assert pricing.compute_cost("claude-opus-4-8", 1_000_000, 0) == 5.00
     assert pricing.compute_cost("claude-opus-4-1", 1_000_000, 0) == 15.00
+
+
+def test_bedrock_opus_4_5_prices_at_its_own_rate_not_opus_4():
+    """Golden from the Bedrock E2E: "us.anthropic.claude-opus-4-5-..." must
+    match the claude-opus-4-5 entry ($5/M in), not the shorter claude-opus-4
+    substring ($15/M in). Longest-pattern-wins is the rule under test."""
+    from agenticledger.proxy.pricing import compute_cost
+    cost = compute_cost(
+        "us.anthropic.claude-opus-4-5-20251101-v1:0", 1_000_000, 0,
+        provider="anthropic")
+    assert cost == 5.0

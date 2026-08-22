@@ -269,6 +269,68 @@ def run_command(args: argparse.Namespace) -> int:
     return last_exit
 
 
+def _managed_install_hint() -> Optional[str]:
+    """When the install is owned by a tool pip must not fight, name the
+    right one-liner instead of upgrading behind its back."""
+    exe = sys.executable
+    if "/pipx/" in exe:
+        return "this install is managed by pipx. Run: pipx upgrade agentic-ledger"
+    if "/uv/tools/" in exe:
+        return "this install is managed by uv. Run: uv tool upgrade agentic-ledger"
+    if exe.startswith(("/opt/homebrew/", "/usr/local/Cellar/")):
+        return "this install is managed by Homebrew. Run: brew upgrade agentic-ledger"
+    return None
+
+
+def upgrade_command(args: argparse.Namespace) -> int:
+    """agenticledger upgrade: self-upgrade without knowing which Python owns
+    the install (#92). sys.executable IS the owning environment, so its pip
+    upgrades the right one every time. Like `pricing update`, the network is
+    touched only when the user runs this."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    hint = _managed_install_hint()
+    if hint:
+        print(f"agenticledger: {hint}", file=sys.stderr)
+        return 1
+
+    try:
+        old = version("agentic-ledger")
+    except PackageNotFoundError:
+        old = None
+
+    target = "agentic-ledger"
+    if args.source:
+        src = Path(args.source).expanduser().resolve()
+        if not src.exists():
+            print(f"error: --from path does not exist: {src}", file=sys.stderr)
+            return 2
+        target = f"agentic-ledger @ {src.as_uri()}"
+
+    print(f"agenticledger: upgrading with {sys.executable}", file=sys.stderr)
+    result = subprocess.run(  # noqa: S603 — the owning interpreter's own pip
+        [sys.executable, "-m", "pip", "install", "--upgrade", target],
+    )
+    if result.returncode != 0:
+        print(
+            f"agenticledger: upgrade failed (pip exit {result.returncode}). "
+            f"If this environment has no pip, try: "
+            f"uv pip install --python {sys.executable} --upgrade agentic-ledger",
+            file=sys.stderr,
+        )
+        return result.returncode
+
+    probe = subprocess.run(  # noqa: S603
+        [sys.executable, "-c",
+         "from importlib.metadata import version; print(version('agentic-ledger'))"],
+        capture_output=True, text=True,
+    )
+    new = probe.stdout.strip() or "?"
+    print(f"agentic-ledger: {old or '?'} -> {new}")
+    print("Restart to apply: agenticledger stop && agenticledger start")
+    return 0
+
+
 def _pop_run_name(argv: list) -> Optional[str]:
     """`agenticledger run nightly-digest -- cmd...`: when the token right
     after `run` is a bare word (not an option, not the `--` divider), it is
@@ -362,6 +424,15 @@ def main(argv: Optional[list] = None) -> int:
              "~/.agenticledger/pricing/ (overrides built-ins; restart to apply). "
              "The only network call the CLI makes, and only when you run it.")
 
+    upgrade_p = sub.add_parser(
+        "upgrade",
+        help="Upgrade agentic-ledger in the environment that owns this "
+             "install (no guessing which pip). Then: stop && start.",
+    )
+    upgrade_p.add_argument("--from", dest="source", default=None,
+                           help="Install from a local checkout instead of "
+                                "PyPI (path to the repo)")
+
     sub.add_parser("stop", help="Stop the background proxy.")
     sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
     logs_p = sub.add_parser("logs", help="Show the background proxy's log.")
@@ -421,6 +492,8 @@ def main(argv: Optional[list] = None) -> int:
             return 0
         cfg_p.print_help()
         return 2
+    if args.subcommand == "upgrade":
+        return upgrade_command(args)
     if args.subcommand == "pricing":
         from .pricing_update import update
         return update()
