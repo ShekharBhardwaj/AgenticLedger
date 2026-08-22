@@ -43,7 +43,7 @@ Tool executions (name, duration, success) land in the same sessions at
 ## Loops and guardrails
 
 ```bash
-agenticledger run --max-iterations 50 --budget 25 -- claude -p "$(cat PROMPT.md)"
+agenticledger run overnight --max-iterations 50 --budget 25 -- claude -p "$(cat PROMPT.md)"
 ```
 
 `AGENTICLEDGER_BUDGET_DAILY`, `AGENTICLEDGER_LOOP_ACTION=block`, and

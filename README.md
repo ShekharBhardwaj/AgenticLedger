@@ -252,8 +252,19 @@ each Claude Code session appears under its **real session UUID** (the same id
 `claude --resume` shows), with prompt-cache reads/writes captured and priced
 correctly — cache traffic is where most of a coding agent's real spend lives.
 
+Want a loop filed under a name you chose? Put one word in front of the
+command you already run:
+
+```bash
+agenticledger run nightly-digest -- python agent.py
+```
+
+Your command runs exactly as before; its LLM calls land on the run tile
+named `nightly-digest`, and each launch counts as the next iteration, so
+tomorrow's run joins the same tile. Nothing in your agent's code changes.
+
 Running an overnight loop (Ralph-style `while :; do cat PROMPT.md | claude -p; done`)?
-Use the built-in loop runner — it re-executes your command each iteration,
+The same command with loop flags re-executes your command each iteration,
 attributes every call to the run (via the base URL, no headers needed), and
 stops on a completion promise, a budget ceiling, or the iteration cap:
 
@@ -264,7 +275,7 @@ uv run python -m agenticledger.proxy
 ```
 
 ```bash
-agenticledger run --max-iterations 50 --budget 25 -- \
+agenticledger run overnight --max-iterations 50 --budget 25 -- \
   claude -p "$(cat PROMPT.md)" --dangerously-skip-permissions
 ```
 

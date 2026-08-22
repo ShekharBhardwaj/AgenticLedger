@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layer, where text-only block arrays now hash as the string they mean.
 
 ### Added
+- **`agenticledger run <name> -- <command>` names the loop (#104).** One
+  word in front of the command you already run: the command runs once per
+  launch, each launch counts as the next iteration of the same run tile,
+  and the child environment now also carries `ANTHROPIC_BEDROCK_BASE_URL`
+  so Bedrock clients are attributed the same way. The loop flags
+  (`--max-iterations`, `--budget`) still work with a name in front;
+  without a name the runner keeps its old loop defaults.
 - **The raccoon is the logo now.** One drawing everywhere: the header
   mark, the favicon, the README, and the Loop Lens mascot all share the
   bookkeeper's face (`docs/raccoon.svg` for anything outside the app).

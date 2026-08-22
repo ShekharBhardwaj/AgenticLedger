@@ -3,7 +3,13 @@
 import argparse
 import sys
 
-from agenticledger.cli import _decide_stop, _iteration_env, main, run_command
+from agenticledger.cli import (
+    _decide_stop,
+    _iteration_env,
+    _pop_run_name,
+    main,
+    run_command,
+)
 
 
 def test_decide_stop_on_completion_promise():
@@ -31,6 +37,8 @@ def test_iteration_env_points_clients_at_tagged_proxy_path():
     assert env["OPENAI_BASE_URL"] == "http://localhost:8000/r/night-1/4/v1"
     assert env["AGENTICLEDGER_RUN_ID"] == "night-1"
     assert env["AGENTICLEDGER_ITERATION"] == "4"
+    # Bedrock clients read their own base-URL variable (#104).
+    assert env["ANTHROPIC_BEDROCK_BASE_URL"] == "http://localhost:8000/r/night-1/4"
 
 
 def test_run_loops_until_max_iterations(tmp_path):
@@ -225,3 +233,58 @@ def test_fresh_or_offline_run_still_starts_at_one(tmp_path, monkeypatch):
     )
     assert run_command(args) == 0
     assert seen.read_text().splitlines() == ["1", "2"]
+
+
+# --- #104: agenticledger run <name> -- <cmd> — one-word run naming ---
+
+def test_pop_run_name_takes_bare_word_after_run():
+    argv = ["run", "nightly-digest", "--", "python", "agent.py"]
+    assert _pop_run_name(argv) == "nightly-digest"
+    assert argv == ["run", "--", "python", "agent.py"]
+
+
+def test_pop_run_name_leaves_options_and_divider_alone():
+    for argv in (
+        ["run", "--", "python", "agent.py"],
+        ["run", "--max-iterations", "3", "--", "cmd"],
+        ["status"],
+        ["run"],
+    ):
+        before = list(argv)
+        assert _pop_run_name(argv) is None
+        assert argv == before
+
+
+def test_named_run_is_wrapper_mode(tmp_path):
+    """A positional name means: run the command ONCE under that name.
+    The child sees the name and the iteration in its environment."""
+    marker = tmp_path / "seen.txt"
+    code = main([
+        "run", "wrappy", "--proxy", "http://127.0.0.1:1",
+        "--", sys.executable, "-c",
+        "import os; open(r'%s', 'a').write("
+        "os.environ['AGENTICLEDGER_RUN_ID'] + ' ' + "
+        "os.environ['AGENTICLEDGER_ITERATION'] + chr(10))" % marker,
+    ])
+    assert code == 0
+    assert marker.read_text() == "wrappy 1\n"  # once, not the loop default
+
+
+def test_named_run_still_loops_when_asked(tmp_path):
+    marker = tmp_path / "count.txt"
+    code = main([
+        "run", "wrappy2", "--max-iterations", "2",
+        "--proxy", "http://127.0.0.1:1",
+        "--", sys.executable, "-c", f"open(r'{marker}', 'a').write('x')",
+    ])
+    assert code == 0
+    assert marker.read_text() == "xx"
+
+
+def test_name_given_twice_is_an_error(tmp_path, capsys):
+    code = main([
+        "run", "wrappy", "--run-id", "other",
+        "--proxy", "http://127.0.0.1:1", "--", "true",
+    ])
+    assert code == 2
+    assert "twice" in capsys.readouterr().err

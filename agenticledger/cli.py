@@ -1,13 +1,22 @@
 """
 agenticledger — command-line loop runner for Agentic Ledger.
 
-`agenticledger run` wraps any agent command in an observable, budgeted loop
-(the Ralph pattern): each iteration re-executes the command with a fresh
-context, every LLM call is attributed to the run via path-segment base URLs
-(no header support needed in the client), and the loop stops on a completion
-promise, a budget ceiling, or the iteration cap — whichever comes first.
+`agenticledger run` puts a name on whatever command you already run:
 
-    agenticledger run --max-iterations 50 --budget 25 -- \
+    agenticledger run nightly-digest -- python agent.py
+
+The command runs exactly as before; behind the scenes its LLM calls go
+through the ledger and land on the run tile named `nightly-digest`, with
+each launch counted as the next iteration (the ledger is asked where the
+run left off, so numbering survives restarts by construction). Attribution
+travels in the base URL path (no header support needed in the client).
+
+With loop flags it becomes an observable, budgeted loop (the Ralph
+pattern): each iteration re-executes the command with a fresh context, and
+the loop stops on a completion promise, a budget ceiling, or the iteration
+cap — whichever comes first:
+
+    agenticledger run overnight --max-iterations 50 --budget 25 -- \
         claude -p "$(cat PROMPT.md)" --dangerously-skip-permissions
 
 The proxy must be running (python -m agenticledger.proxy). Set
@@ -130,6 +139,7 @@ def _iteration_env(proxy: str, run_id: str, iteration: int) -> dict:
     env = dict(os.environ)
     tagged = f"{proxy}/r/{run_id}/{iteration}"
     env["ANTHROPIC_BASE_URL"] = tagged
+    env["ANTHROPIC_BEDROCK_BASE_URL"] = tagged
     env["OPENAI_BASE_URL"] = f"{tagged}/v1"
     env["AGENTICLEDGER_RUN_ID"] = run_id
     env["AGENTICLEDGER_ITERATION"] = str(iteration)
@@ -168,8 +178,11 @@ def run_command(args: argparse.Namespace) -> int:
     status: Optional[dict] = None
     reason = "loop never started"
 
+    single = args.max_iterations == 1 and args.budget is None
+    launch_word = ("single launch" if single
+                   else f"max {args.max_iterations} iterations")
     print(f"agenticledger: starting run {run_id} "
-          f"(max {args.max_iterations} iterations"
+          f"({launch_word}"
           f"{f', budget ${args.budget:.2f}' if args.budget else ''}) via {proxy}",
           file=sys.stderr)
 
@@ -194,7 +207,9 @@ def run_command(args: argparse.Namespace) -> int:
     try:
       while True:
         iteration += 1
-        print(f"agenticledger: iteration {iteration}/{args.max_iterations}", file=sys.stderr)
+        if not single:
+            print(f"agenticledger: iteration {iteration}/{args.max_iterations}",
+                  file=sys.stderr)
         tagged = base_iteration + iteration
         local_settings.point_at(f"{proxy}/r/{run_id}/{tagged}")
         try:
@@ -222,7 +237,7 @@ def run_command(args: argparse.Namespace) -> int:
             )
         stop = _decide_stop(status, iteration, args.max_iterations, args.budget)
         if stop:
-            reason = stop
+            reason = "launch complete" if single else stop
             break
     finally:
         local_settings.restore()
@@ -240,6 +255,16 @@ def run_command(args: argparse.Namespace) -> int:
     return last_exit
 
 
+def _pop_run_name(argv: list) -> Optional[str]:
+    """`agenticledger run nightly-digest -- cmd...`: when the token right
+    after `run` is a bare word (not an option, not the `--` divider), it is
+    the run name. Removed from argv so argparse never sees it."""
+    if (len(argv) >= 2 and argv[0] == "run"
+            and argv[1] != "--" and not argv[1].startswith("-")):
+        return argv.pop(1)
+    return None
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="agenticledger",
@@ -249,11 +274,17 @@ def main(argv: Optional[list] = None) -> int:
 
     run_p = sub.add_parser(
         "run",
-        help="Run a command in a loop with per-iteration attribution, "
-             "budget stop, and completion-promise detection.",
+        usage="agenticledger run [name] [options] -- <command...>",
+        help="Put a name on any agent command (agenticledger run <name> -- "
+             "<cmd>), or loop it with budget stop and completion-promise "
+             "detection.",
     )
-    run_p.add_argument("--run-id", default=None, help="Run id (default: generated)")
-    run_p.add_argument("--max-iterations", type=int, default=10)
+    run_p.add_argument("--run-id", default=None,
+                       help="Run id (same as giving the name positionally; "
+                            "default: generated from folder + minute)")
+    run_p.add_argument("--max-iterations", type=int, default=None,
+                       help="Loop the command up to N times "
+                            "(default: 1 when a name is given, else 10)")
     run_p.add_argument("--budget", type=float, default=None,
                        help="Stop when the run's total cost (USD) reaches this")
     run_p.add_argument("--proxy", default=os.environ.get("AGENTICLEDGER_URL", "http://localhost:8000"))
@@ -326,6 +357,8 @@ def main(argv: Optional[list] = None) -> int:
              "same as python -m agenticledger.proxy.",
     )
 
+    argv = list(argv) if argv is not None else sys.argv[1:]
+    run_name = _pop_run_name(argv)
     args = parser.parse_args(argv)
     if args.subcommand == "mcp":
         from agenticledger.mcp_stdio import main as mcp_main
@@ -395,6 +428,16 @@ def main(argv: Optional[list] = None) -> int:
     # argparse.REMAINDER keeps a leading "--" — drop it.
     if args.command and args.command[0] == "--":
         args.command = args.command[1:]
+    if run_name:
+        if args.run_id:
+            print("error: run name given twice, positionally and via "
+                  "--run-id; pick one", file=sys.stderr)
+            return 2
+        args.run_id = run_name
+    if args.max_iterations is None:
+        # A named run is wrapper mode: the command runs once per launch and
+        # each launch is the next iteration. Unnamed keeps the loop default.
+        args.max_iterations = 1 if run_name else 10
     return run_command(args)
 
 
