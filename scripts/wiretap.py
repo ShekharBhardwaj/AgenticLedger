@@ -65,7 +65,7 @@ def build(forward: str, out: Path, tag: str, record_all: bool = False) -> Starle
         body = await request.body()
         # Record LLM exchanges only unless asked otherwise: a dashboard tab
         # pointed at the tap once swept 29 asset GETs into the corpus.
-        record_this = record_all or request.url.path.startswith("/v1/")
+        record_this = record_all or "/v1/" in request.url.path  # incl. /r/<run>/<iter>/v1/…
         if record_this:
             counter["n"] += 1
         n = counter["n"]

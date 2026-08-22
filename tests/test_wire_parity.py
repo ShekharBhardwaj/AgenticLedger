@@ -34,7 +34,7 @@ _VOLATILE = {"timestamp"}  # stamped at normalize time, never part of parity
 def _fixtures():
     for f in sorted(WIRE.glob("*.json")):
         record = json.loads(f.read_text())
-        if record["request"]["path"].startswith("/v1/"):
+        if "/v1/" in record["request"]["path"]:  # incl. /r/<run>/<iter>/v1/…
             yield pytest.param(f, id=f.stem)
 
 
@@ -51,7 +51,9 @@ def _plain(obj):
 def run_pipeline(record: dict) -> dict:
     req_wire, resp_wire = record["request"], record["response"]
     body = json.loads(req_wire["body"])
-    path = req_wire["path"]
+    # The app strips the runner's /r/<run>/<iter> prefix before normalizing;
+    # the pipeline under test sees the provider path.
+    path = req_wire["path"][req_wire["path"].index("/v1/"):]
     headers = {k.lower(): v for k, v in req_wire["headers"].items()}
 
     canonical = normalize_request(body, path)
