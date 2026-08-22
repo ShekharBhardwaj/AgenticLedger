@@ -141,30 +141,47 @@ class LoopTracker:
     # ── enforcement-time resolution (the kill switch's eyes) ─────────────────
 
     def resolve_run(self, req, meta: dict) -> Optional[str]:
-        """Which run would this incoming call belong to? Read-only twin of
-        the capture-time grouping, for the enforcement gate: explicit
-        attribution wins; a session the tracker has seen keeps its run; a
-        fresh-context call resolves through the live run-signature table
-        (same key _assign_run uses) without mutating anything. Returns None
-        when the tracker cannot know — enforcement then has nothing to
-        match, which fails open by design."""
+        """Which run would this incoming call belong to? Read-only; the
+        same lookup capture uses before it commits. Returns None when the
+        tracker cannot know — enforcement then has nothing to match, which
+        fails open by design."""
         try:
-            explicit = meta.get("run_id")
-            if explicit:
-                return explicit
-            state = self._sessions.get(meta.get("session_id") or "-")
-            if state is not None and state.run_id:
-                return state.run_id
-            sys_digest = _system_digest(req)
-            if sys_digest is None:
-                return None
-            key = (meta.get("app_id") or meta.get("framework") or "-", sys_digest)
-            sig = self._run_sigs.get(key)
-            if sig is not None and self._clock() - sig["last_seen"] <= self._run_gap:
-                return sig["run_id"]
-            return None
+            return self.lookup(req, meta)[0]
         except Exception:
             return None
+
+    def lookup(self, req, meta: dict) -> tuple[Optional[str], Optional[int], str]:
+        """THE run question, answered once: explicit attribution wins; a
+        session the tracker has seen keeps its run; a fresh-context call
+        resolves through the live signature table. Returns (run_id,
+        iteration, source) with source in explicit | inferred | none.
+        Read-only: commit paths call this and then write."""
+        explicit = meta.get("run_id")
+        if explicit:
+            return explicit, _as_int(meta.get("iteration")), "explicit"
+        state = self._sessions.get(meta.get("session_id") or "-")
+        if state is not None and state.run_id:
+            return state.run_id, state.iteration, "inferred"
+        key = self._signature_key(req, meta)
+        sig = self._live_signature(key, self._clock()) if key else None
+        if sig is not None:
+            return sig["run_id"], sig["iteration"], "inferred"
+        return None, None, "none"
+
+    def _signature_key(self, req, meta: dict) -> Optional[tuple]:
+        """(app-or-framework, stable system digest): the one key every run
+        grouping decision uses."""
+        digest = _system_digest(req)
+        if digest is None:
+            return None
+        return (meta.get("app_id") or meta.get("framework") or "-", digest)
+
+    def _live_signature(self, key: tuple, now: float) -> Optional[dict]:
+        """The signature's run, if its loop knocked within the run gap."""
+        sig = self._run_sigs.get(key)
+        if sig is not None and now - sig["last_seen"] <= self._run_gap:
+            return sig
+        return None
 
     # ── capture-time annotation ──────────────────────────────────────────────
 
@@ -210,8 +227,7 @@ class LoopTracker:
         # exhibits against its inferred run means the next iteration joins
         # the same run no matter which call of its pair arrives first.
         if run_id and run_id.startswith("auto-run-"):
-            self._register_sig(_system_digest(req), meta, run_id,
-                               state.iteration or 1, now)
+            self._register_sig(req, meta, run_id, state.iteration or 1, now)
 
         # ── Thread stitching via message-chain prefix match
         chain = _message_chain(req.messages)
@@ -363,34 +379,32 @@ class LoopTracker:
             state.last_seen = now
             if state.run_id is None:
                 state.run_id = run_id
-            self._register_sig(_system_digest(req), meta, run_id,
-                               state.iteration or 1, now)
+            self._register_sig(req, meta, run_id, state.iteration or 1, now)
         except Exception:
             pass
 
-    def _register_sig(self, sys_digest: Optional[str], meta: dict,
-                      run_id: str, iteration: int, now: float) -> None:
+    def _register_sig(self, req, meta: dict, run_id: str, iteration: int, now: float) -> None:
         """Point a signature at a run: claim it if free or expired, refresh
         it if already ours. A live signature owned by a DIFFERENT run is
         never stolen — that is what keeps simultaneous loops separate."""
-        if sys_digest is None:
+        key = self._signature_key(req, meta)
+        if key is None:
             return
-        key = (meta.get("app_id") or meta.get("framework") or "-", sys_digest)
-        sig = self._run_sigs.get(key)
-        if sig is None or now - sig["last_seen"] > self._run_gap:
+        sig = self._live_signature(key, now)
+        if sig is None:
             self._run_sigs[key] = {
                 "run_id": run_id, "iteration": iteration, "last_seen": now}
         elif sig["run_id"] == run_id:
             sig["last_seen"] = now
 
     def _assign_run(self, state: _SessionState, req, meta: dict, now: float) -> None:
-        """Group fresh-context sessions sharing a system prompt into a run."""
-        sys_digest = _system_digest(req)
-        if sys_digest is None:
+        """Group fresh-context sessions sharing a system prompt into a run:
+        join the live signature's run, or mint a new one."""
+        key = self._signature_key(req, meta)
+        if key is None:
             return
-        key = (meta.get("app_id") or meta.get("framework") or "-", sys_digest)
-        sig = self._run_sigs.get(key)
-        if sig is not None and now - sig["last_seen"] <= self._run_gap:
+        sig = self._live_signature(key, now)
+        if sig is not None:
             sig["iteration"] += 1
             sig["last_seen"] = now
         else:

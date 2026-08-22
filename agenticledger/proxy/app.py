@@ -59,6 +59,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSoc
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from .alerts import AlertConfig, check_and_fire
+from .attribution import AttributionResolver
 from .auth import (
     ROLE_ADMIN,
     ROLE_EDITOR,
@@ -249,6 +250,7 @@ def create_app(
         max_steps=loop_max_steps,
         completion_promise=completion_promise,
     )
+    _attribution = AttributionResolver(_loop_tracker)
     _alert_config = alert_config or AlertConfig(
         webhook_url=None, cost_per_call=None,
         latency_ms=None, error_rate=None, daily_spend=None,
@@ -343,7 +345,7 @@ def create_app(
         # feeding them to the tracker would inflate step counts and reset
         # repeat streaks, so they stay out of inference.
         loop_fields = (
-            _loop_tracker.annotate(job.action_id, job.req, job.resp, job.meta)
+            _attribution.commit(job.action_id, job.req, job.resp, job.meta)
             if _loop_action != "off" and job.status_code == 200
             and job.resp.stop_reason != "count_tokens"
             and not is_utility_call(job.req, job.meta)
@@ -2061,8 +2063,8 @@ def create_app(
         if (_stopped_run is None and is_llm_path and not is_count_tokens
                 and request.app.state.stopped_runs):
             with suppress(Exception):
-                _stopped_run = _loop_tracker.resolve_run(
-                    normalize_request(body_json, path), meta)
+                _stopped_run = _attribution.resolve(
+                    meta, normalize_request(body_json, path)).run_id
         if (is_llm_path and not is_count_tokens and _stopped_run
                 and _stopped_run in request.app.state.stopped_runs):
             reason = (f"calls under run '{_stopped_run}' are blocked by the "
@@ -2074,7 +2076,9 @@ def create_app(
                 # calls) resolve to nothing and sail through the wall, and
                 # the loop's next iterations launder into a fresh auto-run
                 # (#77/#78, both observed live).
-                _loop_tracker.observe_blocked(canonical_req, meta, _stopped_run)
+                _attribution.commit_refusal(
+                    _attribution.resolve({**meta, "run_id": _stopped_run}, canonical_req),
+                    canonical_req, meta)
                 blocked_resp = _empty_response(0)
                 apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
                 # File the refusal under the stopped run even when the id

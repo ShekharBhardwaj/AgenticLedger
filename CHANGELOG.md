@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for anyone who prefers reduced motion.
 
 ### Changed
+- **One attribution pipeline (0.10 Phase A, step 3).** "Which run is
+  this call?" is answered by one resolver with two verbs: the kill gate
+  reads, capture reads then commits, and a refusal at the wall commits
+  too. Inside, the loop engine's read path and write path now share one
+  signature key and one liveness rule instead of four copies. The
+  corpus proves resolve and commit agree across real loops.
 - **Provider adapters (0.10 Phase A, step 2).** The OpenAI chat,
   Anthropic, and Responses-API wire formats each live in their own
   adapter under `proxy/providers/`, and one registry answers every
