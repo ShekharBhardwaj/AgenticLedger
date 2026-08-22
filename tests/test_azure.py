@@ -66,5 +66,10 @@ def test_auto_routing_refuses_azure_with_the_fix_named(proxy):
     resp = client.post(f"/{AZURE_PATH}", json=_BODY)
     assert resp.status_code == 502
     assert resp.json()["error"]["type"] == "upstream_not_configured"
-    assert "openai.azure.com" in resp.json()["error"]["message"]
+    # Exact-match the refusal so the test pins the whole instruction (and
+    # CodeQL sees no URL-substring check to mistake for sanitization).
+    assert resp.json()["error"]["message"] == (
+        "Azure OpenAI calls need an explicit upstream: set proxy.upstream_url "
+        "to your resource, e.g. https://<resource>.openai.azure.com, then "
+        "restart the ledger.")
     assert client.upstream.requests == []   # nothing was forwarded anywhere
