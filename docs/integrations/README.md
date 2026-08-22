@@ -30,7 +30,8 @@ One guide per framework. Two integration styles:
 | Pydantic AI | base_url or OTLP | [pydantic-ai.md](pydantic-ai.md) |
 | Vercel AI SDK | OTLP (or provider baseURL) | [vercel-ai-sdk.md](vercel-ai-sdk.md) |
 | LiteLLM | upstream gateway or library base_url | [litellm.md](litellm.md) |
-| Azure OpenAI | upstream gateway or library base_url | deployment paths, response-model pricing, explicit upstream |
+| Azure OpenAI | library azure_endpoint | [azure-openai.md](azure-openai.md) |
+| AWS Bedrock | gateway today; direct InvokeModel capture in 0.10 | [bedrock.md](bedrock.md) |
 | OpenRouter | upstream gateway | [openrouter.md](openrouter.md) |
 | LM Studio | local upstream (fully offline stack) | [lm-studio.md](lm-studio.md) |
 

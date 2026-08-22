@@ -17,38 +17,37 @@ from typing import Optional
 from .normalize import CanonicalResponse
 
 
-def reconstruct_from_sse(body: bytes, latency_ms: float, model_id: str = "") -> CanonicalResponse:
-    """Reconstruct a CanonicalResponse from raw SSE bytes. The format is
-    detected from the first meaningful data line by the provider registry
-    (Responses-API events carry "response.*" types, so they are checked
-    before the generic Anthropic type check; OpenAI chunks are the fallback)."""
+def reconstruct_from_sse(body: bytes, latency_ms: float, model_id: str = "",
+                         path: Optional[str] = None) -> CanonicalResponse:
+    """Reconstruct a CanonicalResponse from a raw response stream. With a
+    path, an adapter that owns a binary stream format (Bedrock) decodes its
+    own bytes; otherwise the format is sniffed from the first SSE data line
+    by the provider registry (Responses-API events carry "response.*"
+    types, so they are checked before the generic Anthropic type check;
+    OpenAI chunks are the fallback)."""
     from . import providers
+    if path is not None:
+        adapter = providers.for_path(path)
+        if adapter.binary_stream:
+            return adapter.reconstruct_stream(body, latency_ms, model_id)
     text = body.decode("utf-8", errors="replace")
-    return providers.for_stream(_first_json_chunk(text)).reconstruct_stream(text, latency_ms, model_id)
+    return providers.for_stream(_first_json_chunk(text)).reconstruct_stream(body, latency_ms, model_id)
 
 
-def detect_stream_error(body: bytes) -> Optional[str]:
+def detect_stream_error(body: bytes, path: Optional[str] = None) -> Optional[str]:
     """Return the message of a mid-stream error event, if the stream carries one.
 
     Providers can fail after a 200 status is sent (e.g. Anthropic
     ``overloaded_error`` after ``message_start``); without this check such
     calls would be recorded as clean 200s with silently truncated content.
     """
+    from . import providers
+    if path is not None:
+        adapter = providers.for_path(path)
+        if adapter.binary_stream:
+            return adapter.stream_error(body)
     text = body.decode("utf-8", errors="replace")
-    for chunk in _iter_sse_json(text):
-        err = None
-        if chunk.get("type") in ("error", "response.failed"):
-            err = chunk.get("error") or (chunk.get("response") or {}).get("error")
-        elif isinstance(chunk.get("error"), dict):
-            err = chunk["error"]
-        if isinstance(err, dict):
-            return err.get("message") or str(err)[:300]
-        if err:
-            return str(err)[:300]
-    return None
+    return providers.for_stream(_first_json_chunk(text)).stream_error(body)
 
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
 
 from .providers.base import first_json_chunk as _first_json_chunk  # noqa: E402
-from .providers.base import iter_sse_json as _iter_sse_json  # noqa: E402

@@ -4,7 +4,7 @@ from typing import Optional
 
 from ..normalize import CanonicalRequest, CanonicalResponse
 from ..pricing import compute_cost
-from .base import build_request, empty_response, iter_sse_json
+from .base import build_request, empty_response, iter_sse_json, sse_stream_error
 
 
 class AnthropicProvider:
@@ -23,6 +23,14 @@ class AnthropicProvider:
         # /v1/chat/completions uses OpenAI wire format, not Anthropic format.
         return "messages" in path
 
+    binary_stream = False
+
+    def streams(self, path: str, body: dict) -> bool:
+        return bool(body.get("stream"))
+
+    def stream_error(self, raw: bytes) -> Optional[str]:
+        return sse_stream_error(raw)
+
     def captures_path(self, path: str) -> bool:
         return False
 
@@ -37,8 +45,11 @@ class AnthropicProvider:
     def upstream_default(self) -> Optional[str]:
         return "https://api.anthropic.com"
 
+    def _model_id(self, body: dict, path: str) -> str:
+        return body.get("model", "unknown")
+
     def normalize_request(self, body: dict, path: str) -> CanonicalRequest:
-        model = body.get("model", "unknown")
+        model = self._model_id(body, path)
         messages = list(body.get("messages", []))
         system_prompt: Optional[str] = None
         # Anthropic puts the system prompt as a top-level key — either a plain
@@ -118,7 +129,8 @@ class AnthropicProvider:
             thinking=thinking,
         )
 
-    def reconstruct_stream(self, text: str, latency_ms: float, model_id: str) -> CanonicalResponse:
+    def reconstruct_stream(self, raw: bytes, latency_ms: float, model_id: str) -> CanonicalResponse:
+        text = raw.decode("utf-8", errors="replace")
         text_parts: list[str] = []
         thinking_parts: list[str] = []
         tool_calls: list[dict] = []

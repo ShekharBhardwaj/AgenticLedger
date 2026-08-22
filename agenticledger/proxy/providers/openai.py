@@ -5,7 +5,7 @@ from typing import Optional
 
 from ..normalize import CanonicalRequest, CanonicalResponse
 from ..pricing import compute_cost, has_price
-from .base import build_request, empty_response, iter_sse_json
+from .base import build_request, empty_response, iter_sse_json, sse_stream_error
 
 
 class OpenAIProvider:
@@ -19,6 +19,14 @@ class OpenAIProvider:
 
     def matches_path(self, path: str) -> bool:
         return True  # fallback: anything the other adapters did not claim
+
+    binary_stream = False
+
+    def streams(self, path: str, body: dict) -> bool:
+        return bool(body.get("stream"))
+
+    def stream_error(self, raw: bytes) -> Optional[str]:
+        return sse_stream_error(raw)
 
     def captures_path(self, path: str) -> bool:
         return False  # the exact LLM-path set decides for this wire
@@ -99,7 +107,8 @@ class OpenAIProvider:
             cache_write_tokens=cache_write,
         )
 
-    def reconstruct_stream(self, text: str, latency_ms: float, model_id: str) -> CanonicalResponse:
+    def reconstruct_stream(self, raw: bytes, latency_ms: float, model_id: str) -> CanonicalResponse:
+        text = raw.decode("utf-8", errors="replace")
         text_parts: list[str] = []
         tool_calls: dict[int, dict] = {}  # index → {id, name, arguments}
         stop_reason: Optional[str] = None

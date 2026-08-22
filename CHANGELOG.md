@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for anyone who prefers reduced motion.
 
 ### Added
+- **AWS Bedrock, direct (0.10 Phase B, part 1).** The ledger speaks
+  Bedrock's InvokeModel wire: `model/<id>/invoke` and its streaming
+  twin are captured, the model comes from the path, Anthropic-shaped
+  bodies normalize as such, and the binary event stream is decoded for
+  the record while the bytes pass through to the client untouched.
+  Records wear the `bedrock` label and price as the Claude model the
+  id names. Signing lands in part 2. Guide: docs/integrations/bedrock.md
+  (the LiteLLM gateway path works with any version).
 - **Azure OpenAI (0.10 Phase A, step 4).** The first provider added
   through the new adapter contract. Deployment paths are captured, the
   request's deployment name is kept as the model id while the price

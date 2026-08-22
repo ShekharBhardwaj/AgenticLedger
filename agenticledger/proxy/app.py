@@ -2009,7 +2009,7 @@ def create_app(
 
         is_llm_path = body_json is not None
         is_count_tokens = is_llm_path and path in _COUNT_TOKENS_PATHS
-        is_streaming = is_llm_path and not is_count_tokens and bool(body_json.get("stream"))
+        is_streaming = is_llm_path and not is_count_tokens and providers.streams(path, body_json)
         is_llm_call = is_llm_path and not is_streaming
 
         action_id = str(uuid.uuid4()) if is_llm_path else None
@@ -2286,11 +2286,11 @@ async def _streaming_proxy(
     def _build_job(raw: bytes, completed: bool) -> _CaptureJob:
         latency_ms = (time.monotonic() - start) * 1000
         if upstream.status_code == 200:
-            canonical_resp = reconstruct_from_sse(raw, latency_ms, canonical_req.model_id)
+            canonical_resp = reconstruct_from_sse(raw, latency_ms, canonical_req.model_id, path=path)
             parts: list[str] = []
             if budget_warning:
                 parts.append(f"budget_warning: {budget_warning}")
-            stream_err = detect_stream_error(raw)
+            stream_err = detect_stream_error(raw, path=path)
             if stream_err:
                 parts.append(f"stream_error: {stream_err}")
             if not completed:

@@ -6,7 +6,7 @@ from typing import Optional
 
 from ..normalize import CanonicalRequest, CanonicalResponse
 from ..pricing import compute_cost
-from .base import build_request, iter_sse_json
+from .base import build_request, iter_sse_json, sse_stream_error
 
 
 class ResponsesProvider:
@@ -19,6 +19,14 @@ class ResponsesProvider:
 
     def matches_path(self, path: str) -> bool:
         return "responses" in path
+
+    binary_stream = False
+
+    def streams(self, path: str, body: dict) -> bool:
+        return bool(body.get("stream"))
+
+    def stream_error(self, raw: bytes) -> Optional[str]:
+        return sse_stream_error(raw)
 
     def captures_path(self, path: str) -> bool:
         return False
@@ -90,7 +98,7 @@ class ResponsesProvider:
             cache_read_tokens=cache_read,
         )
 
-    def reconstruct_stream(self, text: str, latency_ms: float, model_id: str) -> CanonicalResponse:
+    def reconstruct_stream(self, raw: bytes, latency_ms: float, model_id: str) -> CanonicalResponse:
         """Reconstruct from Responses-API events (``response.*`` types).
 
         The terminal event (``response.completed`` / ``response.incomplete`` /
@@ -98,6 +106,7 @@ class ResponsesProvider:
         delegates to the non-streaming normalizer. Interrupted streams fall back
         to the accumulated ``response.output_text.delta`` events.
         """
+        text = raw.decode("utf-8", errors="replace")
         final: Optional[dict] = None
         text_parts: list[str] = []
 

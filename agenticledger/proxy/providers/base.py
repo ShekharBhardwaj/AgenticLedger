@@ -17,14 +17,17 @@ class Provider(Protocol):
     name: str                 # the provider label stored on records
     wire: str                 # unique adapter id (one label may have several wires)
     attribution_story: str    # how /r/<run>/<iter> and x-agenticledger-* survive this wire
+    binary_stream: bool       # streams are not SSE text (Bedrock's event stream)
 
     def matches_path(self, path: str) -> bool: ...
     def captures_path(self, path: str) -> bool: ...   # LLM paths beyond the exact set
     def matches_response(self, body: dict) -> bool: ...
     def matches_stream(self, first_chunk: Optional[dict]) -> bool: ...
+    def streams(self, path: str, body: dict) -> bool: ...   # is this request a streaming call?
     def normalize_request(self, body: dict, path: str) -> CanonicalRequest: ...
     def normalize_response(self, body: dict, latency_ms: float, model_id: str) -> CanonicalResponse: ...
-    def reconstruct_stream(self, text: str, latency_ms: float, model_id: str) -> CanonicalResponse: ...
+    def reconstruct_stream(self, raw: bytes, latency_ms: float, model_id: str) -> CanonicalResponse: ...
+    def stream_error(self, raw: bytes) -> Optional[str]: ...   # a failure inside a 200 stream
     def upstream_default(self) -> Optional[str]: ...
 
 
@@ -99,3 +102,19 @@ def iter_sse_json(text: str):
 
 def first_json_chunk(text: str) -> Optional[dict]:
     return next(iter_sse_json(text), None)
+
+
+def sse_stream_error(raw: bytes) -> Optional[str]:
+    """The message of a mid-stream error event in SSE text, if any."""
+    text = raw.decode("utf-8", errors="replace")
+    for chunk in iter_sse_json(text):
+        err = None
+        if chunk.get("type") in ("error", "response.failed"):
+            err = chunk.get("error") or (chunk.get("response") or {}).get("error")
+        elif isinstance(chunk.get("error"), dict):
+            err = chunk["error"]
+        if isinstance(err, dict):
+            return err.get("message") or str(err)[:300]
+        if err:
+            return str(err)[:300]
+    return None
