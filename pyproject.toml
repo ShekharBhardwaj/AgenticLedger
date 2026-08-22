@@ -50,6 +50,11 @@ otel = [
     "opentelemetry-sdk>=1.24",
     "opentelemetry-exporter-otlp-proto-http>=1.24",
 ]
+# Direct AWS Bedrock capture: the ledger re-signs requests with its own
+# credentials (standard AWS chain), which needs botocore's SigV4.
+bedrock = [
+    "botocore>=1.34",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.23",
@@ -62,6 +67,8 @@ dev = [
     "hatch-vcs",
     # exercises the http/protobuf OTLP ingest path in tests
     "opentelemetry-proto>=1.24",
+    # exercises Bedrock SigV4 re-signing in tests
+    "botocore>=1.34",
 ]
 
 [project.urls]
