@@ -126,6 +126,8 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="tests/fixtures/wire")
     ap.add_argument("--tag", default=os.environ.get("WIRETAP_TAG", "capture"))
     ap.add_argument("--all", action="store_true", help="record non-LLM paths too")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="bind address; 0.0.0.0 lets a Docker container reach the tap")
     args = ap.parse_args()
     uvicorn.run(build(args.forward, Path(args.out), args.tag, record_all=args.all),
-                host="127.0.0.1", port=args.listen, log_level="warning")
+                host=args.host, port=args.listen, log_level="warning")
