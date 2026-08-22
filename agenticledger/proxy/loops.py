@@ -22,10 +22,13 @@ structure the calls themselves reveal:
 Explicit headers always win over inference: x-agenticledger-run-id and
 x-agenticledger-iteration pin run grouping exactly.
 
-All state is in-memory and best-effort: a proxy restart forgets chains
-(calls then start new threads), and multi-replica deployments need sticky
-routing for coherent inference. Inference metadata is never a security
-boundary.
+Thread/session state is in-memory and best-effort: a proxy restart forgets
+chains (calls then start new threads), and multi-replica deployments need
+sticky routing for coherent inference. Run SIGNATURES are the exception:
+every change is written through to the store and reloaded at boot, so an
+inferred run keeps its identity across restarts — the next iteration joins
+the same tile, and a stopped run's wall still matches its loop (#100).
+Inference metadata is never a security boundary.
 """
 
 import contextlib
@@ -137,6 +140,30 @@ class LoopTracker:
         self._sessions: dict[str, _SessionState] = {}
         # (app-or-framework, system-prompt hash) → run grouping state
         self._run_sigs: dict[tuple, dict] = {}
+        # Write-through hook: called with (key, sig) on every signature
+        # claim/refresh/advance so the store can mirror it. Wired by app
+        # startup; None in bare unit tests.
+        self._on_sig_change = None
+
+    def set_persistence(self, on_sig_change) -> None:
+        self._on_sig_change = on_sig_change
+
+    def load_signatures(self, rows: list) -> None:
+        """Seed the signature table from the store at boot. Boot-time only:
+        rows never overwrite live in-memory state."""
+        for row in rows:
+            key = (row["app_key"], row["digest"])
+            if key not in self._run_sigs:
+                self._run_sigs[key] = {
+                    "run_id": row["run_id"],
+                    "iteration": _as_int(row["iteration"]),
+                    "last_seen": float(row["last_seen"]),
+                }
+
+    def _sig_changed(self, key: tuple, sig: dict) -> None:
+        if self._on_sig_change is not None:
+            with contextlib.suppress(Exception):
+                self._on_sig_change(key, sig)
 
     # ── enforcement-time resolution (the kill switch's eyes) ─────────────────
 
@@ -392,10 +419,12 @@ class LoopTracker:
             return
         sig = self._live_signature(key, now)
         if sig is None:
-            self._run_sigs[key] = {
-                "run_id": run_id, "iteration": iteration, "last_seen": now}
+            sig = {"run_id": run_id, "iteration": iteration, "last_seen": now}
+            self._run_sigs[key] = sig
+            self._sig_changed(key, sig)
         elif sig["run_id"] == run_id:
             sig["last_seen"] = now
+            self._sig_changed(key, sig)
 
     def _assign_run(self, state: _SessionState, req, meta: dict, now: float) -> None:
         """Group fresh-context sessions sharing a system prompt into a run:
@@ -405,7 +434,7 @@ class LoopTracker:
             return
         sig = self._live_signature(key, now)
         if sig is not None:
-            sig["iteration"] += 1
+            sig["iteration"] = (sig["iteration"] or 0) + 1
             sig["last_seen"] = now
         else:
             # The auto- prefix marks inferred runs so read paths can hide
@@ -413,6 +442,7 @@ class LoopTracker:
             # second fresh-context iteration confirms an actual loop.
             sig = {"run_id": f"auto-run-{uuid.uuid4().hex[:12]}", "iteration": 1, "last_seen": now}
             self._run_sigs[key] = sig
+        self._sig_changed(key, sig)
         state.run_id = sig["run_id"]
         state.iteration = sig["iteration"]
 

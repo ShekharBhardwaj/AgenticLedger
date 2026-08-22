@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Inferred runs survive restarts (#100).** The signature table that
+  recognizes "this is the same loop knocking again" lived in RAM, so
+  every proxy restart orphaned auto-detected runs: the next iteration
+  opened a fresh tile, and a stopped run's wall no longer matched its
+  loop — it bit the Bedrock E2E three times in one day. Signatures now
+  write through to the store on every change (off the request path,
+  flushed at shutdown) and reload at boot, so the next iteration joins
+  the same tile and the wall holds. Named runs never had this problem;
+  now neither do organic ones.
 - **Bedrock calls wear a Bedrock mark.** The provider chip did not know
   AWS model-id shapes (`us.anthropic.claude-...`), so Bedrock runs showed
   a puzzling generic "U". They now get their own orange **B**, AWS

@@ -331,6 +331,19 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def get_run_signatures(self, min_last_seen: float) -> list[dict[str, Any]]:
+        """Persisted loop signatures seen since `min_last_seen` — loaded at
+        boot so inferred-run identity (and the walls hung on it) survives a
+        proxy restart (#100)."""
+        ...
+
+    @abstractmethod
+    async def upsert_run_signature(self, app_key: str, digest: str, run_id: str,
+                                   iteration: Optional[int], last_seen: float) -> None:
+        """Write-through for one loop signature: claim, refresh, or advance."""
+        ...
+
+    @abstractmethod
     async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
         """Subset of run_ids that carry an explicit ended marker."""
         ...
@@ -495,6 +508,16 @@ class _SqliteStore(Store):
             CREATE TABLE IF NOT EXISTS run_markers (
                 run_id   TEXT PRIMARY KEY,
                 ended_at REAL NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS run_signatures (
+                app_key   TEXT NOT NULL,      -- app id or framework ('-' if none)
+                digest    TEXT NOT NULL,      -- stable system-prompt digest
+                run_id    TEXT NOT NULL,
+                iteration INTEGER,
+                last_seen REAL NOT NULL,
+                PRIMARY KEY (app_key, digest)
             )
         """)
         await db.execute("""
@@ -902,6 +925,26 @@ class _SqliteStore(Store):
         )
         await self._db.commit()
 
+    async def get_run_signatures(self, min_last_seen: float) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT app_key, digest, run_id, iteration, last_seen "
+            "FROM run_signatures WHERE last_seen >= ?",
+            (min_last_seen,),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def upsert_run_signature(self, app_key: str, digest: str, run_id: str,
+                                   iteration: Optional[int], last_seen: float) -> None:
+        await self._db.execute(
+            "INSERT INTO run_signatures (app_key, digest, run_id, iteration, last_seen) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(app_key, digest) DO UPDATE SET "
+            "run_id = excluded.run_id, iteration = excluded.iteration, "
+            "last_seen = excluded.last_seen",
+            (app_key, digest, run_id, iteration, last_seen),
+        )
+        await self._db.commit()
+
     async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
         if not run_ids:
             return set()
@@ -1247,6 +1290,16 @@ class _PostgresStore(Store):
                 CREATE TABLE IF NOT EXISTS run_markers (
                     run_id   TEXT PRIMARY KEY,
                     ended_at DOUBLE PRECISION NOT NULL
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS run_signatures (
+                    app_key   TEXT NOT NULL,
+                    digest    TEXT NOT NULL,
+                    run_id    TEXT NOT NULL,
+                    iteration INTEGER,
+                    last_seen DOUBLE PRECISION NOT NULL,
+                    PRIMARY KEY (app_key, digest)
                 )
             """)
             await conn.execute("""
@@ -1668,6 +1721,27 @@ class _PostgresStore(Store):
                 "INSERT INTO run_markers (run_id, ended_at) VALUES ($1, $2) "
                 "ON CONFLICT (run_id) DO UPDATE SET ended_at = EXCLUDED.ended_at",
                 run_id, ended_at,
+            )
+
+    async def get_run_signatures(self, min_last_seen: float) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT app_key, digest, run_id, iteration, last_seen "
+                "FROM run_signatures WHERE last_seen >= $1",
+                min_last_seen,
+            )
+        return [dict(r) for r in rows]
+
+    async def upsert_run_signature(self, app_key: str, digest: str, run_id: str,
+                                   iteration: Optional[int], last_seen: float) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO run_signatures (app_key, digest, run_id, iteration, last_seen) "
+                "VALUES ($1, $2, $3, $4, $5) "
+                "ON CONFLICT (app_key, digest) DO UPDATE SET "
+                "run_id = EXCLUDED.run_id, iteration = EXCLUDED.iteration, "
+                "last_seen = EXCLUDED.last_seen",
+                app_key, digest, run_id, iteration, last_seen,
             )
 
     async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:

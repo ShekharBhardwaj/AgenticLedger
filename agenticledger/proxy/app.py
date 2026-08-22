@@ -280,6 +280,30 @@ def create_app(
         # persisted as marker rows so a restart keeps the wall up.
         app.state.stopped_runs = set(
             (await app.state.store.get_labels("stopped")).keys())
+        # Inferred-run identity survives restarts (#100): signatures still
+        # inside the run gap are reloaded, so a loop's next iteration joins
+        # the same tile and a stopped run's wall still matches it. Every
+        # later change writes through, off the request's critical path.
+        with suppress(Exception):
+            _loop_tracker.load_signatures(
+                await app.state.store.get_run_signatures(
+                    time.time() - loop_run_gap_seconds))
+
+        # Tracked so shutdown can flush stragglers before the store closes:
+        # the wall must not lose its very last update to a restart.
+        sig_tasks: set = set()
+        app.state.sig_tasks = sig_tasks
+
+        def _persist_sig(key: tuple, sig: dict) -> None:
+            with suppress(Exception):
+                task = asyncio.get_running_loop().create_task(
+                    app.state.store.upsert_run_signature(
+                        key[0], key[1], sig["run_id"],
+                        sig.get("iteration"), sig["last_seen"]))
+                sig_tasks.add(task)
+                task.add_done_callback(sig_tasks.discard)
+
+        _loop_tracker.set_persistence(_persist_sig)
         app.state.client = httpx.AsyncClient(
             base_url=upstream_url,
             timeout=httpx.Timeout(120.0),
@@ -314,6 +338,10 @@ def create_app(
         if digest_hour is not None and _alert_config.webhook_url:
             digest_task = asyncio.create_task(_digest_worker(app))
         yield
+        if sig_tasks:
+            with suppress(Exception):
+                await asyncio.wait_for(
+                    asyncio.gather(*sig_tasks, return_exceptions=True), timeout=5.0)
         if digest_task is not None:
             digest_task.cancel()
             with suppress(asyncio.CancelledError):

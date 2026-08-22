@@ -436,3 +436,22 @@ async def test_delete_session_leaves_other_sessions(store):
 async def test_delete_unknown_session_returns_zero(store):
     """Deleting an unknown session deletes nothing and returns 0."""
     assert await store.delete_session("ghost") == 0
+
+
+async def test_run_signature_roundtrip(store):
+    """#100 — signatures write through and reload by recency window, on
+    whichever backend the suite is running."""
+    await store.upsert_run_signature("claude-code", "d-abc", "auto-run-x", 1, 100.0)
+    await store.upsert_run_signature("claude-code", "d-abc", "auto-run-x", 2, 200.0)
+    await store.upsert_run_signature("openclaw", "d-old", "auto-run-y", 5, 10.0)
+
+    rows = await store.get_run_signatures(min_last_seen=50.0)
+    assert len(rows) == 1
+    row = rows[0]
+    assert (row["app_key"], row["digest"]) == ("claude-code", "d-abc")
+    assert row["run_id"] == "auto-run-x"
+    assert row["iteration"] == 2          # the upsert advanced, not duplicated
+    assert row["last_seen"] == 200.0
+
+    # Widening the window brings the old signature back.
+    assert len(await store.get_run_signatures(min_last_seen=0.0)) == 2

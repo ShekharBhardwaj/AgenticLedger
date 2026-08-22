@@ -282,3 +282,57 @@ def test_simultaneous_loops_block_and_resume_independently(proxy):
     # Loop B never blinked.
     assert loop_b("b4", 4).status_code == 200
     assert client.get("/session/b4").json()[0]["run_id"] == run_b
+
+
+# ── #100: inferred-run identity survives restarts ────────────────────────────
+#
+# The Bedrock E2E hit this three times in one day: the signature table
+# lived in RAM, so every proxy restart orphaned auto-detected runs — the
+# next iteration opened a fresh tile and sailed past the old tile's wall.
+# Signatures now write through to the store and reload at boot.
+
+def test_inferred_run_identity_survives_a_restart(proxy, tmp_path):
+    import httpx as _hx
+
+    from .conftest import openai_response
+
+    dsn = f"sqlite:///{tmp_path / 'sig.db'}"
+    client = proxy(handler=lambda r: _hx.Response(200, json=openai_response()),
+                   dsn=dsn)
+    assert _fresh_context_call(client, "life-1").status_code == 200
+    assert _fresh_context_call(client, "life-2").status_code == 200
+    runs = [r for r in client.get("/api/runs").json()
+            if r["run_id"].startswith("auto-run-")]
+    assert len(runs) == 1
+    run_id = runs[0]["run_id"]
+    assert runs[0]["iterations"] == 2
+
+    reborn = proxy(handler=lambda r: _hx.Response(200, json=openai_response()),
+                   dsn=dsn)
+    assert _fresh_context_call(reborn, "life-3").status_code == 200
+    runs = {r["run_id"]: r for r in reborn.get("/api/runs").json()}
+    assert set(k for k in runs if k.startswith("auto-run-")) == {run_id}, (
+        "the restart minted a new tile instead of continuing the run")
+    assert runs[run_id]["iterations"] == 3
+
+
+def test_wall_on_inferred_run_survives_a_restart(proxy, tmp_path):
+    import httpx as _hx
+
+    from .conftest import openai_response
+
+    dsn = f"sqlite:///{tmp_path / 'sigwall.db'}"
+    client = proxy(handler=lambda r: _hx.Response(200, json=openai_response()),
+                   dsn=dsn)
+    _fresh_context_call(client, "w-1")
+    _fresh_context_call(client, "w-2")
+    run_id = next(r["run_id"] for r in client.get("/api/runs").json()
+                  if r["run_id"].startswith("auto-run-"))
+    assert client.post(f"/api/runs/{run_id}/stop").json()["status"] == "stopped"
+
+    reborn = proxy(handler=lambda r: _hx.Response(200, json=openai_response()),
+                   dsn=dsn)
+    refused = _fresh_context_call(reborn, "w-3")
+    assert refused.status_code == 429, (
+        "the restart let the loop launder past the wall")
+    assert refused.json()["error"]["type"] == "run_stopped"
