@@ -150,3 +150,27 @@ def test_without_credentials_bedrock_is_refused_with_the_fix_named(proxy, monkey
     assert resp.json()["error"]["type"] == "upstream_not_configured"
     assert "credentials" in resp.json()["error"]["message"]
     assert client.upstream.requests == []
+
+
+def test_anonymous_agents_never_share_a_fallback_session(proxy, aws_env):
+    """#103, found live: Claude Code's anonymous Bedrock utility calls and
+    OpenClaw's headerless calls both fell into auto-<date>, and the run
+    rides the session, so a stranger's calls were filed under
+    openclaw-main. The fallback bucket is per-agent now."""
+    calls = {"openclaw": {"system": "You are a personal assistant running inside OpenClaw. Be brief.",
+                          "messages": [{"role": "user", "content": "hb"}], "max_tokens": 64},
+             "anon": dict(BODY)}
+    client = proxy(handler=lambda r: httpx.Response(200, json=_anthropic_json()))
+    # OpenClaw-shaped call, headerless, on the anthropic wire with explicit run.
+    client.post("/r/openclaw-main/1/v1/messages", json=calls["openclaw"])
+    # An anonymous Bedrock call: no headers, no fingerprint, no session id.
+    client.post(f"/{INVOKE}", json=calls["anon"])
+
+    sessions = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    openclaw_sessions = [k for k in sessions if "openclaw" in k]
+    anon_sessions = [k for k in sessions if "unattributed" in k or "bedrock" in k]
+    assert openclaw_sessions and anon_sessions
+    assert set(openclaw_sessions).isdisjoint(anon_sessions)
+    # And the stranger's call did not inherit openclaw-main.
+    anon = sessions[anon_sessions[0]]
+    assert anon.get("run_id") != "openclaw-main"

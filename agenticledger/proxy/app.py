@@ -2606,10 +2606,15 @@ def _extract_meta(request: Request, body_json: Optional[dict] = None) -> dict:
     # (framework tag, agent identity, and a real per-run session id for
     # clients like Claude Code that never send x-agenticledger-* headers).
     detected = detect_agent(h, body_json)
+    # The headerless fallback is a per-agent daily bucket. It must never be
+    # shared across agents: a date-only bucket once filed Claude Code's
+    # anonymous utility calls into OpenClaw's run because both fell back to
+    # the same session and the run rides the session.
+    _who = detected["framework"] or detected["agent_name"] or "unattributed"
     session_id = (
         h.get("x-agenticledger-session-id")
         or detected["session_id"]
-        or f"auto-{datetime.date.today().isoformat()}"
+        or f"auto-{_who}-{datetime.date.today().isoformat()}"
     )
     return {
         "session_id":       session_id,
