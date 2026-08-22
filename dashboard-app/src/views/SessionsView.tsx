@@ -517,7 +517,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
                            onSaved={refresh} onClose={() => setEditing(null)} />
             )}
             <div className="card-sub">
-              <span>{fmtAgo(s.started_at)}</span>
+              <span>{fmtAgo(s.last_call_at ?? s.started_at)}</span>
               <span>{s.call_count} calls</span>
               <span>{fmtUsd(s.total_cost_usd)}</span>
               {s.session_id.startsWith("replay-") && (

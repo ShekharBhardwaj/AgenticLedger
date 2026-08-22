@@ -333,7 +333,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                   {iterations.map((it) => (
                     <div
                       key={String(it.iteration)}
-                      className={`bar ${it.error_calls ? "errored" : it.flagged_calls ? "flagged" : ""}`}
+                      className={`bar ${it.error_calls ? "errored" : it.blocked_calls ? "blocked" : it.flagged_calls ? "flagged" : ""}`}
                       style={{ height: `${Math.max((100 * (it.cost_usd || 0)) / maxCost, 3)}%` }}
                       title={`iteration ${it.iteration}: ${fmtUsd(it.cost_usd)}, ${it.call_count} calls. Click to open its session`}
                       onClick={() => it.session_id && onOpenSession(it.session_id)}

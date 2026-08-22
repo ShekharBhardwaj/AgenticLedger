@@ -1151,3 +1151,21 @@ def test_proxy_owns_encoding_negotiation(proxy):
                 headers={"accept-encoding": "gzip, deflate, br, zstd"})
     sent = client.upstream.requests[-1]
     assert sent.headers["accept-encoding"] == "gzip, deflate"
+
+
+def test_sessions_list_orders_by_last_activity(proxy):
+    """#(session ordering) — an old session with fresh calls must bubble to
+    the top: the list carries last_call_at and sorts by it, not by birth."""
+    client = proxy(handler=_ok_handler())
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-session-id": "elder"})
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-session-id": "younger"})
+    # The elder speaks again, later than the younger's only call.
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-session-id": "elder"})
+    rows = client.get("/api/sessions").json()
+    ids = [r["session_id"] for r in rows if r["session_id"] in ("elder", "younger")]
+    assert ids == ["elder", "younger"]
+    elder = next(r for r in rows if r["session_id"] == "elder")
+    assert elder["last_call_at"] >= elder["started_at"]

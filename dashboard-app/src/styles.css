@@ -501,6 +501,8 @@ body {
 }
 .ribbon .bar.flagged { background: linear-gradient(180deg, var(--amber), #9a7118); }
 .ribbon .bar.errored { background: linear-gradient(180deg, var(--red), #b23a35); }
+/* The wall's bar speaks the same amber as its badge: refused, not broken. */
+.ribbon .bar.blocked { background: linear-gradient(180deg, var(--amber), #8a6414); opacity: 0.9; }
 .ribbon .bar:hover { opacity: 1; filter: brightness(1.15); }
 .ribbon-labels { display: flex; gap: 6px; color: var(--text-dim); font-size: 11px; font-family: var(--mono); }
 .ribbon-labels div { flex: 1; max-width: 48px; min-width: 14px; text-align: center; }

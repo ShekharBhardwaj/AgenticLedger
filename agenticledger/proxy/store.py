@@ -663,6 +663,7 @@ class _SqliteStore(Store):
                 session_id,
                 COUNT(*)         AS call_count,
                 MIN(timestamp)   AS started_at,
+                MAX(timestamp)   AS last_call_at,
                 SUM(latency_ms)  AS total_latency_ms,
                 SUM(tokens_in)   AS total_tokens_in,
                 SUM(tokens_out)  AS total_tokens_out,
@@ -682,7 +683,7 @@ class _SqliteStore(Store):
             FROM llm_calls
             WHERE session_id IS NOT NULL
             GROUP BY session_id
-            ORDER BY started_at DESC
+            ORDER BY last_call_at DESC
             LIMIT ?
             """,
             (limit,),
@@ -1105,6 +1106,8 @@ def _sqlite_row(row) -> dict[str, Any]:
 def _sqlite_session_row(row) -> dict[str, Any]:
     d = dict(row)
     d["started_at"] = _unix_to_iso(d["started_at"])
+    if "last_call_at" in d:
+        d["last_call_at"] = _unix_to_iso(d["last_call_at"])
     return d
 
 
@@ -1424,6 +1427,7 @@ class _PostgresStore(Store):
                     session_id::text,
                     COUNT(*)                    AS call_count,
                     MIN(timestamp)              AS started_at,
+                    MAX(timestamp)              AS last_call_at,
                     SUM(latency_ms)             AS total_latency_ms,
                     SUM(tokens_in)              AS total_tokens_in,
                     SUM(tokens_out)             AS total_tokens_out,
@@ -1443,7 +1447,7 @@ class _PostgresStore(Store):
                 FROM llm_calls
                 WHERE session_id IS NOT NULL
                 GROUP BY session_id
-                ORDER BY started_at DESC
+                ORDER BY last_call_at DESC
                 LIMIT $1
                 """,
                 limit,
