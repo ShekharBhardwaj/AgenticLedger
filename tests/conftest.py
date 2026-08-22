@@ -157,7 +157,8 @@ async def store() -> Store:
 #     AGENTICLEDGER_TEST_FULL_PG_DSN=postgresql://postgres:postgres@127.0.0.1:5433/agenticledger_test pytest
 
 _FULL_PG_DSN = os.environ.get("AGENTICLEDGER_TEST_FULL_PG_DSN")
-_ALL_TABLES = "llm_calls, api_tokens, audit_log, tool_executions, run_markers, labels"
+_ALL_TABLES = ("llm_calls, api_tokens, audit_log, tool_executions, "
+               "run_markers, run_signatures, labels")
 
 
 async def _drop_all_pg_tables() -> None:
