@@ -66,5 +66,15 @@ export ANTHROPIC_BEDROCK_BASE_URL=http://localhost:8000
 client = boto3.client("bedrock-runtime", endpoint_url="http://localhost:8000")
 ```
 
+To name the work while you're at it, wrap the command instead of exporting
+the URL yourself — the runner sets `ANTHROPIC_BEDROCK_BASE_URL` (and the
+OpenAI/Anthropic base URLs) with the run name in it, counts each launch as
+the next iteration, and `--project` files the tile:
+
+```bash
+export CLAUDE_CODE_USE_BEDROCK=1
+agenticledger run nightly-digest --project acme -- claude -p "..."
+```
+
 Without credentials of its own, the ledger refuses Bedrock calls with
 that instruction instead of forwarding an unsignable request.

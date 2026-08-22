@@ -43,3 +43,8 @@ path-segment attribution in the baseURL, no headers needed:
 ```
 http://localhost:8000/r/<run-name>/1
 ```
+
+Tools that read `OPENAI_BASE_URL`/`ANTHROPIC_BASE_URL` from the environment
+don't need the URL surgery — `agenticledger run <name> -- <command>` sets it
+for them, and `--project <p>` files the run as it starts. opencode reads its
+baseURL from config, so the explicit form above is the one that applies here.

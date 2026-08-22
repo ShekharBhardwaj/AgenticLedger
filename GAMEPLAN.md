@@ -213,17 +213,24 @@ for every wire format; OpenAI/Anthropic move into adapters behind shims;
 Azure OpenAI priced correctly as the first proof. Gate: zero behavior
 change against the full suite and replayed fixtures.
 
-**Phase B — Direct AWS Bedrock (#95), the flagship.** The ledger holds
-AWS credentials and re-signs each call (SigV4 via botocore, optional
-[bedrock] extra), so boto3 agents and Claude Code in Bedrock mode get
-recorded, budgeted, and kill-switched. The Bedrock-via-gateway guide
-ships first and needs no code.
+**Phase B — Direct AWS Bedrock (#95), the flagship. ✅ SHIPPED,
+E2E-verified 2026-08-22.** The ledger holds AWS credentials and re-signs
+each call (SigV4 via botocore, optional [bedrock] extra); boto3 agents
+and Claude Code in Bedrock mode recorded, budgeted, and kill-switched
+under the user's hands on live IAM-signed traffic. The E2E also
+delivered: per-agent fallback sessions (#103), one-word run naming +
+--project (#104, #105 project-grouped sidebar), the Bedrock provider
+mark, amber blocked bars, and last-activity session ordering. It
+promoted restart-proof run signatures to the TOP of Phase T: in-memory
+inference amnesia broke the wall test three times.
 
 **Phase C — Live Loop view (#96), the wow.** Watch a run while it runs:
 calls arriving, cost ticking, flags firing, on the existing websocket.
 The ten-second demo.
 
-**Phase T — Trusted application (#100), woven through.** Enterprise
+**Phase T — Trusted application (#100), woven through.** First item,
+promoted by the Phase B E2E: store-backed run signatures, so inferred
+runs and their walls survive a proxy restart. Then the enterprise
 posture by design, not patches: multi-replica-correct enforcement
 (designed in #99 with the attribution pipeline), retention as product,
 /metrics + structured logs + backup/restore, SECURITY.md + threat
