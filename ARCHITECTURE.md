@@ -50,7 +50,9 @@ flowchart LR
 | `proxy/app.py` | HTTP surface: proxying, walls, every `/api` route | new endpoint, new enforcement |
 | `proxy/store.py` | persistence, two dialects behind one contract (`_pg_plain` keeps them identical) | schema, queries; always both dialects, CI runs the full suite on real Postgres |
 | `proxy/detect.py` | zero-config fingerprints (Claude Code, BMAD, OpenClaw) | teaching a new framework; `POST /api/redetect` backfills history |
-| `proxy/normalize.py` | both wire formats → one canonical call record | provider API shape changes |
+| `proxy/providers/` | one adapter per wire format (OpenAI chat, Anthropic, Responses API), each with its attribution story; the registry answers every dispatch question | adding a provider, provider API shape changes |
+| `proxy/canonical.py` | wire content → stable meaning: the volatile-content table, the stable view every identity signal reads | a client salts its requests in a new way |
+| `proxy/normalize.py` | canonical record dataclasses and the historical entry points, now shims over the registry | rarely |
 | `proxy/pricing.py` + `pricing_data/*.json` | cost math + the price packs (plain JSON, PR-friendly) | new model, price change: see docs/pricing.md |
 | `proxy/loops.py` | run grouping, thread stitching, loop pathology flags | loop detection behavior |
 | `proxy/replay.py` | single-call and whole-run replay, cross-provider translation, report cards | replay behavior, grading |

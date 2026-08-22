@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layer, where text-only block arrays now hash as the string they mean.
 
 ### Changed
+- **Provider adapters (0.10 Phase A, step 2).** The OpenAI chat,
+  Anthropic, and Responses-API wire formats each live in their own
+  adapter under `proxy/providers/`, and one registry answers every
+  dispatch question (which path, which response body, which stream)
+  in the exact order the old scattered checks used. Every adapter must
+  state, in writing, how run and session tags survive its wire. The
+  wire-truth corpus replayed byte-identical through the move.
 - **One canonicalization layer (0.10 Phase A, step 1).** Every rule
   that turns wire content into stable meaning now lives in
   `proxy/canonical.py`, in one documented table where each entry names

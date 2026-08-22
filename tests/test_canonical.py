@@ -71,3 +71,34 @@ def test_every_volatile_rule_names_its_fixture():
     rules = table.count('"x-anthropic-billing-header"') + table.count('"cache_control"') + table.count("(_UUID_RE,")
     assert rules == 3
     assert table.count("Fixture: tests/fixtures/wire/") == 3
+
+
+# ── The provider adapter contract (#99, contract 3) ──────────────────────────
+
+def test_every_provider_answers_its_attribution_story():
+    """No adapter exists without saying, in writing, how run and session
+    tags survive its wire."""
+    from agenticledger.proxy import providers
+    for p in providers.PROVIDERS:
+        assert p.name and p.wire, p
+        assert len(p.attribution_story) > 40, f"{p.wire}: attribution story missing"
+    wires = [p.wire for p in providers.PROVIDERS]
+    assert len(wires) == len(set(wires)), "adapter ids must be unique"
+    assert providers.PROVIDERS[-1].wire == "openai-chat", "the chat wire is the fallback and must stay last"
+
+
+def test_registry_dispatch_matches_the_historical_rules():
+    from agenticledger.proxy import providers
+    assert providers.for_path("/v1/messages").wire == "anthropic-messages"
+    assert providers.for_path("/r/run/1/v1/messages").wire == "anthropic-messages"
+    assert providers.for_path("/v1/responses").wire == "openai-responses"
+    assert providers.for_path("/v1/chat/completions").wire == "openai-chat"
+    assert providers.for_response({"object": "response", "output": []}).wire == "openai-responses"
+    assert providers.for_response({"input_tokens": 12}).wire == "anthropic-messages"
+    assert providers.for_response({"content": [{"type": "text", "text": "hi"}]}).wire == "anthropic-messages"
+    assert providers.for_response({"choices": [{}]}).wire == "openai-chat"
+    assert providers.for_response({"error": {"type": "x"}}).wire == "openai-chat"  # fallback → empty response
+    assert providers.for_stream({"type": "response.created"}).wire == "openai-responses"
+    assert providers.for_stream({"type": "message_start"}).wire == "anthropic-messages"
+    assert providers.for_stream({"choices": []}).wire == "openai-chat"
+    assert providers.for_stream(None).wire == "openai-chat"
