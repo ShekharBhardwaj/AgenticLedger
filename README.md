@@ -1,3 +1,5 @@
+<p align="left"><img src="https://raw.githubusercontent.com/ShekharBhardwaj/AgenticLedger/main/docs/raccoon.svg" alt="" width="72" height="66"></p>
+
 # Agentic Ledger
 
 [![CI](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/ShekharBhardwaj/AgenticLedger/actions/workflows/ci.yml)

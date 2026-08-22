@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   layer, where text-only block arrays now hash as the string they mean.
 
 ### Added
+- **The raccoon is the logo now.** One drawing everywhere: the header
+  mark, the favicon, the README, and the Loop Lens mascot all share the
+  bookkeeper's face (`docs/raccoon.svg` for anything outside the app).
 - **The napping raccoon snores.** Three tiny z's drift up from the
   sleeping bookkeeper's head on ended runs, one after another. Still
   for anyone who prefers reduced motion.
