@@ -91,6 +91,14 @@ function RunMascot({ status, small }: { status: Run["status"]; small?: boolean }
           <ellipse cx="12" cy="17.1" rx="3.7" ry="2.7" fill="var(--text)" opacity="0.9" />
           <ellipse cx="12" cy="15.9" rx="1.35" ry="1.05" fill="var(--bg-panel)" />
         </g>
+        {status === "ended" && (
+          /* tiny z's drifting up from the sleeping head, staggered */
+          <g className="rac-zzz" fill="var(--text-dim)" fontFamily="sans-serif" fontWeight="700">
+            <text x="19.2" y="6.2" fontSize="3.2">z</text>
+            <text x="21.4" y="4.2" fontSize="4">z</text>
+            <text x="23.8" y="2.2" fontSize="4.8">z</text>
+          </g>
+        )}
       </svg>
     </span>
   );

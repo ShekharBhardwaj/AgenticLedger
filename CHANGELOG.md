@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replaying the wire-truth corpus; fixed in the new canonicalization
   layer, where text-only block arrays now hash as the string they mean.
 
+### Added
+- **The napping raccoon snores.** Three tiny z's drift up from the
+  sleeping bookkeeper's head on ended runs, one after another. Still
+  for anyone who prefers reduced motion.
+
 ### Changed
 - **Provider adapters (0.10 Phase A, step 2).** The OpenAI chat,
   Anthropic, and Responses-API wire formats each live in their own
