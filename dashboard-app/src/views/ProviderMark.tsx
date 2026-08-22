@@ -21,6 +21,13 @@ export function classifyProvider(provider?: string | null, model?: string | null
     const family = m.split(/[/:\-]/).filter(Boolean)[0] ?? "local";
     return { key: "local", label: `${family}, running locally`, letter: letter(family) };
   }
+  // Bedrock model ids wear AWS clothing: "us.anthropic.claude-...",
+  // "anthropic.claude-...", "amazon.nova-...". The most useful thing a
+  // glance can say about them is where the bill goes: AWS.
+  if (p === "bedrock" || /^(us|eu|apac|global)\./.test(m) ||
+      m.startsWith("anthropic.") || m.startsWith("amazon.")) {
+    return { key: "bedrock", label: "AWS Bedrock", letter: "B" };
+  }
   if (m.startsWith("claude") || p === "anthropic") {
     return { key: "anthropic", label: "Anthropic", letter: "A" };
   }

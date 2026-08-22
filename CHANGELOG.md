@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Bedrock calls wear a Bedrock mark.** The provider chip did not know
+  AWS model-id shapes (`us.anthropic.claude-...`), so Bedrock runs showed
+  a puzzling generic "U". They now get their own orange **B**, AWS
+  Bedrock, so a glance says where the bill goes.
 - **Anonymous agents no longer share a fallback session (#103).** Calls
   with no session header and no detectable fingerprint used to fall
   into one daily bucket, `auto-<date>`, and since runs ride sessions, a
