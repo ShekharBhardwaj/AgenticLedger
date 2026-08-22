@@ -27,7 +27,10 @@ export function LabelEditor({ scope, refId, label, project, projects, onSaved, o
   label: string | null; project: string | null;
   projects: string[]; onSaved: () => void; onClose: () => void;
 }) {
-  const [name, setName] = useState(label ?? "");
+  // A human-chosen id (agenticledger run <name>, or a caller-set session id)
+  // IS the name — start the field there so renaming edits rather than
+  // retypes. Machine ids (auto-...) start blank.
+  const [name, setName] = useState(label ?? (refId.startsWith("auto-") ? "" : refId));
   const [proj, setProj] = useState(project ?? "");
   const save = () => {
     setLabel(scope, refId, { name, project: proj })

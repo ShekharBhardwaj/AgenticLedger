@@ -288,3 +288,32 @@ def test_name_given_twice_is_an_error(tmp_path, capsys):
     ])
     assert code == 2
     assert "twice" in capsys.readouterr().err
+
+
+def test_project_flag_files_the_run(tmp_path, monkeypatch):
+    """--project sends a best-effort label PUT before the loop starts."""
+    from agenticledger import cli as cli_mod
+    puts = []
+    monkeypatch.setattr(cli_mod.httpx, "put",
+                        lambda url, **kw: puts.append((url, kw.get("json"))))
+    code = main([
+        "run", "filed-run", "--project", "alpha",
+        "--proxy", "http://127.0.0.1:1",
+        "--", sys.executable, "-c", "pass",
+    ])
+    assert code == 0
+    assert puts == [("http://127.0.0.1:1/api/labels/run/filed-run",
+                     {"project": "alpha"})]
+
+
+def test_project_filing_failure_never_breaks_the_run(tmp_path, monkeypatch):
+    from agenticledger import cli as cli_mod
+    def boom(url, **kw):
+        raise RuntimeError("proxy asleep")
+    monkeypatch.setattr(cli_mod.httpx, "put", boom)
+    code = main([
+        "run", "filed-run2", "--project", "alpha",
+        "--proxy", "http://127.0.0.1:1",
+        "--", sys.executable, "-c", "pass",
+    ])
+    assert code == 0

@@ -39,6 +39,16 @@ from typing import Optional
 import httpx
 
 
+def _file_under_project(proxy: str, run_id: str, project: str,
+                        api_key: Optional[str]) -> None:
+    """Best-effort: file the run under a dashboard project (#104). A failure
+    never touches the loop; the run just stays unfiled."""
+    headers = {"x-agenticledger-api-key": api_key} if api_key else {}
+    with contextlib.suppress(Exception):
+        httpx.put(f"{proxy}/api/labels/run/{run_id}",
+                  json={"project": project}, headers=headers, timeout=5.0)
+
+
 def _fetch_status(proxy: str, run_id: str, api_key: Optional[str]) -> Optional[dict]:
     """Best-effort run status from the proxy. None when unreachable/unknown."""
     headers = {"x-agenticledger-api-key": api_key} if api_key else {}
@@ -197,6 +207,10 @@ def run_command(args: argparse.Namespace) -> int:
               f"iteration(s) recorded; continuing at {base_iteration + 1}",
               file=sys.stderr)
 
+    project = getattr(args, "project", None)
+    if project:
+        _file_under_project(proxy, run_id, project, api_key)
+
     local_settings = _ClaudeLocalSettings(Path.cwd())
     if local_settings.active:
         print("agenticledger: project has .claude/settings.json; using "
@@ -282,6 +296,8 @@ def main(argv: Optional[list] = None) -> int:
     run_p.add_argument("--run-id", default=None,
                        help="Run id (same as giving the name positionally; "
                             "default: generated from folder + minute)")
+    run_p.add_argument("--project", default=None,
+                       help="File the run under this dashboard project")
     run_p.add_argument("--max-iterations", type=int, default=None,
                        help="Loop the command up to N times "
                             "(default: 1 when a name is given, else 10)")

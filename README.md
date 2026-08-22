@@ -262,6 +262,7 @@ agenticledger run nightly-digest -- python agent.py
 Your command runs exactly as before; its LLM calls land on the run tile
 named `nightly-digest`, and each launch counts as the next iteration, so
 tomorrow's run joins the same tile. Nothing in your agent's code changes.
+Add `--project acme` to file the run under a dashboard project as it starts.
 
 Running an overnight loop (Ralph-style `while :; do cat PROMPT.md | claude -p; done`)?
 The same command with loop flags re-executes your command each iteration,

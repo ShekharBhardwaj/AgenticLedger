@@ -27,9 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   word in front of the command you already run: the command runs once per
   launch, each launch counts as the next iteration of the same run tile,
   and the child environment now also carries `ANTHROPIC_BEDROCK_BASE_URL`
-  so Bedrock clients are attributed the same way. The loop flags
-  (`--max-iterations`, `--budget`) still work with a name in front;
-  without a name the runner keeps its old loop defaults.
+  so Bedrock clients are attributed the same way. `--project acme` files
+  the run under a dashboard project as it starts, and the rename editor on
+  a card now opens prefilled with a human-chosen id instead of blank. The
+  loop flags (`--max-iterations`, `--budget`) still work with a name in
+  front; without a name the runner keeps its old loop defaults.
 - **The raccoon is the logo now.** One drawing everywhere: the header
   mark, the favicon, the README, and the Loop Lens mascot all share the
   bookkeeper's face (`docs/raccoon.svg` for anything outside the app).
