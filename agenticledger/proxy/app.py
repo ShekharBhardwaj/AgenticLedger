@@ -2169,9 +2169,16 @@ def create_app(
 
         forward_headers = {
             k: v for k, v in request.headers.items()
-            if k.lower() not in ("host", "content-length", "transfer-encoding")
+            if k.lower() not in ("host", "content-length", "transfer-encoding",
+                                 "accept-encoding")
             and k.lower() not in _AL_HEADERS
         }
+        # The proxy owns encoding negotiation (#101). It decodes upstream
+        # bodies before capture and strips content-encoding on the way
+        # back, so it must only ever ask for encodings it can decode.
+        # Clients advertise br/zstd; without the optional decoders that
+        # produced silent binary garbage on non-streaming responses.
+        forward_headers["accept-encoding"] = "gzip, deflate"
 
         if is_streaming:
             return await _streaming_proxy(

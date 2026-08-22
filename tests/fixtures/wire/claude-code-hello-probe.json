@@ -1,0 +1,29 @@
+{
+  "tag": "claude-code",
+  "captured_at": 1787358882.062439,
+  "request": {
+    "method": "HEAD",
+    "path": "/api/hello",
+    "query": "",
+    "headers": {
+      "connection": "keep-alive",
+      "user-agent": "Bun/1.4.0",
+      "accept": "*/*",
+      "host": "127.0.0.1:8070",
+      "accept-encoding": "gzip, deflate, br, zstd"
+    },
+    "body": ""
+  },
+  "response": {
+    "status": 405,
+    "headers": {
+      "date": "Sat, 22 Aug 2026 00:34:41 GMT",
+      "server": "uvicorn",
+      "allow": "PUT, GET, POST, DELETE, PATCH",
+      "content-length": "31",
+      "content-type": "application/json"
+    },
+    "latency_ms": 1.5,
+    "chunks": []
+  }
+}

@@ -1139,3 +1139,15 @@ def test_auto_mode_never_emits_wire_format_mismatch(proxy):
     detail = client.get("/session/auto-404").json()[0]["error_detail"]
     assert "upstream 404" in detail
     assert "wire" not in detail and "format request" not in detail
+
+
+def test_proxy_owns_encoding_negotiation(proxy):
+    """#101 — a client advertising br/zstd must never make the upstream
+    send an encoding the proxy cannot decode: it decodes before capture
+    and strips content-encoding on the way back, so it asks only for
+    what it can handle, regardless of what the client asked for."""
+    client = proxy(handler=_ok_handler())
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"accept-encoding": "gzip, deflate, br, zstd"})
+    sent = client.upstream.requests[-1]
+    assert sent.headers["accept-encoding"] == "gzip, deflate"

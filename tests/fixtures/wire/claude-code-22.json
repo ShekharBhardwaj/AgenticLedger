@@ -1,0 +1,38 @@
+{
+  "tag": "claude-code",
+  "captured_at": 1787358941.506476,
+  "request": {
+    "method": "GET",
+    "path": "/api/runs/auto-run-8dae75280f8e/iterations",
+    "query": "",
+    "headers": {
+      "host": "localhost:8070",
+      "connection": "keep-alive",
+      "sec-ch-ua-platform": "\"macOS\"",
+      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Claude/1.34493.1 Chrome/148.0.7778.280 Electron/42.9.2 Safari/537.36",
+      "sec-ch-ua": "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\"",
+      "sec-ch-ua-mobile": "?0",
+      "accept": "*/*",
+      "sec-fetch-site": "same-origin",
+      "sec-fetch-mode": "cors",
+      "sec-fetch-dest": "empty",
+      "referer": "http://localhost:8070/",
+      "accept-encoding": "gzip, deflate, br, zstd",
+      "accept-language": "en-US"
+    },
+    "body": ""
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "date": "Sat, 22 Aug 2026 00:35:41 GMT",
+      "server": "uvicorn",
+      "content-length": "1325",
+      "content-type": "application/json"
+    },
+    "latency_ms": 2.4,
+    "chunks": [
+      "[{\"iteration\":1,\"call_count\":2,\"session_count\":1,\"started_at\":\"2026-08-22T00:27:16.462887+00:00\",\"last_call_at\":\"2026-08-22T00:27:16.998247+00:00\",\"cost_usd\":0.267055,\"tokens_in\":716,\"tokens_out\":20,\"cache_read_tokens\":0,\"flagged_calls\":0,\"error_calls\":0,\"blocked_calls\":0,\"session_id\":\"f3129bc8-1d93-4fc6-8312-f44cb7b6a799\"},{\"iteration\":2,\"call_count\":3,\"session_count\":1,\"started_at\":\"2026-08-22T00:27:23.701096+00:00\",\"last_call_at\":\"2026-08-22T00:27:26.062589+00:00\",\"cost_usd\":0.08621949999999999,\"tokens_in\":724,\"tokens_out\":96,\"cache_read_tokens\":77549,\"flagged_calls\":0,\"error_calls\":0,\"blocked_calls\":0,\"session_id\":\"6bc4e940-4600-4ce9-8f57-1c296b63fc55\"},{\"iteration\":3,\"call_count\":2,\"session_count\":1,\"started_at\":\"2026-08-22T00:30:45.344902+00:00\",\"last_call_at\":\"2026-08-22T00:30:45.757416+00:00\",\"cost_usd\":0.0625495,\"tokens_in\":716,\"tokens_out\":20,\"cache_read_tokens\":35514,\"flagged_calls\":0,\"error_calls\":0,\"blocked_calls\":0,\"session_id\":\"fcdec91b-b349-46a7-8e3b-a39166900d1a\"},{\"iteration\":4,\"call_count\":3,\"session_count\":1,\"started_at\":\"2026-08-22T00:30:49.322547+00:00\",\"last_call_at\":\"2026-08-22T00:30:51.231295+00:00\",\"cost_usd\":0.085907,\"tokens_in\":724,\"tokens_out\":86,\"cache_read_tokens\":77549,\"flagged_calls\":0,\"error_calls\":0,\"blocked_calls\":0,\"session_id\":\"9a0fd265-aca2-4c84-a3eb-3796fabe537f\"}]"
+    ]
+  }
+}

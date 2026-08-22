@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A wire-truth corpus and parity harness.** Real captured exchanges
+  (Claude Code's main, companion, tool-round, and status-summary calls,
+  quirks intact, secrets scrubbed) now live in `tests/fixtures/wire/`,
+  and every test run replays them through the full capture pipeline
+  against recorded goldens. Any change to what the pipeline produces
+  must explain itself in a golden diff. `scripts/wiretap.py` records
+  new fixtures from any client.
+
+### Fixed
+- **Non-streaming responses no longer turn to garbage when the client
+  speaks brotli or zstd (#101).** Modern clients advertise encodings
+  the proxy cannot decode; the upstream obliged, and the proxy forwarded
+  undecoded bytes with the encoding header stripped. Streaming calls
+  never hit it, which is why it hid. The proxy now asks upstreams only
+  for encodings it can decode, whatever the client asked for.
+
 ## [0.9.2] - 2026-08-19
 
 The retest release. Every entry below exists because the project's
