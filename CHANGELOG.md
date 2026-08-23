@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reserved for genuinely broken things.
 
 ### Fixed
+- **A run that speaks again is live again.** The runner's "loop exited"
+  marker used to hold forever: rerun the same run name and it read
+  "ended" even while calls were streaming in — the live state was
+  unreachable for wrapped runs after their first launch. The marker now
+  holds only until a call newer than it arrives; the runner ending the
+  loop anew holds again.
 - **Run cards state N models instead of spelling out all N.** Ten Bedrock
   ids were eating the tile; the card and the detail header now show the
   first model plus "+9 more", the full list on hover.

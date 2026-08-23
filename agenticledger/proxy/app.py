@@ -776,7 +776,7 @@ def create_app(
                                 await store.get_project_rules())
         return JSONResponse([
             _with_run_status(r, loop_run_gap_seconds,
-                             explicitly_ended=r["run_id"] in ended,
+                             explicitly_ended=_end_marker_holds(r, ended.get(r["run_id"])),
                              stopped=r["run_id"] in request.app.state.stopped_runs)
             for r in runs
         ])
@@ -1706,7 +1706,8 @@ def create_app(
         run = _annotate_labels([run], await store.get_labels("run"), "run_id",
                                await store.get_project_rules())[0]
         return JSONResponse(_with_run_status(
-            run, loop_run_gap_seconds, explicitly_ended=run["run_id"] in ended,
+            run, loop_run_gap_seconds,
+            explicitly_ended=_end_marker_holds(run, ended.get(run["run_id"])),
             stopped=run["run_id"] in request.app.state.stopped_runs))
 
     @app.get("/api/runs/{run_id}/iterations")
@@ -2695,6 +2696,20 @@ def _int_or_none(value) -> Optional[int]:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _end_marker_holds(run: dict, ended_at: Optional[float]) -> bool:
+    """The runner's "loop exited" marker holds only until the run speaks
+    again: calls newer than the marker mean the loop came back (a rerun of
+    the same name, an always-on agent), and the run is live again until
+    the runner ends it anew or the silence window closes. Without this, a
+    run that ended once read ended FOREVER, mid-stream included."""
+    if ended_at is None:
+        return False
+    with suppress(Exception):
+        last = datetime.datetime.fromisoformat(str(run.get("last_call_at")))
+        return last.timestamp() <= float(ended_at)
+    return True
 
 
 def _with_run_status(run: dict, run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,

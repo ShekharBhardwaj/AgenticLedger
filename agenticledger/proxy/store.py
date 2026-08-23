@@ -344,8 +344,10 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
-        """Subset of run_ids that carry an explicit ended marker."""
+    async def get_run_end_markers(self, run_ids: list[str]) -> dict[str, float]:
+        """run_id -> ended_at for those of run_ids carrying an explicit ended
+        marker. The timestamp matters: a marker only holds until the run
+        speaks again."""
         ...
 
     @abstractmethod
@@ -945,15 +947,15 @@ class _SqliteStore(Store):
         )
         await self._db.commit()
 
-    async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
+    async def get_run_end_markers(self, run_ids: list[str]) -> dict[str, float]:
         if not run_ids:
-            return set()
+            return {}
         placeholders = ",".join("?" for _ in run_ids)
         async with self._db.execute(
-            f"SELECT run_id FROM run_markers WHERE run_id IN ({placeholders})",
+            f"SELECT run_id, ended_at FROM run_markers WHERE run_id IN ({placeholders})",
             tuple(run_ids),
         ) as cur:
-            return {r[0] for r in await cur.fetchall()}
+            return {r[0]: r[1] for r in await cur.fetchall()}
 
     async def get_period_cost(self, since_ts: float) -> float:
         async with self._db.execute(
@@ -1744,15 +1746,15 @@ class _PostgresStore(Store):
                 app_key, digest, run_id, iteration, last_seen,
             )
 
-    async def get_run_end_markers(self, run_ids: list[str]) -> set[str]:
+    async def get_run_end_markers(self, run_ids: list[str]) -> dict[str, float]:
         if not run_ids:
-            return set()
+            return {}
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT run_id FROM run_markers WHERE run_id = ANY($1::text[])",
+                "SELECT run_id, ended_at FROM run_markers WHERE run_id = ANY($1::text[])",
                 run_ids,
             )
-        return {r["run_id"] for r in rows}
+        return {r["run_id"]: r["ended_at"] for r in rows}
 
     async def get_period_cost(self, since_ts: float) -> float:
         import datetime as _dt

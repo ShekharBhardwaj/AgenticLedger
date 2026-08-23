@@ -1212,3 +1212,24 @@ def test_live_event_for_a_walled_call_says_blocked(proxy):
     assert ev["error"] is False
     assert ev["run_id"] == "walled"
     assert ev["cost_usd"] == 0
+
+
+def test_a_revived_run_reads_running_again(proxy):
+    """The runner's end marker holds only until the run speaks again: a
+    rerun of the same name used to read "ended" forever, mid-stream
+    included (found live: the user could never catch their wrapped run
+    in the live state)."""
+    client = proxy(handler=_ok_handler())
+    hdr = {"x-agenticledger-run-id": "phoenix", "x-agenticledger-session-id": "p-1"}
+    client.post("/v1/chat/completions", json=_CHAT_BODY, headers=hdr)
+    client.post("/api/runs/phoenix/end")
+    assert client.get("/api/runs/phoenix").json()["status"] == "ended"
+
+    # The loop comes back: a newer call outranks the old marker.
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={**hdr, "x-agenticledger-session-id": "p-2"})
+    assert client.get("/api/runs/phoenix").json()["status"] == "running"
+
+    # And the runner ending it anew holds again.
+    client.post("/api/runs/phoenix/end")
+    assert client.get("/api/runs/phoenix").json()["status"] == "ended"
