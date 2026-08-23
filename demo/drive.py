@@ -124,7 +124,19 @@ def act_live(minutes: float = 2.0):
         time.sleep(3)
 
 
+def _preflight():
+    """Fail in one plain sentence, not forty lines of traceback."""
+    try:
+        with urllib.request.urlopen(f"{PROXY}/health", timeout=3) as resp:
+            resp.read()
+    except Exception:
+        print("The demo ledger is not up on :8003. Start it first "
+              "(terminal 2 in demo/README.md), then rerun this act.")
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
+    _preflight()
     act = sys.argv[1] if len(sys.argv) > 1 else ""
     if act == "ralph":
         act_ralph()
