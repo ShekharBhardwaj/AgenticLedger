@@ -2381,11 +2381,15 @@ async def _upstream_unreachable(
                 action_id, canonical_req, _empty_response(latency_ms),
                 502, detail, meta, budget_warning,
             ))
+    # The client gets the failure CLASS only — exception text can embed
+    # internal hosts/paths (CodeQL 36); the full detail lives in the
+    # ledger record, which is the operator's own data.
     return JSONResponse(
         {"error": {
             "type": "upstream_unreachable",
-            "message": (f"the ledger could not reach the upstream: "
-                        f"{type(exc).__name__}: {exc}"),
+            "message": (f"the ledger could not reach the upstream "
+                        f"({type(exc).__name__}); the full detail is in "
+                        f"the ledger record for this call"),
         }},
         status_code=502,
         headers=({"x-agenticledger-action-id": action_id} if is_llm_call else {}),
