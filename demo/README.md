@@ -13,7 +13,19 @@ driver sends.
 
 Three terminals, plus a browser. Every terminal starts with a `cd` to
 the repo root (the commands below assume you are there), and uses
-`python3` (plain `python` does not exist on a stock Mac).
+`python3` (plain `python` does not exist on a stock Mac). The order
+matters: puppet, then ledger, then browser, then driver.
+
+Step zero, from the same terminal you will type commands in:
+
+```bash
+agenticledger doctor
+```
+
+It should end with "healthy". If it names a problem (a shadowing
+install, a broken environment, a stale service), do what it says
+before anything else; PATH truth is per-terminal, so run it where you
+record.
 
 Terminal 1, the puppet model:
 
@@ -21,6 +33,9 @@ Terminal 1, the puppet model:
 cd <path-to>/AgenticLedger
 python3 demo/mock_upstream.py
 ```
+
+("Address already in use" means a puppet from an earlier take is still
+running, which is fine: skip this step or kill that terminal first.)
 
 Terminal 2, the ledger itself, started the way users start it. The
 service manager runs one instance per machine, so your everyday ledger
@@ -37,14 +52,19 @@ AGENTICLEDGER_UPSTREAM_URL=http://localhost:9911 \
 agenticledger start
 ```
 
-No log spew, terminal freed, `agenticledger logs` if you need them —
+Before moving on, verify two things: the start banner says port 8003,
+and the browser header at http://localhost:8003 shows the version you
+mean to record (no page at all means this step did not finish; the
+driver will also refuse to run until it has).
+
+No log spew, terminal freed, `agenticledger logs` if you need them:
 exactly the product experience the video is selling, on exactly the
 release viewers can install. (`agenticledger upgrade` pulls the latest
 from PyPI; recording unreleased work instead is `upgrade --from .`.)
 
-One feature gate: the cost-ceiling beat in Act 1 needs 0.11. On an
-older release, play the wall moment with **⊘ block calls** instead —
-same amber refusals, same story. After the shoot:
+One feature gate: the cost-ceiling beat in Act 1 needs 0.11 or newer.
+On an older release, play the wall moment with **⊘ block calls**
+instead, same amber refusals, same story. After the shoot:
 
 ```bash
 agenticledger stop && agenticledger start
