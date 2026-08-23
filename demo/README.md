@@ -22,20 +22,31 @@ cd <path-to>/AgenticLedger
 python3 demo/mock_upstream.py
 ```
 
-Terminal 2, a fresh demo ledger on port 8003 (never your real one):
+Terminal 2, the ledger itself, started the way users start it. The
+service manager runs one instance per machine, so your everyday ledger
+steps aside for the recording and comes back after:
 
 ```bash
 cd <path-to>/AgenticLedger
+agenticledger upgrade --from .
+agenticledger stop
 rm -f /tmp/demo-ledger.db
 AGENTICLEDGER_PORT=8003 \
 AGENTICLEDGER_DSN=sqlite:////tmp/demo-ledger.db \
 AGENTICLEDGER_UPSTREAM_URL=http://localhost:9911 \
-.venv/bin/python -m agenticledger.proxy
+agenticledger start
 ```
 
-(The proxy must run on the repo's venv: `.venv/bin/python`, not the
-system `python3`, which does not have the dependencies. The puppet and
-the driver are dependency-free, so plain `python3` is fine for those.)
+No log spew, terminal freed, `agenticledger logs` if you need them —
+exactly the product experience the video is selling. After the shoot:
+
+```bash
+agenticledger stop && agenticledger start
+```
+
+brings your everyday ledger back on :8000 with its own data. (While the
+demo runs, anything pointed at :8000 fails; the always-on agents can
+have the afternoon off.)
 
 Terminal 3, the driver, idle for now. Browser: http://localhost:8003
 (the DEMO ledger; your real one on :8000 stays out of frame) on Loop
