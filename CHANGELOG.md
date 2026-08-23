@@ -5,6 +5,17 @@ All notable changes to Agentic Ledger are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **The status summarizer stays out of loop inference (#102).** Every
+  Claude Code invocation fires a third call — a status summary on the
+  MAIN model — that the haiku-only utility rule classified as real work,
+  inflating step counts and perturbing streaks. It is now recognized by
+  shape (small cap plus the state template's two markers), regardless of
+  model or framework label, so BMAD-style methods are covered too. Three
+  corpus goldens flip utility_call to true; that diff is the proof.
+
 ## [0.10.0] - 2026-08-23
 
 ### Added

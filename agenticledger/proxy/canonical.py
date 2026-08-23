@@ -179,9 +179,39 @@ _PROBE_MAX_TOKENS = 8
 _UTILITY_MAX_TOKENS = 1024
 
 
+# Claude Code's status summarizer opens with this exact template. Both
+# markers must appear in the head of the first user message — one alone
+# could occur in real work; the pair is the tool's own boilerplate.
+_STATE_SUMMARY_MARKERS = ("current state:", "tool calls so far:")
+
+
+def _is_state_summary(req) -> bool:
+    """Claude Code's status summarizer: a small-cap, non-tool call whose
+    user message opens with the state template. Shape identifies it
+    regardless of model or framework label (#102) — it runs on the MAIN
+    model, and BMAD-style methods riding Claude Code fire the same call."""
+    if req.max_tokens is None or req.max_tokens > _UTILITY_MAX_TOKENS:
+        return False
+    for m in req.messages[:2]:
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and isinstance(b.get("text"), str)
+            )
+        if isinstance(content, str):
+            head = content[:200].lower()
+            return all(marker in head for marker in _STATE_SUMMARY_MARKERS)
+    return False
+
+
 def is_utility_call(req, meta: dict) -> bool:
     """True for framework housekeeping calls that must stay out of loop
     inference — chaining them inflates step counts and resets repeat streaks."""
+    if _is_state_summary(req):
+        return True
     if meta.get("framework") != "claude-code" or req.max_tokens is None:
         return False
     if req.max_tokens <= _PROBE_MAX_TOKENS:

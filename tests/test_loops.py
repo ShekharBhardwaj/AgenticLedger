@@ -355,3 +355,27 @@ def test_cache_marker_migration_alone_does_not_split_threads():
                                       {"role": "user", "content": "more"}]), _resp(), _meta())
     assert f1["thread_id"] == f2["thread_id"]
     assert f2["step_index"] == 2
+
+
+def test_state_summary_is_utility_regardless_of_model():
+    """#102 — Claude Code's status summarizer runs on the MAIN model, so
+    the haiku-only rule missed it; the shape rule catches it, and one
+    marker alone is not enough to reclassify real work."""
+    from agenticledger.proxy.canonical import is_utility_call
+
+    def req(content, cap=1024):
+        r = _req([{"role": "user", "content": content}],
+                 system_prompt="You are Claude Code.")
+        r.max_tokens = cap
+        return r
+
+    summary = "Current state: working (for 3m)\nTool calls so far: Bash×8"
+    assert is_utility_call(req(summary), {"framework": "claude-code"})
+    # Framework label does not gate the shape: BMAD fires the same call.
+    assert is_utility_call(req(summary), {"framework": "bmad"})
+    # A real prompt that merely opens with one marker stays real work.
+    assert not is_utility_call(
+        req("Current state: the auth refactor is half done. Continue."),
+        {"framework": "claude-code"})
+    # An uncapped call is never the summarizer.
+    assert not is_utility_call(req(summary, cap=None), {"framework": "claude-code"})
