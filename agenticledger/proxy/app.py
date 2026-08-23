@@ -767,6 +767,32 @@ def create_app(
                 for rid, lab in (await store.get_labels("run")).items()
                 if lab.get("project")}
 
+    async def _project_session_scope(store, since_ts: float, project: str):
+        """Resolve a project filter (a name, or "run:<id>" for a run-default
+        group) to the session ids it covers in the window (#107). Returns
+        (scope_ids, totals_rows, resolved): scope_ids is None when there is
+        no filter; totals_rows are the per-session rows (pre-filtered when
+        scoped) for the by-project table; resolved(st) names a row's
+        project by the same three-source rule the sidebar uses."""
+        labels = await store.get_labels("session")
+        rules = await store.get_project_rules()
+        run_projects = await _run_project_map(store)
+        totals = await store.get_session_totals(since_ts)
+
+        def resolved(st: dict) -> Optional[str]:
+            return ((labels.get(st["session_id"]) or {}).get("project")
+                    or rules.get(st.get("app_id") or "")
+                    or run_projects.get(st.get("run_id") or ""))
+
+        if not project:
+            return None, totals, resolved
+        if project.startswith("run:"):
+            run_id = project[len("run:"):]
+            keep = [st for st in totals if st.get("run_id") == run_id]
+        else:
+            keep = [st for st in totals if resolved(st) == project]
+        return [st["session_id"] for st in keep], keep, resolved
+
     @app.get("/api/sessions")
     async def api_sessions(request: Request) -> JSONResponse:
         await _require(request, ROLE_VIEWER)
@@ -1595,16 +1621,24 @@ def create_app(
 
     @app.get("/api/reports")
     async def api_reports(request: Request, days: int = 30,
-                          tz_offset_minutes: int = 0) -> JSONResponse:
+                          tz_offset_minutes: int = 0,
+                          project: str = "") -> JSONResponse:
         """Spend insights over the window: daily trend, model mix with
         signed cache savings, and per-agent totals. tz_offset_minutes shifts
         the day bucketing (positive = east of UTC) so 'per day' can mean the
-        viewer's local day; budgets and the digest remain UTC."""
+        viewer's local day; budgets and the digest remain UTC. `project`
+        scopes every number to one project (or "run:<id>" for a run-default
+        group), resolved the same way the sidebar files sessions (#107)."""
         await _require(request, ROLE_VIEWER)
         days = max(1, min(days, 365))
         tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
-        raw = await request.app.state.store.get_report_aggregates(
-            time.time() - days * 86400, tz_offset_minutes=tz_offset_minutes)
+        _since = time.time() - days * 86400
+        store = request.app.state.store
+        scope_ids, _totals_rows, _resolved = await _project_session_scope(
+            store, _since, project)
+        raw = await store.get_report_aggregates(
+            _since, tz_offset_minutes=tz_offset_minutes,
+            session_ids=scope_ids)
         teams = raw.get("teams") or []
         if teams:
             # Answer "who ran dry?" at a glance: pair each team's row with its
@@ -1624,28 +1658,21 @@ def create_app(
                     row["budget_daily"] = allowance
                     row["spent_today"] = round(spent, 4)
                     row["over_budget"] = spent >= allowance
-        # By-project rollup: sessions carry their project in the labels
-        # table, so join per-session totals with labels here and aggregate.
-        labels = await request.app.state.store.get_labels("session")
-        rules = await request.app.state.store.get_project_rules()
-        run_projects = await _run_project_map(request.app.state.store)
+        # By-project rollup: per-session totals joined with the resolved
+        # project mapping (scoped rows only when a filter is active).
         projects: dict = {}
-        if rules or run_projects or any(lab.get("project") for lab in labels.values()):
-            for st in await request.app.state.store.get_session_totals(
-                    time.time() - days * 86400):
-                project = ((labels.get(st["session_id"]) or {}).get("project")
-                           or rules.get(st.get("app_id") or "")
-                           or run_projects.get(st.get("run_id") or ""))
-                if not project:
-                    continue
-                agg = projects.setdefault(project, {
-                    "project": project, "call_count": 0, "session_count": 0,
-                    "cost_usd": 0.0, "error_count": 0, "blocked_count": 0})
-                agg["call_count"] += st["call_count"]
-                agg["session_count"] += 1
-                agg["cost_usd"] += float(st["cost_usd"] or 0)
-                agg["error_count"] += int(st["error_count"] or 0)
-                agg["blocked_count"] += int(st["blocked_count"] or 0)
+        for st in _totals_rows:
+            row_project = _resolved(st)
+            if not row_project:
+                continue
+            agg = projects.setdefault(row_project, {
+                "project": row_project, "call_count": 0, "session_count": 0,
+                "cost_usd": 0.0, "error_count": 0, "blocked_count": 0})
+            agg["call_count"] += st["call_count"]
+            agg["session_count"] += 1
+            agg["cost_usd"] += float(st["cost_usd"] or 0)
+            agg["error_count"] += int(st["error_count"] or 0)
+            agg["blocked_count"] += int(st["blocked_count"] or 0)
         return JSONResponse(build_report(
             raw["daily"], raw["models"], raw["agents"], days, teams=teams,
             projects=sorted(projects.values(),
@@ -1653,12 +1680,17 @@ def create_app(
 
     @app.get("/api/reports.csv")
     async def api_reports_csv(request: Request, days: int = 30,
-                              tz_offset_minutes: int = 0) -> Response:
+                              tz_offset_minutes: int = 0,
+                              project: str = "") -> Response:
         await _require(request, ROLE_VIEWER)
         days = max(1, min(days, 365))
         tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
+        _since = time.time() - days * 86400
+        scope_ids, _, _ = await _project_session_scope(
+            request.app.state.store, _since, project)
         raw = await request.app.state.store.get_report_aggregates(
-            time.time() - days * 86400, tz_offset_minutes=tz_offset_minutes)
+            _since, tz_offset_minutes=tz_offset_minutes,
+            session_ids=scope_ids)
         report = build_report(
             raw["daily"], raw["models"], raw["agents"], days)
 

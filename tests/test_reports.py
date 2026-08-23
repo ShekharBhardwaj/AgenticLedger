@@ -251,3 +251,62 @@ def test_reports_csv_endpoint(proxy):
     assert "model_id,provider,call_count" in text
     assert "gpt-4o,openai,1," in text
     assert "gpt-4o" in text
+
+
+# ── #107: project-scoped reports ─────────────────────────────────────────────
+
+def _chat(client, session, run=None, content="hi"):
+    import httpx as _hx  # noqa: F401
+    headers = {"x-agenticledger-session-id": session}
+    if run:
+        headers["x-agenticledger-run-id"] = run
+    return client.post(
+        "/v1/chat/completions",
+        json={"model": "gpt-4o", "messages": [{"role": "user", "content": content}]},
+        headers=headers)
+
+
+def test_report_scopes_to_a_project(proxy):
+    """?project= narrows every aggregate to sessions resolved into that
+    project — hand labels, app bindings, and run inheritance all count."""
+    import httpx as _hx
+
+    from .conftest import openai_response
+
+    client = proxy(handler=lambda r: _hx.Response(200, json=openai_response()))
+    _chat(client, "in-acme", run="acme-run")
+    _chat(client, "outside")
+    # File the run under acme; its session inherits.
+    client.put("/api/labels/run/acme-run", json={"project": "acme"})
+
+    full = client.get("/api/reports?days=7").json()
+    scoped = client.get("/api/reports?days=7&project=acme").json()
+    assert full["totals"]["call_count"] == 2
+    assert scoped["totals"]["call_count"] == 1
+    assert [p["project"] for p in scoped["projects"]] == ["acme"]
+
+    # A run-default group scopes the same way.
+    run_scoped = client.get("/api/reports?days=7&project=run:acme-run").json()
+    assert run_scoped["totals"]["call_count"] == 1
+
+    # An unknown project reads as an empty report, not an error.
+    empty = client.get("/api/reports?days=7&project=nothing-here").json()
+    assert empty["totals"]["call_count"] == 0
+    assert empty["daily"] == [] and empty["models"] == []
+
+
+def test_report_csv_scopes_too(proxy):
+    import httpx as _hx
+
+    from .conftest import openai_response
+
+    client = proxy(handler=lambda r: _hx.Response(200, json=openai_response()))
+    _chat(client, "csv-in", run="csv-run")
+    _chat(client, "csv-out")
+    client.put("/api/labels/run/csv-run", json={"project": "beta"})
+    body = client.get("/api/reports.csv?days=7&project=beta").text
+    # One model row for the scoped call; the unscoped session's traffic
+    # is identical in shape, so scope shows via the period totals row.
+    assert "gpt-4o" in body
+    full = client.get("/api/reports.csv?days=7").text
+    assert body != full

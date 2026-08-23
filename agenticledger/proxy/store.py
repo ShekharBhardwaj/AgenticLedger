@@ -355,7 +355,8 @@ class Store(ABC):
 
     @abstractmethod
     async def get_report_aggregates(self, since_ts: float,
-                                    tz_offset_minutes: int = 0) -> dict[str, list[dict[str, Any]]]:
+                                    tz_offset_minutes: int = 0,
+                                    session_ids: Optional[list[str]] = None) -> dict[str, list[dict[str, Any]]]:
         """Raw per-day / per-model / per-agent aggregates for calls at or
         after since_ts — the input to reports.build_report(). Days are
         'YYYY-MM-DD' strings bucketed at UTC + tz_offset_minutes."""
@@ -966,7 +967,15 @@ class _SqliteStore(Store):
         return float(row[0]) if row else 0.0
 
     async def get_report_aggregates(self, since_ts: float,
-                                    tz_offset_minutes: int = 0) -> dict[str, list[dict[str, Any]]]:
+                                    tz_offset_minutes: int = 0,
+                                    session_ids: Optional[list[str]] = None) -> dict[str, list[dict[str, Any]]]:
+        # Project scoping (#107): a resolved list of session ids narrows
+        # every aggregate. None = whole ledger; [] = an empty project.
+        if session_ids is not None and not session_ids:
+            return {"daily": [], "models": [], "agents": [], "teams": []}
+        scope = ("" if session_ids is None
+                 else " AND session_id IN (SELECT value FROM json_each(?))")
+        scope_args: tuple = () if session_ids is None else (json.dumps(session_ids),)
         day_shift = int(tz_offset_minutes) * 60
         async with self._db.execute(
             f"""
@@ -980,14 +989,14 @@ class _SqliteStore(Store):
                 SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
                 SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
-            FROM llm_calls WHERE timestamp >= ?
+            FROM llm_calls WHERE timestamp >= ?{scope}
             GROUP BY day ORDER BY day
             """,
-            (since_ts,),
+            (since_ts, *scope_args),
         ) as cur:
             daily = [dict(r) for r in await cur.fetchall()]
         async with self._db.execute(
-            """
+            f"""
             SELECT
                 model_id,
                 provider,
@@ -999,14 +1008,14 @@ class _SqliteStore(Store):
                 SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
                 SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
-            FROM llm_calls WHERE timestamp >= ?
+            FROM llm_calls WHERE timestamp >= ?{scope}
             GROUP BY model_id, provider ORDER BY cost_usd DESC
             """,
-            (since_ts,),
+            (since_ts, *scope_args),
         ) as cur:
             models = [dict(r) for r in await cur.fetchall()]
         async with self._db.execute(
-            """
+            f"""
             SELECT
                 COALESCE(agent_name, '(unattributed)') AS agent_name,
                 COUNT(*)                               AS call_count,
@@ -1014,21 +1023,21 @@ class _SqliteStore(Store):
                 COUNT(DISTINCT session_id)             AS session_count,
                 SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
-            FROM llm_calls WHERE timestamp >= ?
+            FROM llm_calls WHERE timestamp >= ?{scope}
             GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY cost_usd DESC
             """,
-            (since_ts,),
+            (since_ts, *scope_args),
         ) as cur:
             agents = [dict(r) for r in await cur.fetchall()]
         model_lat: dict[str, list[float]] = {}
         agent_lat: dict[str, list[float]] = {}
         async with self._db.execute(
-            """
+            f"""
             SELECT model_id, COALESCE(agent_name, '(unattributed)') AS agent_name, latency_ms
             FROM llm_calls
-            WHERE timestamp >= ? AND latency_ms IS NOT NULL AND status_code = 200
+            WHERE timestamp >= ?{scope} AND latency_ms IS NOT NULL AND status_code = 200
             """,
-            (since_ts,),
+            (since_ts, *scope_args),
         ) as cur:
             for r in await cur.fetchall():
                 model_lat.setdefault(r["model_id"], []).append(float(r["latency_ms"]))
@@ -1036,7 +1045,7 @@ class _SqliteStore(Store):
         _attach_percentiles(models, "model_id", model_lat)
         _attach_percentiles(agents, "agent_name", agent_lat)
         async with self._db.execute(
-            """
+            f"""
             SELECT team, COUNT(*) AS call_count,
                    SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                    COUNT(DISTINCT session_id) AS session_count,
@@ -1045,10 +1054,10 @@ class _SqliteStore(Store):
                             THEN 1 ELSE 0 END) AS error_count,
                    SUM(CASE WHEN error_detail LIKE 'blocked:%'
                             THEN 1 ELSE 0 END) AS blocked_count
-            FROM llm_calls WHERE timestamp >= ? AND team IS NOT NULL
+            FROM llm_calls WHERE timestamp >= ?{scope} AND team IS NOT NULL
             GROUP BY team ORDER BY cost_usd DESC
             """,
-            (since_ts,),
+            (since_ts, *scope_args),
         ) as cur:
             teams = [dict(r) for r in await cur.fetchall()]
         return {"daily": daily, "models": models, "agents": agents, "teams": teams}
@@ -1767,8 +1776,13 @@ class _PostgresStore(Store):
         return float(val or 0)
 
     async def get_report_aggregates(self, since_ts: float,
-                                    tz_offset_minutes: int = 0) -> dict[str, list[dict[str, Any]]]:
+                                    tz_offset_minutes: int = 0,
+                                    session_ids: Optional[list[str]] = None) -> dict[str, list[dict[str, Any]]]:
         import datetime as _dt
+        if session_ids is not None and not session_ids:
+            return {"daily": [], "models": [], "agents": [], "teams": []}
+        scope = "" if session_ids is None else " AND session_id = ANY($2::text[])"
+        scope_args: tuple = () if session_ids is None else (session_ids,)
         since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
         day_shift = int(tz_offset_minutes)
         async with self._pool.acquire() as conn:
@@ -1784,13 +1798,13 @@ class _PostgresStore(Store):
                     SUM(COALESCE(cache_write_tokens, 0)) AS cache_write_tokens,
                     SUM(CASE WHEN status_code != 200 AND (error_detail IS NULL OR (error_detail NOT LIKE 'blocked:%' AND error_detail NOT LIKE 'transient:%' AND error_detail NOT LIKE 'probe:%')) THEN 1 ELSE 0 END) AS error_calls,
                 SUM(CASE WHEN error_detail LIKE 'blocked:%' THEN 1 ELSE 0 END) AS blocked_calls
-                FROM llm_calls WHERE timestamp >= $1
+                FROM llm_calls WHERE timestamp >= $1{scope}
                 GROUP BY day ORDER BY day
                 """,
-                since,
+                since, *scope_args,
             )]
             models = [_pg_plain(r) for r in await conn.fetch(
-                """
+                f"""
                 SELECT
                     model_id,
                     provider,
@@ -1805,13 +1819,13 @@ class _PostgresStore(Store):
                     percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
                     percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
                     percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p99_latency_ms
-                FROM llm_calls WHERE timestamp >= $1
+                FROM llm_calls WHERE timestamp >= $1{scope}
                 GROUP BY model_id, provider ORDER BY 4 DESC
                 """,
-                since,
+                since, *scope_args,
             )]
             agents = [_pg_plain(r) for r in await conn.fetch(
-                """
+                f"""
                 SELECT
                     COALESCE(agent_name, '(unattributed)') AS agent_name,
                     COUNT(*)                               AS call_count,
@@ -1822,14 +1836,14 @@ class _PostgresStore(Store):
                     percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p50_latency_ms,
                     percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p95_latency_ms,
                     percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE status_code = 200) AS p99_latency_ms
-                FROM llm_calls WHERE timestamp >= $1
+                FROM llm_calls WHERE timestamp >= $1{scope}
                 GROUP BY COALESCE(agent_name, '(unattributed)') ORDER BY 3 DESC
                 """,
-                since,
+                since, *scope_args,
             )]
         async with self._pool.acquire() as conn:
             teams = [_pg_plain(r) for r in await conn.fetch(
-                """
+                f"""
                 SELECT team, COUNT(*) AS call_count,
                        SUM(COALESCE(cost_usd, 0)) AS cost_usd,
                        COUNT(DISTINCT session_id) AS session_count,
@@ -1838,10 +1852,10 @@ class _PostgresStore(Store):
                                 THEN 1 ELSE 0 END) AS error_count,
                        SUM(CASE WHEN error_detail LIKE 'blocked:%'
                                 THEN 1 ELSE 0 END) AS blocked_count
-                FROM llm_calls WHERE timestamp >= $1 AND team IS NOT NULL
+                FROM llm_calls WHERE timestamp >= $1{scope} AND team IS NOT NULL
                 GROUP BY team ORDER BY 3 DESC
                 """,
-                since,
+                since, *scope_args,
             )]
         # asyncpg returns Decimal/float mixes — normalize numerics so JSON
         # encoding never trips.

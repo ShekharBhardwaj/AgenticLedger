@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { downloadReportsCsv, fmtNum, fmtUsd, get, liveUpdates } from "../api";
+import { downloadReportsCsv, fmtNum, fmtUsd, get, listProjects, liveUpdates, Run } from "../api";
+import { RUN_PREFIX } from "./LabelBits";
 import ProviderMark from "./ProviderMark";
 
 interface DailyRow {
@@ -125,14 +126,24 @@ function fmtDayLabel(day: string, prevDay: string): string {
 export default function ReportsView() {
   const [report, setReport] = useState<Report | null>(null);
   const [days, setDays] = useState(30);
+  // #107 — scope every number to one project (or a run-default group),
+  // same vocabulary as the Sessions and Loop Lens dropdowns.
+  const [project, setProject] = useState("");
+  const [projects, setProjects] = useState<string[]>([]);
+  const [runGroups, setRunGroups] = useState<string[]>([]);
 
   // Bucket days in the viewer's local timezone (JS offset is minutes behind
   // UTC, the API wants minutes ahead — hence the negation).
   const tzOffset = -new Date().getTimezoneOffset();
   const refresh = useCallback(() => {
-    get<Report>(`/api/reports?days=${days}&tz_offset_minutes=${tzOffset}`)
+    get<Report>(`/api/reports?days=${days}&tz_offset_minutes=${tzOffset}`
+                + (project ? `&project=${encodeURIComponent(project)}` : ""))
       .then(setReport).catch(() => {});
-  }, [days, tzOffset]);
+    listProjects().then((r) => setProjects(r.projects)).catch(() => {});
+    get<Run[]>("/api/runs")
+      .then((runs) => setRunGroups(runs.filter((r) => !r.project).map((r) => r.run_id)))
+      .catch(() => {});
+  }, [days, tzOffset, project]);
 
   useEffect(() => {
     refresh();
@@ -147,12 +158,30 @@ export default function ReportsView() {
 
   return (
     <div className="main reports">
-      <div className="seg">
+      <div className="seg reports-seg">
         {WINDOWS.map((w) => (
           <button key={w} className={days === w ? "active" : ""} onClick={() => setDays(w)}>
             {w}d
           </button>
         ))}
+        {(projects.length > 0 || runGroups.length > 0) && (
+          <select
+            className="project-filter reports-project"
+            value={project}
+            onChange={(e) => setProject(e.target.value)}
+            title="Scope every number on this page to one project or run"
+          >
+            <option value="">all projects</option>
+            {projects.map((p) => <option key={p} value={p}>{p}</option>)}
+            {runGroups.length > 0 && (
+              <optgroup label="runs (unfiled work groups under its run)">
+                {runGroups.map((r) => (
+                  <option key={r} value={`${RUN_PREFIX}${r}`}>{r}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        )}
       </div>
 
       <div className="stats-row">
@@ -213,7 +242,7 @@ export default function ReportsView() {
       <div className="section-title" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
         <span>By model</span>
         <button
-          onClick={() => downloadReportsCsv(days, tzOffset).catch(() => {})}
+          onClick={() => downloadReportsCsv(days, tzOffset, project).catch(() => {})}
           className="muted link-btn"
           style={{ fontSize: 12, marginTop: 0, padding: "2px 8px" }}
           title="Download model spend as CSV"

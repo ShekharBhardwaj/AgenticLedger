@@ -151,8 +151,9 @@ export async function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 /** Download the model report CSV via blob to keep credentials in headers instead of URLs. */
-export function downloadReportsCsv(days: number, tzOffset: number): Promise<void> {
-  return fetch(`/api/reports.csv?days=${days}&tz_offset_minutes=${tzOffset}`, {
+export function downloadReportsCsv(days: number, tzOffset: number, project = ""): Promise<void> {
+  return fetch(`/api/reports.csv?days=${days}&tz_offset_minutes=${tzOffset}`
+               + (project ? `&project=${encodeURIComponent(project)}` : ""), {
     headers: headers(),
   })
     .then((resp) => {

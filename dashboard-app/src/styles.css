@@ -201,6 +201,11 @@ body {
  * the tile. */
 .model-more { color: var(--text-dim); margin-left: 5px; white-space: nowrap; }
 
+/* #107 — the project scope sits with the window picker; every number on
+ * the page answers for the selection. */
+.reports-seg { display: flex; align-items: center; gap: 8px; }
+.reports-project { margin-left: auto; max-width: 260px; }
+
 .live-empty { font-size: 13px; margin: 4px 0 10px; }
 .live-feed { margin: 4px 0 12px; }
 .live-row {
