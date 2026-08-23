@@ -93,3 +93,25 @@ flowchart LR
   persists but other replicas pick it up on restart.
 - Loop inference is heuristics over traffic. It is deliberately
   conservative and flags rather than concludes.
+
+## UI honesty rules
+
+Written during the 0.10 design review (docs/design/0.10-everywhere-live.md)
+and promoted here as promised; every dashboard change can be reviewed
+against them:
+
+1. Derived state must not freeze: anything computed from "now" (ago
+   strings, activity-derived statuses) re-renders on the live-updates
+   heartbeat even in silence.
+2. An aggregate that collapses N things states N: no row may show one
+   item while holding five.
+3. A renamed thing shows its identity: custom names never hide raw ids.
+4. Controls say what they do to the system, not what the user hopes:
+   block/allow wording over stop/resume.
+5. Colors are judgments: green and red only where less or more is
+   genuinely better or worse; shape metrics stay neutral. Amber means
+   refused on purpose; red means broken.
+6. Mutations update every visible copy of the state in the same render.
+7. One state, one place: the same fact is never rendered twice in
+   different words (added after 0.10's live panel briefly disagreed
+   with the status badge beside it).

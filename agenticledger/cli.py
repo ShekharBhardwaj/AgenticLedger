@@ -422,7 +422,7 @@ def main(argv: Optional[list] = None) -> int:
         "update",
         help="Fetch the latest price packs from the repository into "
              "~/.agenticledger/pricing/ (overrides built-ins; restart to apply). "
-             "The only network call the CLI makes, and only when you run it.")
+             "Network is touched only when you run it.")
 
     upgrade_p = sub.add_parser(
         "upgrade",

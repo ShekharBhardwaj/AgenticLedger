@@ -1,10 +1,10 @@
 # AWS Bedrock
 
-Two ways to record agents that run on Bedrock. The first works with any
-ledger version; the second is 0.10's flagship and needs the ledger to
-hold AWS credentials of its own.
+Two ways to record agents that run on Bedrock: direct capture (the
+flagship, the ledger signs with AWS credentials of its own) or through a
+gateway (no credentials needed on the ledger).
 
-## Through a gateway (works today)
+## Through a gateway
 
 Put a gateway that speaks the OpenAI wire in front of Bedrock, and the
 ledger in front of the gateway. LiteLLM is the common choice:
@@ -24,7 +24,7 @@ agenticledger stop && agenticledger start
 Model ids such as `bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0`
 price as the Claude model they name.
 
-## Direct capture (0.10)
+## Direct capture
 
 The ledger speaks Bedrock's InvokeModel wire itself, the one Claude
 Code's Bedrock mode and the Anthropic SDK's Bedrock client use:

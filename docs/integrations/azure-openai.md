@@ -54,5 +54,6 @@ upstream_not_configured: Azure OpenAI calls need an explicit upstream ...
 
 Azure's list prices match OpenAI's for the same model ids, so the
 built-in OpenAI price pack applies. If your region or contract differs,
-override per model in `agenticledger.toml` (`[pricing]`), exactly as for
-any other provider; see docs/pricing.md.
+override per model with `AGENTICLEDGER_PRICING` (inline JSON) or
+`AGENTICLEDGER_PRICING_FILE`, exactly as for any other provider; see
+docs/pricing.md.

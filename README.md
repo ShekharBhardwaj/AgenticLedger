@@ -106,7 +106,7 @@ AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com ./venv/bin/python -m agenticle
 > AGENTICLEDGER_OTEL_ENDPOINT=http://localhost:4318
 > ```
 
-Proxy starts on `http://localhost:8000`. Traces are saved to `agenticledger.db` in the current folder (or `/data/agenticledger.db` in Docker).
+Proxy starts on `http://localhost:8000`. Traces are saved to `~/.agenticledger/agenticledger.db` when started with `agenticledger start` (one home for the background service, wherever you launched it from), to `agenticledger.db` in the current folder when run in the foreground (`agenticledger serve` / `python -m agenticledger.proxy`), or to `/data/agenticledger.db` in Docker.
 
 ---
 
@@ -178,8 +178,6 @@ The web app updates live via WebSocket as calls come in. No refresh needed.
 - **Settings** — the ⚙ shows what the proxy is actually running with: config file in effect, upstream, budgets, replay targets, each row labeled file / env / default. Read-only, secrets hidden.
 - **Replay & what-if** — open any call and **↻ Replay** it: pick a destination (the panel lists what your local server actually has loaded), and the exact captured prompt re-executes there — same provider, the other one, or **a free local model via LM Studio**; tool calls, schemas, and system prompts are translated between the Anthropic and OpenAI wire formats automatically. Works even on calls your own budget blocked — the wall can say no and you can still see what would have happened, for $0. Replays tie back to their original with **↩ Open original**. The **what-if** box answers the cheaper question first: reprice any run or session on another model with pure math, no API calls. (Configure `AGENTICLEDGER_REPLAY_API_KEY` and/or the per-provider `AGENTICLEDGER_REPLAY_*_KEY` targets.)
 - **Reports** — where the money goes: spend per day, model mix with **latency p50/p95/p99**, per-agent totals, a **by-team table** with each team's spend against its card's daily allowance ("who ran dry?" in one glance), and **cache savings** — what your prompt-cache traffic would have cost at full input rates versus what it actually cost. Errors and blocks are counted apart everywhere: **red = something broke, amber = the ledger refused on purpose** — a healthy wall never makes a healthy agent look sick
-- **Search** — full-text across prompts, outputs, and agents
-
 - **Search** — full-text search across all sessions by prompt, output, agent name, or user ID
 
 ---
@@ -326,7 +324,8 @@ signature/SBOM verification, enterprise mirrors, and scaling guidance in
 
 Measured, not promised. Reproduce them with
 `python scripts/loadtest.py --calls 2000 --seed 1000000` (Apple M-series
-MacBook, SQLite backend, ledger 0.9):
+MacBook, SQLite backend; re-measured on 0.10 with the provider adapter
+architecture in place — same numbers, 2,580 to 2,800 calls/s on both):
 
 | What | Result |
 |---|---|
@@ -417,7 +416,7 @@ Every LLM call is stored with:
 | `GET` | `/export/{session_id}` | JSON compliance export with SHA-256 integrity hash |
 | `GET` | `/export/{session_id}/report` | Printable HTML audit report |
 | `POST` | `/mcp` | MCP tool server — `list_sessions`, `explain`, `get_session`, `search`, `list_runs`, `get_run_status` |
-| `POST` | `/v1/traces` | OTLP/HTTP JSON ingest — GenAI spans from OTel-native tools become ledger calls (`/v1/logs`, `/v1/metrics` acked) |
+| `POST` | `/v1/traces` | OTLP/HTTP JSON ingest — GenAI spans from OTel-native tools become ledger calls (`/v1/logs` also ingests Claude Code tool events into tool timings; `/v1/metrics` acked) |
 
 **Examples:**
 ```bash
@@ -507,7 +506,7 @@ env-always-wins rule.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AGENTICLEDGER_UPSTREAM_URL` | **Yes** | `https://api.openai.com` | LLM endpoint to forward requests to. Accepts OpenAI, Anthropic, LiteLLM, OpenRouter, or any OpenAI-compatible URL. |
+| `AGENTICLEDGER_UPSTREAM_URL` | No | _(unset: route by call format)_ | LLM endpoint to forward requests to. Accepts OpenAI, Anthropic, LiteLLM, OpenRouter, or any OpenAI-compatible URL. Omit it and the proxy routes each call by its wire format: Anthropic-shaped calls to Anthropic, Bedrock paths to Bedrock, everything else to OpenAI. |
 | `AGENTICLEDGER_DSN` | No | `sqlite:///agenticledger.db` (Docker: `sqlite:////data/agenticledger.db`) | Database. SQLite for local dev, Postgres URL for production. |
 | `AGENTICLEDGER_HOST` | No | `0.0.0.0` | Host to bind to. Use `127.0.0.1` to restrict to localhost only. |
 | `AGENTICLEDGER_PORT` | No | `8000` | Port to run on. |
@@ -580,7 +579,7 @@ env-always-wins rule.
 
 | Variable | Default | Description |
 |---|---|---|
-| `agenticledger pricing update` | | Fetch the current price packs from the repository into `~/.agenticledger/pricing/` (overrides built-ins on next start). The only network call the CLI makes, and only when you run it. |
+| `agenticledger pricing update` | | Fetch the current price packs from the repository into `~/.agenticledger/pricing/` (overrides built-ins on next start). Network is touched only when you run it (the same is true of `agenticledger upgrade`); nothing phones home on its own. |
 | `AGENTICLEDGER_PRICING` | _(none)_ | Inline JSON map of model → `[input_per_million, output_per_million]` USD. E.g. `'{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'`. |
 | `AGENTICLEDGER_PRICING_FILE` | _(none)_ | Path to a JSON file with the same format. Applied after `AGENTICLEDGER_PRICING`. |
 

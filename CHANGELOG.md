@@ -20,54 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier draft repeated it in the panel header with different words,
   which read as two disagreeing states, and was removed.
 
-### Fixed
-- **A dead upstream leaves a record (#106).** A call whose upstream
-  connection failed (refused, DNS, TLS, timeout) used to return a bare
-  500 and vanish from the ledger entirely. The flight recorder now
-  records the attempt: a 502 capture naming the failure, the same story
-  to the agent, on both the plain and streaming paths.
-- **A run that speaks again is live again.** The runner's "loop exited"
-  marker used to hold forever: rerun the same run name and it read
-  "ended" even while calls were streaming in — the live state was
-  unreachable for wrapped runs after their first launch. The marker now
-  holds only until a call newer than it arrives; the runner ending the
-  loop anew holds again.
-- **Run cards state N models instead of spelling out all N.** Ten Bedrock
-  ids were eating the tile; the card and the detail header now show the
-  first model plus "+9 more", the full list on hover.
-- **The amber tower stands where the loop was stopped.** A refused
-  fresh-context knock used to file with no iteration number and sort into
-  a "?" bucket before iteration 1. It now numbers itself as the iteration
-  it was attempting (blocked after 3 real ones reads as iteration 4), and
-  retries in the same refused session keep that number.
-- **Inferred runs survive restarts (#100).** The signature table that
-  recognizes "this is the same loop knocking again" lived in RAM, so
-  every proxy restart orphaned auto-detected runs: the next iteration
-  opened a fresh tile, and a stopped run's wall no longer matched its
-  loop — it bit the Bedrock E2E three times in one day. Signatures now
-  write through to the store on every change (off the request path,
-  flushed at shutdown) and reload at boot, so the next iteration joins
-  the same tile and the wall holds. Named runs never had this problem;
-  now neither do organic ones.
-- **Bedrock calls wear a Bedrock mark.** The provider chip did not know
-  AWS model-id shapes (`us.anthropic.claude-...`), so Bedrock runs showed
-  a puzzling generic "U". They now get their own orange **B**, AWS
-  Bedrock, so a glance says where the bill goes.
-- **Anonymous agents no longer share a fallback session (#103).** Calls
-  with no session header and no detectable fingerprint used to fall
-  into one daily bucket, `auto-<date>`, and since runs ride sessions, a
-  stranger's calls could inherit another agent's run: observed live
-  when Claude Code's Bedrock utility calls were filed under
-  openclaw-main, on its bill. The bucket is per-agent now
-  (`auto-openclaw-<date>`, `auto-unattributed-<date>`).
-- **A conversation's first call no longer splits from its thread (#90).**
-  The last of Claude Code's per-request salt: an injected system message
-  arrives as a block array on the opener and as a plain string on the
-  follow-up. Same words, different shape, different hash. Found by
-  replaying the wire-truth corpus; fixed in the new canonicalization
-  layer, where text-only block arrays now hash as the string they mean.
-
-### Added
 - **`agenticledger upgrade` (#92).** Self-upgrade with the Python that owns
   the install — no more guessing which pip. Prints old and new version and
   the restart reminder; `--from <path>` upgrades from a local checkout;
@@ -98,7 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sleeping bookkeeper's head on ended runs, one after another. Still
   for anyone who prefers reduced motion.
 
-### Added
 - **AWS Bedrock, signed (0.10 Phase B, part 2).** The ledger holds its
   own AWS credentials, read from the standard chain only (environment,
   profile, instance role; nothing in its config file), strips whatever
@@ -149,6 +100,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the real traffic that demanded it and the fixture that pins it. The
   loop engine consumes the stable view and never hashes wire bytes
   itself; a test enforces that invariant.
+
+### Fixed
+- **A dead upstream leaves a record (#106).** A call whose upstream
+  connection failed (refused, DNS, TLS, timeout) used to return a bare
+  500 and vanish from the ledger entirely. The flight recorder now
+  records the attempt: a 502 capture naming the failure, the same story
+  to the agent, on both the plain and streaming paths.
+- **A run that speaks again is live again.** The runner's "loop exited"
+  marker used to hold forever: rerun the same run name and it read
+  "ended" even while calls were streaming in — the live state was
+  unreachable for wrapped runs after their first launch. The marker now
+  holds only until a call newer than it arrives; the runner ending the
+  loop anew holds again.
+- **Run cards state N models instead of spelling out all N.** Ten Bedrock
+  ids were eating the tile; the card and the detail header now show the
+  first model plus "+9 more", the full list on hover.
+- **The amber tower stands where the loop was stopped.** A refused
+  fresh-context knock used to file with no iteration number and sort into
+  a "?" bucket before iteration 1. It now numbers itself as the iteration
+  it was attempting (blocked after 3 real ones reads as iteration 4), and
+  retries in the same refused session keep that number.
+- **Inferred runs survive restarts (#100).** The signature table that
+  recognizes "this is the same loop knocking again" lived in RAM, so
+  every proxy restart orphaned auto-detected runs: the next iteration
+  opened a fresh tile, and a stopped run's wall no longer matched its
+  loop — it bit the Bedrock E2E three times in one day. Signatures now
+  write through to the store on every change (off the request path,
+  flushed at shutdown) and reload at boot, so the next iteration joins
+  the same tile and the wall holds. Named runs never had this problem;
+  now neither do organic ones.
+- **Bedrock calls wear a Bedrock mark.** The provider chip did not know
+  AWS model-id shapes (`us.anthropic.claude-...`), so Bedrock runs showed
+  a puzzling generic "U". They now get their own orange **B**, AWS
+  Bedrock, so a glance says where the bill goes.
+- **Anonymous agents no longer share a fallback session (#103).** Calls
+  with no session header and no detectable fingerprint used to fall
+  into one daily bucket, `auto-<date>`, and since runs ride sessions, a
+  stranger's calls could inherit another agent's run: observed live
+  when Claude Code's Bedrock utility calls were filed under
+  openclaw-main, on its bill. The bucket is per-agent now
+  (`auto-openclaw-<date>`, `auto-unattributed-<date>`).
+- **A conversation's first call no longer splits from its thread (#90).**
+  The last of Claude Code's per-request salt: an injected system message
+  arrives as a block array on the opener and as a plain string on the
+  follow-up. Same words, different shape, different hash. Found by
+  replaying the wire-truth corpus; fixed in the new canonicalization
+  layer, where text-only block arrays now hash as the string they mean.
 
 ## [0.9.3] - 2026-08-22
 
