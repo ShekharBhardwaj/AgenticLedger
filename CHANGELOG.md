@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The open-server notice stopped celebrating.** The ⚿ panel described a
+  server with no access key in green, as if an unlocked door were good
+  news. It now states the fact in amber and says what to do before
+  exposing the server (set AGENTICLEDGER_API_KEY and restart).
 - **The status summarizer stays out of loop inference (#102).** Every
   Claude Code invocation fires a third call — a status summary on the
   MAIN model — that the haiku-only utility rule classified as real work,

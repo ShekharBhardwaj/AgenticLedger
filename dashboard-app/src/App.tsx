@@ -21,7 +21,15 @@ function Logo({ size = 24 }: { size?: number }) {
 /** Plain-words answer to "what is this key?" for the ⚿ panel. */
 function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
   if (!w.auth) {
-    return { text: "This server has no access key set. Everything is open, no key needed.", tone: "ok" };
+    // An open server is a fact, not good news — no green here. Fine on
+    // your own machine; a risk the moment this port is reachable by
+    // anyone else.
+    return {
+      text: "No access key is set: everything on this server is open. "
+            + "That is fine on your own machine. Before exposing this "
+            + "server, set AGENTICLEDGER_API_KEY and restart.",
+      tone: "warn",
+    };
   }
   if (w.team) {
     return {
