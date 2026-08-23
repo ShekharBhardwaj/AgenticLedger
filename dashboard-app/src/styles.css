@@ -197,13 +197,32 @@ body {
  * announces them. The dot breathes while the run is live; each arriving
  * row slides in once and settles. Amber and red stay judgments. */
 .live-title { display: flex; align-items: center; gap: 8px; }
+/* Transport language, colors as judgments: green play while the run
+ * speaks, amber pause while the wall is up (resumable, not broken),
+ * quiet gray stop when the loop finished. Red stays reserved for
+ * genuinely broken things. */
+.live-state {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+}
+.live-state.is-live    { color: var(--green); }
+.live-state.is-paused  { color: var(--amber); }
+.live-state.is-stopped { color: var(--text-dim); }
+.live-icon { font-size: 10px; line-height: 1; }
 .live-dot {
-  --glow: var(--accent-soft);
   width: 8px; height: 8px; border-radius: 50%;
-  background: var(--accent);
+}
+.live-dot.is-live {
+  --glow: rgba(63, 185, 80, 0.18);
+  background: var(--green);
   animation: live-breathe 1.6s ease-in-out infinite;
 }
-.live-dot.walled { background: var(--amber); --glow: rgba(210, 153, 34, 0.16); }
+.live-dot.is-paused {
+  --glow: rgba(210, 153, 34, 0.16);
+  background: var(--amber);
+  animation: live-breathe 1.6s ease-in-out infinite;
+}
+.live-dot.is-stopped { background: var(--text-dim); opacity: 0.6; }
 @keyframes live-breathe {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--glow); }
   50%      { opacity: 0.55; box-shadow: 0 0 0 5px var(--glow); }

@@ -18,9 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rules: absolute times (nothing freezes), colors only as judgments, raw
   ids visible. The section shows on every run, whatever its status — a
   stopped run watching its wall is exactly the moment to be looking — and
-  the dot tells the run's truth: breathing blue while it speaks, breathing
-  amber while the wall is up, absent on an ended run (the panel still
-  stages any call that ever arrives).
+  the header speaks transport language: green &#9654; live while the run
+  speaks, amber &#10074;&#10074; paused while the wall is up (allow calls
+  again resumes it), quiet gray &#9632; stopped when the loop finished —
+  the panel still stages any call that ever arrives. Red stays reserved
+  for genuinely broken things.
 
 ### Fixed
 - **The amber tower stands where the loop was stopped.** A refused

@@ -336,14 +336,25 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             {(
               <>
                 <div className="section-title live-title">
-                  Live
                   {detail.status === "running" || detail.status === "flagged" ? (
-                    <span className="live-dot"
-                          title="this run is speaking: calls land here the moment the proxy captures them" />
+                    <span className="live-state is-live"
+                          title="this run is speaking: calls land here the moment the proxy captures them">
+                      <span className="live-dot is-live" />
+                      <span className="live-icon">&#9654;</span> live
+                    </span>
                   ) : detail.status === "stopped" ? (
-                    <span className="live-dot walled"
-                          title="the wall is up: a refused knock lands here the moment it happens" />
-                  ) : null}
+                    <span className="live-state is-paused"
+                          title="the wall is up; allow calls again resumes it. A refused knock lands here the moment it happens">
+                      <span className="live-dot is-paused" />
+                      <span className="live-icon">&#10074;&#10074;</span> paused
+                    </span>
+                  ) : (
+                    <span className="live-state is-stopped"
+                          title="this loop finished. If calls ever arrive under this run again, they land here the moment they happen">
+                      <span className="live-dot is-stopped" />
+                      <span className="live-icon">&#9632;</span> stopped
+                    </span>
+                  )}
                 </div>
                 {feed.length === 0 ? (
                   <div className="muted live-empty">
