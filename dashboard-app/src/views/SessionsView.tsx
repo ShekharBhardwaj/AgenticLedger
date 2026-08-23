@@ -471,14 +471,13 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
               if (!byKey.has(key)) byKey.set(key, []);
               byKey.get(key)!.push(sess);
             }
-            // Projects lead, in order of most recent activity; the
-            // unfiled pile — usually the biggest — waits at the bottom
-            // so filed work is never buried under it.
+            // Groups in pure recency order, unfiled included: the list
+            // is already sorted newest-first, so first appearance = most
+            // recent voice. The flight recorder never hides who spoke
+            // last — burying fresh unfiled work under project sections
+            // made brand-new sessions invisible (user-zero finding).
             for (const [key, items] of byKey) {
-              if (key) groups.push({ title: key, items });
-            }
-            if (byKey.has("")) {
-              groups.push({ title: "unfiled", items: byKey.get("")! });
+              groups.push({ title: key || "unfiled", items });
             }
           }
           return groups.map((g) => (

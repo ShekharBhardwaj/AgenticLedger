@@ -47,9 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pipx/uv-tool/Homebrew installs get the right one-liner instead of a
   behind-the-back pip fight. Network touched only when you run it.
 - **The sessions sidebar reads as projects (#105).** The all-projects view
-  now shows a heading per project with its sessions beneath, ordered by
-  most recent activity, and the unfiled pile waits at the bottom instead
-  of burying filed work. Clicking a heading focuses that project.
+  now shows a heading per project with its sessions beneath. Sections sit
+  in pure recency order, unfiled included — whichever group spoke most
+  recently is on top, so brand-new work is never buried. Clicking a
+  heading focuses that project.
 - **`agenticledger run <name> -- <command>` names the loop (#104).** One
   word in front of the command you already run: the command runs once per
   launch, each launch counts as the next iteration of the same run tile,
