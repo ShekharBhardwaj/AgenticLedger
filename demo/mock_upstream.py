@@ -63,5 +63,5 @@ class Puppet(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("puppet upstream on http://127.0.0.1:9911 — ctrl-c to stop")
+    print("puppet upstream on http://127.0.0.1:9911 (ctrl-c to stop)")
     HTTPServer(("127.0.0.1", 9911), Puppet).serve_forever()

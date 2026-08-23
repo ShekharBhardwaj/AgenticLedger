@@ -25,15 +25,21 @@ python3 demo/mock_upstream.py
 Terminal 2, a fresh demo ledger on port 8003 (never your real one):
 
 ```bash
+cd <path-to>/AgenticLedger
 rm -f /tmp/demo-ledger.db
 AGENTICLEDGER_PORT=8003 \
 AGENTICLEDGER_DSN=sqlite:////tmp/demo-ledger.db \
 AGENTICLEDGER_UPSTREAM_URL=http://localhost:9911 \
-python3 -m agenticledger.proxy
+.venv/bin/python -m agenticledger.proxy
 ```
 
-Terminal 3, the driver, idle for now. Browser: http://localhost:8003 on
-Loop Lens, big font, dark room.
+(The proxy must run on the repo's venv: `.venv/bin/python`, not the
+system `python3`, which does not have the dependencies. The puppet and
+the driver are dependency-free, so plain `python3` is fine for those.)
+
+Terminal 3, the driver, idle for now. Browser: http://localhost:8003
+(the DEMO ledger; your real one on :8000 stays out of frame) on Loop
+Lens, big font, dark room.
 
 Record the browser window only; keep terminal 3 on a second screen (or
 splice its commands in as overlays). Dry-run the whole script once
