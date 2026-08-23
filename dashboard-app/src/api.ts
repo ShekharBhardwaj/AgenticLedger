@@ -395,8 +395,32 @@ export function connectionStatus(listener: (up: boolean) => void): () => void {
   };
 }
 
-/** Subscribe to live call events; returns an unsubscribe function. */
-export function liveUpdates(onEvent: () => void): () => void {
+/** One captured call, as the proxy announces it on /ws the moment it
+ *  lands — the substance behind the Live Loop stage (#96). */
+export interface LiveCall {
+  type: string;
+  action_id: string;
+  session_id: string | null;
+  status_code: number;
+  budget_warning: boolean;
+  run_id: string | null;
+  iteration: number | null;
+  model_id: string | null;
+  provider: string | null;
+  cost_usd: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  latency_ms: number;
+  blocked: boolean;
+  error: boolean;
+  flags: string[];
+}
+
+/** Subscribe to live call events; returns an unsubscribe function.
+ *  onEvent fires debounced (refetch trigger); onCall fires immediately
+ *  per event with the parsed payload, for surfaces that stage calls as
+ *  they happen. */
+export function liveUpdates(onEvent: () => void, onCall?: (ev: LiveCall) => void): () => void {
   let ws: WebSocket | null = null;
   let closed = false;
   let debounce: number | undefined;
@@ -412,7 +436,13 @@ export function liveUpdates(onEvent: () => void): () => void {
       openSockets += 1;
       notifyStatus();
     };
-    ws.onmessage = () => {
+    ws.onmessage = (msg) => {
+      if (onCall) {
+        try {
+          const ev = JSON.parse(msg.data) as LiveCall;
+          if (ev && ev.type === "call") onCall(ev);
+        } catch { /* a malformed frame still triggers the refetch below */ }
+      }
       window.clearTimeout(debounce);
       debounce = window.setTimeout(onEvent, 400);
     };

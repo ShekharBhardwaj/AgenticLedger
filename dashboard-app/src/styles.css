@@ -193,6 +193,44 @@ body {
    and so the title doesn't reflow when hovering reveals the buttons. */
 .sidebar .card-title { padding-right: 74px; }
 
+/* #96 — Live Loop: the run detail stages calls the moment the proxy
+ * announces them. The dot breathes while the run is live; each arriving
+ * row slides in once and settles. Amber and red stay judgments. */
+.live-title { display: flex; align-items: center; gap: 8px; }
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  animation: live-breathe 1.6s ease-in-out infinite;
+}
+@keyframes live-breathe {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-soft); }
+  50%      { opacity: 0.55; box-shadow: 0 0 0 5px var(--accent-soft); }
+}
+.live-empty { font-size: 13px; margin: 4px 0 10px; }
+.live-feed { margin: 4px 0 12px; }
+.live-row {
+  display: grid;
+  grid-template-columns: 86px 44px minmax(150px, 1.4fr) 110px 70px 84px auto;
+  gap: 10px; align-items: center;
+  padding: 5px 8px; border-radius: 6px; cursor: pointer;
+  font-size: 12.5px;
+  border-left: 2px solid transparent;
+  animation: live-land 0.35s ease-out;
+}
+@keyframes live-land {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.live-row:hover { background: var(--bg-hover); }
+.live-row.blocked { border-left-color: var(--amber); }
+.live-row.errored { border-left-color: var(--red); }
+.live-when, .live-num { color: var(--text-dim); }
+.live-num { text-align: right; white-space: nowrap; }
+.live-iter { color: var(--text-dim); }
+.live-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-verdict { justify-self: end; }
+.live-ok { color: var(--text-dim); font-size: 12px; }
+
 /* #105 — the all-projects view reads as sections: a heading per project,
  * sessions beneath, the unfiled ones under their own quiet heading. */
 .proj-heading {

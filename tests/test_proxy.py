@@ -1169,3 +1169,46 @@ def test_sessions_list_orders_by_last_activity(proxy):
     assert ids == ["elder", "younger"]
     elder = next(r for r in rows if r["session_id"] == "elder")
     assert elder["last_call_at"] >= elder["started_at"]
+
+
+def test_live_event_carries_the_calls_substance(proxy):
+    """#96 Live Loop — the /ws event for a captured call carries enough to
+    stage it (run, iteration, model, cost, tokens, verdicts), not just an
+    action id that forces a page-level refetch."""
+    client = proxy(handler=_ok_handler())
+    with client.websocket_connect("/ws") as ws:
+        client.post(
+            "/v1/chat/completions", json=_CHAT_BODY,
+            headers={"x-agenticledger-session-id": "live-1",
+                     "x-agenticledger-run-id": "live-run",
+                     "x-agenticledger-iteration": "7"},
+        )
+        ev = ws.receive_json()
+    assert ev["type"] == "call"
+    assert ev["run_id"] == "live-run"
+    assert ev["iteration"] == 7
+    assert ev["model_id"] == "gpt-4o"
+    assert ev["provider"] == "openai"
+    assert ev["tokens_in"] is not None and ev["tokens_out"] is not None
+    assert ev["blocked"] is False and ev["error"] is False
+    assert ev["flags"] == []
+
+
+def test_live_event_for_a_walled_call_says_blocked(proxy):
+    """The refusal's event wears its verdict: blocked true, zero cost."""
+    client = proxy(handler=_ok_handler())
+    client.post("/v1/chat/completions", json=_CHAT_BODY,
+                headers={"x-agenticledger-run-id": "walled",
+                         "x-agenticledger-session-id": "w-1"})
+    client.post("/api/runs/walled/stop")
+    with client.websocket_connect("/ws") as ws:
+        refused = client.post(
+            "/v1/chat/completions", json=_CHAT_BODY,
+            headers={"x-agenticledger-run-id": "walled",
+                     "x-agenticledger-session-id": "w-2"})
+        assert refused.status_code == 429
+        ev = ws.receive_json()
+    assert ev["blocked"] is True
+    assert ev["error"] is False
+    assert ev["run_id"] == "walled"
+    assert ev["cost_usd"] == 0

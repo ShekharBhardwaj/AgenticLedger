@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   del as apiDel,
   FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  Iteration, liveUpdates, post, Run, runStatusInfo,
+  Iteration, LiveCall, liveUpdates, post, Run, runStatusInfo,
  listProjects,
 } from "../api";
 import CompareView from "./CompareView";
@@ -118,6 +118,11 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   const [editing, setEditing] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [oldestFirst, setOldestFirst] = useState(false);
+  // Live Loop (#96): calls staged the moment the proxy announces them,
+  // scoped to the open run. Cleared on every run switch.
+  const [feed, setFeed] = useState<(LiveCall & { at: number })[]>([]);
+  const selectedRef = useRef<string | null>(null);
+  useEffect(() => { selectedRef.current = selected; setFeed([]); }, [selected]);
 
   useEffect(() => { setConfirmStop(false); setCopied(false); }, [selected]);
 
@@ -135,7 +140,11 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
 
   useEffect(() => {
     refresh();
-    return liveUpdates(refresh);
+    return liveUpdates(refresh, (ev) => {
+      if (ev.run_id && ev.run_id === selectedRef.current) {
+        setFeed((cur) => [{ ...ev, at: Date.now() }, ...cur].slice(0, 40));
+      }
+    });
   }, [refresh]);
 
   useEffect(() => {
@@ -323,6 +332,54 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                 <div className="l">flagged calls</div>
               </div>
             </div>
+
+            {(detail.status === "running" || detail.status === "flagged" || feed.length > 0) && (
+              <>
+                <div className="section-title live-title">
+                  Live
+                  {(detail.status === "running" || detail.status === "flagged") && (
+                    <span className="live-dot"
+                          title="streaming: calls land here the moment the proxy captures them" />
+                  )}
+                </div>
+                {feed.length === 0 ? (
+                  <div className="muted live-empty">
+                    Watching. The next call under this run appears here the
+                    moment it happens.
+                  </div>
+                ) : (
+                  <div className="live-feed">
+                    {feed.map((ev) => (
+                      <div
+                        key={`${ev.action_id}-${ev.at}`}
+                        className={`live-row ${ev.blocked ? "blocked" : ev.error ? "errored" : ""}`}
+                        title={ev.session_id
+                          ? `session ${ev.session_id}: click to open`
+                          : undefined}
+                        onClick={() => ev.session_id && onOpenSession(ev.session_id)}
+                      >
+                        <span className="mono live-when">{new Date(ev.at).toLocaleTimeString()}</span>
+                        <span className="live-iter">{ev.iteration != null ? `#${ev.iteration}` : ""}</span>
+                        <span className="mono model-cell live-model">
+                          <ProviderMark provider={ev.provider} model={ev.model_id} />
+                          {ev.model_id}
+                        </span>
+                        <span className="mono live-num">{fmtNum(ev.tokens_in)} / {fmtNum(ev.tokens_out)} tok</span>
+                        <span className="mono live-num">{ev.latency_ms ? `${Math.round(ev.latency_ms)} ms` : ""}</span>
+                        <span className="mono live-num">{fmtUsd(ev.cost_usd)}</span>
+                        <span className="live-verdict">
+                          {ev.blocked ? <span className="badge blocked">blocked</span>
+                            : ev.error ? <span className="badge error">error</span>
+                            : ev.flags.length > 0 ? <span className="badge flagged">{ev.flags.join(", ")}</span>
+                            : ev.budget_warning ? <span className="badge flagged">budget warning</span>
+                            : <span className="live-ok">ok</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
 
             <WhatIf params={`run_id=${encodeURIComponent(detail.run_id)}`} />
             <BatchReplay scope="run" refId={detail.run_id} onOpenSession={onOpenSession} />

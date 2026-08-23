@@ -406,12 +406,29 @@ def create_app(
         with suppress(Exception):
             emit_span(job.action_id, job.req, job.resp, status_code=job.status_code, **job.meta)
         with suppress(Exception):
+            # Live Loop (#96): the event carries enough substance to stage
+            # the call in the run detail the moment it happens — cost,
+            # tokens, iteration, verdicts — instead of a page-level refetch.
+            _detail = job.error_detail or ""
             await broadcaster.broadcast({
                 "type": "call",
                 "action_id": job.action_id,
                 "session_id": job.meta.get("session_id"),
                 "status_code": job.status_code,
                 "budget_warning": bool(job.budget_warning),
+                "run_id": loop_fields.get("run_id") or job.meta.get("run_id"),
+                "iteration": loop_fields.get("iteration") or job.meta.get("iteration"),
+                "model_id": job.req.model_id,
+                "provider": job.req.provider,
+                "cost_usd": job.resp.cost_usd,
+                "tokens_in": job.resp.tokens_in,
+                "tokens_out": job.resp.tokens_out,
+                "latency_ms": round(job.resp.latency_ms or 0, 1),
+                "blocked": _detail.startswith("blocked:"),
+                "error": job.status_code != 200 and not _detail.startswith(
+                    ("blocked:", "transient:", "probe:")),
+                "flags": (json.loads(loop_fields["loop_flags"])
+                          if loop_fields.get("loop_flags") else []),
             })
         with suppress(Exception):
             await check_and_fire(
@@ -2145,6 +2162,17 @@ def create_app(
                     "session_id": meta.get("session_id"),
                     "status_code": budget_status,
                     "budget_warning": False,
+                    "run_id": _stopped_run,
+                    "iteration": _kill_meta.get("iteration"),
+                    "model_id": canonical_req.model_id,
+                    "provider": canonical_req.provider,
+                    "cost_usd": 0,
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "latency_ms": 0,
+                    "blocked": True,
+                    "error": False,
+                    "flags": [],
                 })
             except Exception:
                 _record_capture_drop(request.app, action_id)

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Live Loop (#96): watch a run while it runs.** A running run's detail
+  now has a Live section with a breathing dot: every call lands there the
+  moment the proxy captures it — time, iteration, model, tokens, latency,
+  cost, and its verdict (blocked amber, error red, flags named), clicking
+  a row opens its session. The websocket event grew the substance to make
+  that possible instead of forcing a page-level refetch; stats and the
+  iteration bars keep ticking as before. Built against the UI honesty
+  rules: absolute times (nothing freezes), colors only as judgments, raw
+  ids visible.
+
 ### Fixed
 - **The amber tower stands where the loop was stopped.** A refused
   fresh-context knock used to file with no iteration number and sort into
