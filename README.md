@@ -227,6 +227,97 @@ below has a config-file home; an `[env]` section passes any other
 
 ---
 
+## Providers, step by step
+
+Every provider below rides the same proxy; the only thing that changes is
+which base URL you point at it. Each recipe assumes the proxy is up
+(`agenticledger start`) and ends with the same check: run one call, open
+http://localhost:8000, and see it in Sessions.
+
+**OpenAI (and any OpenAI-compatible API)**
+
+1. Point the client at the proxy:
+   ```bash
+   export OPENAI_BASE_URL=http://localhost:8000/v1
+   ```
+2. Keep your `OPENAI_API_KEY` exactly as it was — the proxy passes your
+   auth header through untouched.
+3. Make a call; it appears in Sessions with an O mark.
+
+**Anthropic**
+
+1. Point the client at the proxy:
+   ```bash
+   export ANTHROPIC_BASE_URL=http://localhost:8000
+   ```
+2. Keep your `ANTHROPIC_API_KEY` as it was.
+3. Make a call; it appears with an A mark. No upstream config needed —
+   the proxy routes Anthropic-shaped calls to Anthropic by wire format.
+
+**AWS Bedrock (direct capture)**
+
+1. Give the ledger AWS credentials of its own through the standard chain
+   (env vars, `~/.aws` profile, or an instance role) scoped to
+   `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`,
+   then install the extra and restart:
+   ```bash
+   pip install "agentic-ledger[bedrock]"
+   agenticledger stop && agenticledger start
+   ```
+2. Check the ⚙ Settings panel: the Bedrock row should read "signing as
+   the ledger in <your region>".
+3. Point the client at the proxy — Claude Code:
+   ```bash
+   export CLAUDE_CODE_USE_BEDROCK=1
+   export ANTHROPIC_BEDROCK_BASE_URL=http://localhost:8000
+   ```
+   boto3: `boto3.client("bedrock-runtime", endpoint_url="http://localhost:8000")`.
+4. Make a call; it appears with an orange B mark. The ledger strips the
+   caller's identity and re-signs with its own credentials. Full guide:
+   [docs/integrations/bedrock.md](docs/integrations/bedrock.md).
+
+**Azure OpenAI**
+
+1. Set the upstream to your resource:
+   ```bash
+   agenticledger config set proxy.upstream_url https://<resource>.openai.azure.com
+   agenticledger stop && agenticledger start
+   ```
+2. Point the client's Azure endpoint at `http://localhost:8000`; keep
+   your `api-key` header as it was.
+3. Calls are tagged `azure-openai` and priced by the model the RESPONSE
+   names, so deployment aliases can't hide the real model. Full guide:
+   [docs/integrations/azure-openai.md](docs/integrations/azure-openai.md).
+
+**Local models (LM Studio, Ollama with the OpenAI API)**
+
+1. Set the upstream to the local server:
+   ```bash
+   agenticledger config set proxy.upstream_url http://localhost:1234
+   agenticledger stop && agenticledger start
+   ```
+2. `export OPENAI_BASE_URL=http://localhost:8000/v1` in the agent.
+3. Calls appear with a purple mark and $0 cost. Full guide:
+   [docs/integrations/lm-studio.md](docs/integrations/lm-studio.md).
+
+**Gateways (OpenRouter, LiteLLM)**
+
+1. Set the upstream to the gateway:
+   ```bash
+   agenticledger config set proxy.upstream_url https://openrouter.ai/api
+   agenticledger stop && agenticledger start
+   ```
+2. `export OPENAI_BASE_URL=http://localhost:8000/v1`; keep the gateway
+   key as it was.
+3. Gateway-prefixed model ids ("anthropic/claude-...") price correctly
+   via substring matching. Guides: [openrouter.md](docs/integrations/openrouter.md),
+   [litellm.md](docs/integrations/litellm.md).
+
+Framework-specific recipes (CrewAI, LangGraph, AutoGen, Vercel AI SDK,
+pydantic-ai, and more) live in [docs/integrations/](docs/integrations/).
+
+---
+
 ## Coding agents — Claude Code, Ralph loops & friends
 
 Claude Code (and most coding agents) can be pointed at the proxy with a single
