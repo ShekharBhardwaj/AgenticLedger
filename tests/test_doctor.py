@@ -87,7 +87,7 @@ def test_effective_port_prefers_the_recorded_truth(tmp_path, monkeypatch):
     probing shell's config — a service on a non-default port read as down
     from any other terminal (found live)."""
     from agenticledger import service
-    monkeypatch.setattr(service, "PORT_STATE_FILE", tmp_path / "proxy.port")
+    monkeypatch.setattr(service, "PID_FILE", tmp_path / "proxy.pid")
     monkeypatch.setattr(service, "_read_pid", lambda: 12345)
     monkeypatch.setattr(service, "_alive", lambda pid: True)
     (tmp_path / "proxy.port").write_text("8003")

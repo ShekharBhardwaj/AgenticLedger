@@ -30,11 +30,17 @@ LOG_FILE = STATE_DIR / "proxy.log"
 # (empty when it started without one). `config set` compares against this
 # to warn when an edit lands in a file the running proxy never saw.
 CONFIG_STATE_FILE = STATE_DIR / "proxy.config"
-# The port the RUNNING proxy answers on. The service inherits its env at
-# start, but status/doctor run later in shells without that env — probing
-# the default port then misreads a healthy service as down (found live
-# during a demo on a non-default port).
-PORT_STATE_FILE = STATE_DIR / "proxy.port"
+
+
+def _port_state_file() -> Path:
+    """Where the RUNNING proxy's port is recorded — always beside the pid
+    file (tests relocate PID_FILE; the port record must follow, or it
+    writes into a home directory a fresh CI runner does not have). The
+    service inherits its env at start, but status/doctor run later in
+    shells without that env; probing the default port then misreads a
+    healthy service on another port as down (found live during a demo).
+    """
+    return PID_FILE.parent / "proxy.port"
 
 
 def _port() -> int:
@@ -100,7 +106,7 @@ def effective_port() -> int:
     at start while the process lives, else this shell's configuration."""
     if _alive(_read_pid()):
         try:
-            return int(PORT_STATE_FILE.read_text().strip())
+            return int(_port_state_file().read_text().strip())
         except (OSError, ValueError):
             pass
     return _port()
@@ -153,7 +159,7 @@ def start() -> int:
                                 stdout=log, env=_child_env(), **kwargs)
     PID_FILE.parent.mkdir(exist_ok=True)
     PID_FILE.write_text(str(proc.pid))
-    PORT_STATE_FILE.write_text(str(port))
+    _port_state_file().write_text(str(port))
 
     # Wait for it to answer, so "start" means started — not "maybe".
     for _ in range(40):
