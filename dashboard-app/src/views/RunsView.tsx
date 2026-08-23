@@ -166,6 +166,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
           </div>
         )}
         <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
+                       runGroups={[...new Set(runs.filter((x) => !x.project).map((x) => x.run_id))]}
                        hasPinned={runs.some((x) => x.pinned)}
                        knownApps={[...new Set(runs.map((x) => x.app_id).filter(Boolean))] as string[]}
                        onCreated={refresh}

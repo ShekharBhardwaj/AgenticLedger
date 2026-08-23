@@ -53,7 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   filed still belongs to its run, so the run acts as its default group
   (and shows in the dropdown under "runs"); only truly runless,
   projectless sessions land under "unfiled". Clicking a heading focuses
-  that group.
+  that group. The Loop Lens dropdown lists unfiled runs the same way, so
+  an auto-run can be focused there too.
 - **`agenticledger run <name> -- <command>` names the loop (#104).** One
   word in front of the command you already run: the command runs once per
   launch, each launch counts as the next iteration of the same run tile,
