@@ -198,13 +198,15 @@ body {
  * row slides in once and settles. Amber and red stay judgments. */
 .live-title { display: flex; align-items: center; gap: 8px; }
 .live-dot {
+  --glow: var(--accent-soft);
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--accent);
   animation: live-breathe 1.6s ease-in-out infinite;
 }
+.live-dot.walled { background: var(--amber); --glow: rgba(210, 153, 34, 0.16); }
 @keyframes live-breathe {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-soft); }
-  50%      { opacity: 0.55; box-shadow: 0 0 0 5px var(--accent-soft); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--glow); }
+  50%      { opacity: 0.55; box-shadow: 0 0 0 5px var(--glow); }
 }
 .live-empty { font-size: 13px; margin: 4px 0 10px; }
 .live-feed { margin: 4px 0 12px; }

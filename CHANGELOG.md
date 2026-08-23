@@ -17,7 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   iteration bars keep ticking as before. Built against the UI honesty
   rules: absolute times (nothing freezes), colors only as judgments, raw
   ids visible. The section shows on every run, whatever its status — a
-  stopped run watching its wall is exactly the moment to be looking.
+  stopped run watching its wall is exactly the moment to be looking — and
+  the dot tells the run's truth: breathing blue while it speaks, breathing
+  amber while the wall is up, absent on an ended run (the panel still
+  stages any call that ever arrives).
 
 ### Fixed
 - **The amber tower stands where the loop was stopped.** A refused
