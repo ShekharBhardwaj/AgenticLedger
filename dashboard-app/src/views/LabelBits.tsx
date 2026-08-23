@@ -109,7 +109,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
 
   return (
     <div className="project-filter-row">
-      {(projects.length > 0 || hasPinned) && (
+      {(projects.length > 0 || hasPinned || (runGroups?.length ?? 0) > 0) && (
         <select
           className="project-filter"
           value={value}
