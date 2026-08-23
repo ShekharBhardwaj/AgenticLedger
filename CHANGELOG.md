@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`agenticledger doctor`.** One command, the whole truth of a machine:
+  every install on PATH in shell-resolution order and who shadows whom,
+  the Python that owns each with a real import probe (wrong-architecture
+  wheels and missing dependencies surface here, and a Rosetta-world
+  install is reported as a fact, not a failure), the background service
+  and whether it serves older code than what is installed — each finding
+  with the exact command that fixes it. Written from a day of exactly
+  these problems.
 - **The spend meter: the bill, before the bill.** A run's detail now
   reads its money live — spent so far, burning $X/h (the last hour's
   pace), and "at this pace $Y by 8:00 AM" — and any run can carry a

@@ -433,6 +433,12 @@ def main(argv: Optional[list] = None) -> int:
                            help="Install from a local checkout instead of "
                                 "PyPI (path to the repo)")
 
+    sub.add_parser(
+        "doctor",
+        help="The whole truth of this machine: every install on PATH, who "
+             "shadows whom, what can actually run, and what is serving.",
+    )
+
     sub.add_parser("stop", help="Stop the background proxy.")
     sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
     logs_p = sub.add_parser("logs", help="Show the background proxy's log.")
@@ -494,6 +500,9 @@ def main(argv: Optional[list] = None) -> int:
         return 2
     if args.subcommand == "upgrade":
         return upgrade_command(args)
+    if args.subcommand == "doctor":
+        from agenticledger.doctor import doctor_command
+        return doctor_command()
     if args.subcommand == "pricing":
         from .pricing_update import update
         return update()

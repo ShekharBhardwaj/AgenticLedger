@@ -1023,6 +1023,13 @@ This runs three jobs:
 
 ## Troubleshooting
 
+**Start here: `agenticledger doctor`.** One command prints the whole truth
+of your machine: every install on PATH and who shadows whom, which Python
+owns each one and whether it can actually run (wrong-architecture wheels
+and missing dependencies caught by a real import probe), what the
+background service is serving, and a fix-it command per finding. Most of
+the problems below diagnose themselves with it.
+
 **Old version / commands or env vars named `agentledger` (no "ic")** —
 you're running a pre-0.4 release, most likely from a venv that already had
 the package installed: plain `pip install agentic-ledger` says "requirement
