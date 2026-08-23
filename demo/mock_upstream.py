@@ -11,7 +11,7 @@ The puppet echoes them back in OpenAI response shape, so every number the
 audience sees on the dashboard is computed by the ledger from realistic
 wire traffic — nothing on screen is hard-coded.
 
-Run:  python demo/mock_upstream.py   (listens on 127.0.0.1:9911)
+Run from the repo root:  python3 demo/mock_upstream.py   (port 9911)
 """
 
 import json

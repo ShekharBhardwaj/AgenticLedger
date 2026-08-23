@@ -11,12 +11,15 @@ driver sends.
 
 ## Setup (before recording, ~2 minutes)
 
-Three terminals from the repo root, plus a browser.
+Three terminals, plus a browser. Every terminal starts with a `cd` to
+the repo root (the commands below assume you are there), and uses
+`python3` (plain `python` does not exist on a stock Mac).
 
 Terminal 1, the puppet model:
 
 ```bash
-python demo/mock_upstream.py
+cd <path-to>/AgenticLedger
+python3 demo/mock_upstream.py
 ```
 
 Terminal 2, a fresh demo ledger on port 8003 (never your real one):
@@ -26,7 +29,7 @@ rm -f /tmp/demo-ledger.db
 AGENTICLEDGER_PORT=8003 \
 AGENTICLEDGER_DSN=sqlite:////tmp/demo-ledger.db \
 AGENTICLEDGER_UPSTREAM_URL=http://localhost:9911 \
-python -m agenticledger.proxy
+python3 -m agenticledger.proxy
 ```
 
 Terminal 3, the driver, idle for now. Browser: http://localhost:8003 on
@@ -49,7 +52,7 @@ restart.
 **0:35. Act 1: the live loop and the spend meter (50s).** Terminal 3:
 
 ```bash
-python demo/drive.py live 2
+python3 demo/drive.py live 2
 ```
 
 A `night-shift` tile appears; click it.
@@ -77,8 +80,8 @@ out quietly.
 **1:25. Act 2: two ways to run an agent (55s).** Terminal 3:
 
 ```bash
-python demo/drive.py react
-python demo/drive.py ralph
+python3 demo/drive.py react
+python3 demo/drive.py ralph
 ```
 
 Open the `react-style` run (it wears a `flagged` badge).

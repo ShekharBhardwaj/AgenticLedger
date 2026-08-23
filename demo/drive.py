@@ -5,9 +5,9 @@ upstream (mock_upstream.py); everything the audience sees — costs,
 iterations, threads, flags, refusals — is the ledger doing its actual
 job on that traffic.
 
-    python demo/drive.py ralph    # act: a Ralph loop, 4 fresh-context iterations
-    python demo/drive.py react    # act: a ReAct agent that gets itself stuck
-    python demo/drive.py live     # act: a paced overnight loop for the live feed
+    python3 demo/drive.py ralph    # act: a Ralph loop, 4 fresh-context iterations
+    python3 demo/drive.py react    # act: a ReAct agent that gets itself stuck
+    python3 demo/drive.py live     # act: a paced overnight loop for the live feed
                                   #      (keeps knocking ~2 min; set a ceiling
                                   #       mid-flight and watch the wall)
 
