@@ -8,22 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Live Loop (#96): watch a run while it runs.** A running run's detail
-  now has a Live section with a breathing dot: every call lands there the
-  moment the proxy captures it — time, iteration, model, tokens, latency,
-  cost, and its verdict (blocked amber, error red, flags named), clicking
-  a row opens its session. The websocket event grew the substance to make
-  that possible instead of forcing a page-level refetch; stats and the
+- **Live Loop (#96): watch a run while it runs.** Every run's detail now
+  has "Calls, as they happen": every call lands there the moment the
+  proxy captures it — time, iteration, model, tokens, latency, cost, and
+  its verdict (blocked amber, error red, flags named), clicking a row
+  opens its session. The websocket event grew the substance to make that
+  possible instead of forcing a page-level refetch; stats and the
   iteration bars keep ticking as before. Built against the UI honesty
   rules: absolute times (nothing freezes), colors only as judgments, raw
-  ids visible. The section shows on every run, whatever its status — a
-  stopped run watching its wall is exactly the moment to be looking — and
-  the header speaks transport language: green &#9654; live while the run
-  speaks, amber &#10074;&#10074; paused while the wall is up (allow calls
-  again resumes it), quiet gray &#9632; stopped when the loop finished —
-  the icon itself is the state light, breathing while something can still
-  happen; the panel still stages any call that ever arrives. Red stays
-  reserved for genuinely broken things.
+  ids visible, and the run's status lives in ONE place (the badge) — an
+  earlier draft repeated it in the panel header with different words,
+  which read as two disagreeing states, and was removed.
 
 ### Fixed
 - **A run that speaks again is live again.** The runner's "loop exited"

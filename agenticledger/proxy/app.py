@@ -2717,20 +2717,21 @@ def _with_run_status(run: dict, run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS
     """Derive a runner-facing status from the aggregate row.
 
     Precedence: operator stop (the kill switch outranks everything: the
-    human said stop) → completion promise → flags → an explicit end marker
-    (the runner told us the loop exited) → inactivity inference (last call
-    older than the run-gap window) → running."""
+    human said stop) → completion promise → an explicit end marker (the
+    runner told us the loop exited) → inactivity inference (last call
+    older than the run-gap window) → flags → running. Flags describe a
+    LIVE run in trouble; a run that went silent days ago is ended, flags
+    or not — a 3-day-dead flagged run reading "live" was found on the
+    user's own board."""
     promise_seen = bool(run.pop("promise_seen", 0))
     if stopped:
         run["status"] = "stopped"
     elif promise_seen:
         run["status"] = "complete"
-    elif run.get("flagged_calls"):
-        run["status"] = "flagged"
     elif explicitly_ended:
         run["status"] = "ended"
     else:
-        run["status"] = "running"
+        run["status"] = "flagged" if run.get("flagged_calls") else "running"
         last = run.get("last_call_at")
         with suppress(Exception):
             last_dt = datetime.datetime.fromisoformat(str(last))

@@ -201,27 +201,6 @@ body {
  * the tile. */
 .model-more { color: var(--text-dim); margin-left: 5px; white-space: nowrap; }
 
-.live-title { display: flex; align-items: center; gap: 8px; }
-/* Transport language, colors as judgments: green play while the run
- * speaks, amber pause while the wall is up (resumable, not broken),
- * quiet gray stop when the loop finished. Red stays reserved for
- * genuinely broken things. */
-.live-state {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
-}
-.live-state.is-live    { color: var(--green); }
-.live-state.is-paused  { color: var(--amber); }
-.live-state.is-stopped { color: var(--text-dim); }
-/* The icon IS the state light: it wears the state's color and breathes
- * while something can still happen (live, paused). No separate dot. */
-.live-icon { font-size: 10px; line-height: 1; }
-.is-live .live-icon,
-.is-paused .live-icon { animation: live-breathe 1.6s ease-in-out infinite; }
-@keyframes live-breathe {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.45; }
-}
 .live-empty { font-size: 13px; margin: 4px 0 10px; }
 .live-feed { margin: 4px 0 12px; }
 .live-row {
