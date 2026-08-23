@@ -317,6 +317,7 @@ export interface Session {
   call_count: number;
   started_at: string;
   last_call_at: string;
+  run_id: string | null;
   total_latency_ms: number | null;
   total_tokens_in: number | null;
   total_tokens_out: number | null;

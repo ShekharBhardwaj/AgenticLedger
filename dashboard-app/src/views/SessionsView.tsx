@@ -4,7 +4,7 @@ import {
   getCall, interactionTags, listProjects, liveUpdates, post, ReplayResult,
   replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
-import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, TimeSortToggle, timeSorted } from "./LabelBits";
+import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, RUN_PREFIX, TimeSortToggle, timeSorted } from "./LabelBits";
 import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
 
@@ -449,6 +449,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
           onChange={(e) => setQuery(e.target.value)}
         />
         <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
+                       runGroups={[...new Set(sessions.filter((x) => !x.project && x.run_id).map((x) => x.run_id!))]}
                        hasPinned={sessions.some((x) => x.pinned)}
                        knownApps={[...new Set(sessions.map((x) => x.app_id).filter(Boolean))] as string[]}
                        onCreated={refresh}
@@ -461,13 +462,16 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
           // heading (#105). Groups keep the list's order, so the project
           // that spoke most recently sits on top. A chosen project (or
           // the starred view) is already one group — no headings there.
-          const groups: { title: string | null; items: typeof list }[] = [];
+          const groups: { key: string | null; title: string | null; items: typeof list }[] = [];
           if (projectFilter !== "") {
-            groups.push({ title: null, items: list });
+            groups.push({ key: null, title: null, items: list });
           } else {
+            // A session nobody filed still belongs to its run, so the run
+            // acts as its default project group; only truly runless,
+            // projectless sessions land under "unfiled".
             const byKey = new Map<string, typeof list>();
             for (const sess of list) {
-              const key = sess.project ?? "";
+              const key = sess.project ?? (sess.run_id ? RUN_PREFIX + sess.run_id : "");
               if (!byKey.has(key)) byKey.set(key, []);
               byKey.get(key)!.push(sess);
             }
@@ -477,18 +481,26 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             // last — burying fresh unfiled work under project sections
             // made brand-new sessions invisible (user-zero finding).
             for (const [key, items] of byKey) {
-              groups.push({ title: key || "unfiled", items });
+              groups.push({
+                key: key || null,
+                title: key.startsWith(RUN_PREFIX)
+                  ? key.slice(RUN_PREFIX.length)
+                  : (key || "unfiled"),
+                items,
+              });
             }
           }
           return groups.map((g) => (
-            <div key={g.title ?? "all"} className="proj-group">
+            <div key={g.key ?? g.title ?? "all"} className="proj-group">
               {g.title && (
                 <div
-                  className={`proj-heading ${g.title === "unfiled" ? "unfiled" : ""}`}
-                  title={g.title === "unfiled"
-                    ? "sessions not filed under any project"
-                    : "click to focus this project"}
-                  onClick={() => { if (g.title !== "unfiled") setProjectFilter(g.title!); }}
+                  className={`proj-heading ${g.key ? "" : "unfiled"} ${g.key?.startsWith(RUN_PREFIX) ? "run-group" : ""}`}
+                  title={g.key === null
+                    ? "sessions with no project and no run"
+                    : g.key.startsWith(RUN_PREFIX)
+                      ? "unfiled sessions of this run — the run is their default group; click to focus"
+                      : "click to focus this project"}
+                  onClick={() => { if (g.key) setProjectFilter(g.key); }}
                 >
                   {g.title}<span className="proj-count">{g.items.length}</span>
                 </div>

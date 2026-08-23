@@ -65,14 +65,18 @@ export function LabelEditor({ scope, refId, label, project, projects, onSaved, o
 }
 
 export const STARRED = "__starred__";
+// Dropdown values for run-based groups: a session nobody filed still
+// belongs to its run, so the run acts as its default project.
+export const RUN_PREFIX = "run:";
 
 /** Filter dropdown (two built-in views, then the user's projects) plus a
  *  "+ project" creator: name it now, optionally bind it to an app id so
  *  matching work — past and future — files itself. */
-export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps, onCreated, sessionCount }: {
+export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps, onCreated, sessionCount, runGroups }: {
   projects: string[]; value: string; onChange: (v: string) => void;
   hasPinned?: boolean; knownApps?: string[]; onCreated?: () => void;
   sessionCount?: number;   // how many items the current project filter shows
+  runGroups?: string[];    // run ids acting as default projects for unfiled work
 }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -81,7 +85,7 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
   const [managing, setManaging] = useState<"rename" | "delete" | null>(null);
   const [newName, setNewName] = useState("");
   const [confirmText, setConfirmText] = useState("");
-  const isProject = value !== "" && value !== STARRED;
+  const isProject = value !== "" && value !== STARRED && !value.startsWith(RUN_PREFIX);
 
   const doRename = () => {
     renameProject(value, newName.trim())
@@ -115,6 +119,13 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
           <option value="">all projects</option>
           <option value={STARRED}>★ all starred</option>
           {projects.map((p) => <option key={p} value={p}>{p}</option>)}
+          {(runGroups?.length ?? 0) > 0 && (
+            <optgroup label="runs (unfiled work groups under its run)">
+              {runGroups!.map((r) => (
+                <option key={r} value={`${RUN_PREFIX}${r}`}>{r}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
       )}
       {isProject && !creating && !managing && (
@@ -206,11 +217,12 @@ export function ProjectFilter({ projects, value, onChange, hasPinned, knownApps,
 }
 
 /** Does a row belong in the current filter view? */
-export function matchesFilter<T extends { pinned: boolean; project: string | null }>(
+export function matchesFilter<T extends { pinned: boolean; project: string | null; run_id?: string | null }>(
   row: T, filter: string,
 ): boolean {
   if (!filter) return true;
   if (filter === STARRED) return row.pinned;
+  if (filter.startsWith(RUN_PREFIX)) return row.run_id === filter.slice(RUN_PREFIX.length);
   return row.project === filter;
 }
 

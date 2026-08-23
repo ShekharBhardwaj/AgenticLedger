@@ -49,8 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The sessions sidebar reads as projects (#105).** The all-projects view
   now shows a heading per project with its sessions beneath. Sections sit
   in pure recency order, unfiled included — whichever group spoke most
-  recently is on top, so brand-new work is never buried. Clicking a
-  heading focuses that project.
+  recently is on top, so brand-new work is never buried. A session nobody
+  filed still belongs to its run, so the run acts as its default group
+  (and shows in the dropdown under "runs"); only truly runless,
+  projectless sessions land under "unfiled". Clicking a heading focuses
+  that group.
 - **`agenticledger run <name> -- <command>` names the loop (#104).** One
   word in front of the command you already run: the command runs once per
   launch, each launch counts as the next iteration of the same run tile,

@@ -204,6 +204,8 @@ body {
 .proj-group:first-of-type .proj-heading { margin-top: 4px; }
 .proj-heading:hover { color: var(--accent); }
 .proj-heading.unfiled { cursor: default; }
+/* Run-default groups keep the id's own casing — auto-run-… in caps is noise. */
+.proj-heading.run-group { text-transform: none; letter-spacing: 0.02em; }
 .proj-heading.unfiled:hover { color: var(--text-dim); }
 .proj-count {
   font-weight: 500; letter-spacing: normal; text-transform: none;
