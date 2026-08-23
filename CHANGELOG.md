@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that possible instead of forcing a page-level refetch; stats and the
   iteration bars keep ticking as before. Built against the UI honesty
   rules: absolute times (nothing freezes), colors only as judgments, raw
-  ids visible.
+  ids visible. The section shows on every run, whatever its status — a
+  stopped run watching its wall is exactly the moment to be looking.
 
 ### Fixed
 - **The amber tower stands where the loop was stopped.** A refused
