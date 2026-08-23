@@ -2122,15 +2122,18 @@ def create_app(
                 # calls) resolve to nothing and sail through the wall, and
                 # the loop's next iterations launder into a fresh auto-run
                 # (#77/#78, both observed live).
-                _attribution.commit_refusal(
+                _blocked_iteration = _attribution.commit_refusal(
                     _attribution.resolve({**meta, "run_id": _stopped_run}, canonical_req),
                     canonical_req, meta)
                 blocked_resp = _empty_response(0)
                 apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
                 # File the refusal under the stopped run even when the id
                 # was inferred, so the amber trail lands where the operator
-                # is looking.
+                # is looking — numbered as the iteration the loop was
+                # attempting, so it sorts after the ones that ran.
                 _kill_meta = {**meta, "run_id": _stopped_run}
+                if _kill_meta.get("iteration") is None and _blocked_iteration is not None:
+                    _kill_meta["iteration"] = _blocked_iteration
                 await request.app.state.store.save(
                     action_id, canonical_req, blocked_resp,
                     status_code=budget_status,

@@ -336,3 +336,31 @@ def test_wall_on_inferred_run_survives_a_restart(proxy, tmp_path):
     assert refused.status_code == 429, (
         "the restart let the loop launder past the wall")
     assert refused.json()["error"]["type"] == "run_stopped"
+
+
+def test_blocked_knock_files_as_the_next_iteration(proxy):
+    """The amber tower stands where the loop was stopped: a refused
+    fresh-context knock numbers itself as the iteration it was attempting
+    (here: 3, after two real ones), never a "?" bucket."""
+    import httpx as _hx
+
+    from .conftest import openai_response
+
+    client = proxy(handler=lambda r: _hx.Response(200, json=openai_response()))
+    _fresh_context_call(client, "seq-1")
+    _fresh_context_call(client, "seq-2")
+    run_id = next(r["run_id"] for r in client.get("/api/runs").json()
+                  if r["run_id"].startswith("auto-run-"))
+    client.post(f"/api/runs/{run_id}/stop")
+
+    assert _fresh_context_call(client, "seq-3").status_code == 429
+    blocked = client.get("/session/seq-3").json()
+    assert len(blocked) == 1
+    assert blocked[0]["error_detail"].startswith("blocked:")
+    assert blocked[0]["iteration"] == 3
+    assert blocked[0]["run_id"] == run_id
+
+    # A retry in the same refused session keeps the number, not a new one.
+    assert _fresh_context_call(client, "seq-3").status_code == 429
+    rows = client.get("/session/seq-3").json()
+    assert [r["iteration"] for r in rows] == [3, 3]

@@ -58,9 +58,12 @@ class AttributionResolver:
         stitches the thread, raises flags. Returns the loop columns."""
         return self._tracker.annotate(action_id, req, resp, meta)
 
-    def commit_refusal(self, attribution: Attribution, req, meta: dict) -> None:
+    def commit_refusal(self, attribution: Attribution, req,
+                       meta: dict) -> Optional[int]:
         """A wall refused this call under attribution.run_id: remember the
         session and keep the signature alive so the loop's retries and
-        next iterations keep resolving to the walled run."""
+        next iterations keep resolving to the walled run. Returns the
+        iteration the refusal files under (see observe_blocked)."""
         if attribution.run_id:
-            self._tracker.observe_blocked(req, meta, attribution.run_id)
+            return self._tracker.observe_blocked(req, meta, attribution.run_id)
+        return None

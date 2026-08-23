@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The amber tower stands where the loop was stopped.** A refused
+  fresh-context knock used to file with no iteration number and sort into
+  a "?" bucket before iteration 1. It now numbers itself as the iteration
+  it was attempting (blocked after 3 real ones reads as iteration 4), and
+  retries in the same refused session keep that number.
 - **Inferred runs survive restarts (#100).** The signature table that
   recognizes "this is the same loop knocking again" lived in RAM, so
   every proxy restart orphaned auto-detected runs: the next iteration

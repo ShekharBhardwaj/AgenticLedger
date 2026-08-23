@@ -394,21 +394,32 @@ class LoopTracker:
             self._sessions[session_id] = state
         return state
 
-    def observe_blocked(self, req, meta: dict, run_id: str) -> None:
+    def observe_blocked(self, req, meta: dict, run_id: str) -> Optional[int]:
         """A refusal happened at the wall for `run_id`. Record enough state
         that the session's follow-up calls (client retries, companion calls)
         resolve to the same walled run, and keep the run's signature alive
         while its loop keeps knocking: a stop must never launder a loop into
-        a fresh identity. Never raises."""
+        a fresh identity. Returns the iteration number the refusal should
+        file under — a NEW session knocking at the wall is the loop
+        attempting its next iteration, so it gets the next number and the
+        amber lands after the blue, not in a "?" bucket. Never raises."""
         try:
             now = self._clock()
             state = self._session(meta.get("session_id") or "-")
             state.last_seen = now
             if state.run_id is None:
                 state.run_id = run_id
+                key = self._signature_key(req, meta)
+                sig = self._live_signature(key, now) if key else None
+                if sig is not None and sig["run_id"] == run_id:
+                    sig["iteration"] = (sig["iteration"] or 0) + 1
+                    sig["last_seen"] = now
+                    self._sig_changed(key, sig)
+                    state.iteration = sig["iteration"]
             self._register_sig(req, meta, run_id, state.iteration or 1, now)
+            return state.iteration
         except Exception:
-            pass
+            return None
 
     def _register_sig(self, req, meta: dict, run_id: str, iteration: int, now: float) -> None:
         """Point a signature at a run: claim it if free or expired, refresh
