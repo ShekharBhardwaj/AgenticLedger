@@ -196,6 +196,11 @@ body {
 /* #96 — Live Loop: the run detail stages calls the moment the proxy
  * announces them. The dot breathes while the run is live; each arriving
  * row slides in once and settles. Amber and red stay judgments. */
+/* An aggregate states N, it does not spell out all N: one model name,
+ * then "+9 more", the full list on hover. Ten Bedrock ids were eating
+ * the tile. */
+.model-more { color: var(--text-dim); margin-left: 5px; white-space: nowrap; }
+
 .live-title { display: flex; align-items: center; gap: 8px; }
 /* Transport language, colors as judgments: green play while the run
  * speaks, amber pause while the wall is up (resumable, not broken),
@@ -208,24 +213,14 @@ body {
 .live-state.is-live    { color: var(--green); }
 .live-state.is-paused  { color: var(--amber); }
 .live-state.is-stopped { color: var(--text-dim); }
+/* The icon IS the state light: it wears the state's color and breathes
+ * while something can still happen (live, paused). No separate dot. */
 .live-icon { font-size: 10px; line-height: 1; }
-.live-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-}
-.live-dot.is-live {
-  --glow: rgba(63, 185, 80, 0.18);
-  background: var(--green);
-  animation: live-breathe 1.6s ease-in-out infinite;
-}
-.live-dot.is-paused {
-  --glow: rgba(210, 153, 34, 0.16);
-  background: var(--amber);
-  animation: live-breathe 1.6s ease-in-out infinite;
-}
-.live-dot.is-stopped { background: var(--text-dim); opacity: 0.6; }
+.is-live .live-icon,
+.is-paused .live-icon { animation: live-breathe 1.6s ease-in-out infinite; }
 @keyframes live-breathe {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--glow); }
-  50%      { opacity: 0.55; box-shadow: 0 0 0 5px var(--glow); }
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
 }
 .live-empty { font-size: 13px; margin: 4px 0 10px; }
 .live-feed { margin: 4px 0 12px; }

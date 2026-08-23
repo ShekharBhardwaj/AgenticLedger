@@ -224,9 +224,12 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               <span>{r.call_count} calls</span>
               <span>{fmtUsd(r.total_cost_usd)}</span>
               {r.models && (
-                <span className="mono model-cell">
+                <span className="mono model-cell" title={r.models.split(",").join("\n")}>
                   <ProviderMark model={r.models.split(",")[0]} />
-                  {r.models}
+                  {r.models.split(",")[0]}
+                  {r.models.includes(",") && (
+                    <span className="model-more">+{r.models.split(",").length - 1} more</span>
+                  )}
                 </span>
               )}
               {r.framework && <span className="badge fw">{r.framework}</span>}
@@ -316,7 +319,13 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                 {detail.run_id} {copied ? "✓ copied" : "⧉"}
               </button>
               {" · "}started {fmtTime(detail.started_at)} · last call {fmtTime(detail.last_call_at)}
-              {detail.models && <> · <span className="mono">{detail.models}</span></>}
+              {detail.models && (
+                <> · <span className="mono" title={detail.models.split(",").join("\n")}>
+                  {detail.models.split(",")[0]}
+                  {detail.models.includes(",") &&
+                    ` +${detail.models.split(",").length - 1} more`}
+                </span></>
+              )}
             </div>
 
             <div className="stats-row">
@@ -339,19 +348,16 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                   {detail.status === "running" || detail.status === "flagged" ? (
                     <span className="live-state is-live"
                           title="this run is speaking: calls land here the moment the proxy captures them">
-                      <span className="live-dot is-live" />
                       <span className="live-icon">&#9654;</span> live
                     </span>
                   ) : detail.status === "stopped" ? (
                     <span className="live-state is-paused"
                           title="the wall is up; allow calls again resumes it. A refused knock lands here the moment it happens">
-                      <span className="live-dot is-paused" />
                       <span className="live-icon">&#10074;&#10074;</span> paused
                     </span>
                   ) : (
                     <span className="live-state is-stopped"
                           title="this loop finished. If calls ever arrive under this run again, they land here the moment they happen">
-                      <span className="live-dot is-stopped" />
                       <span className="live-icon">&#9632;</span> stopped
                     </span>
                   )}

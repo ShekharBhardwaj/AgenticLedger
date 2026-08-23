@@ -21,10 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the header speaks transport language: green &#9654; live while the run
   speaks, amber &#10074;&#10074; paused while the wall is up (allow calls
   again resumes it), quiet gray &#9632; stopped when the loop finished —
-  the panel still stages any call that ever arrives. Red stays reserved
-  for genuinely broken things.
+  the icon itself is the state light, breathing while something can still
+  happen; the panel still stages any call that ever arrives. Red stays
+  reserved for genuinely broken things.
 
 ### Fixed
+- **Run cards state N models instead of spelling out all N.** Ten Bedrock
+  ids were eating the tile; the card and the detail header now show the
+  first model plus "+9 more", the full list on hover.
 - **The amber tower stands where the loop was stopped.** A refused
   fresh-context knock used to file with no iteration number and sort into
   a "?" bucket before iteration 1. It now numbers itself as the iteration
