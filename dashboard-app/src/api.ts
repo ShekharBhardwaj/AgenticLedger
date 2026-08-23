@@ -175,7 +175,7 @@ export function downloadReportsCsv(days: number, tzOffset: number, project = "")
 /** Name, pin, or file a session/run under a project (#47). */
 export function setLabel(
   scope: "session" | "run", refId: string,
-  fields: { name?: string; pinned?: boolean; project?: string },
+  fields: { name?: string; pinned?: boolean; project?: string; budget_usd?: number },
 ): Promise<unknown> {
   return put(`/api/labels/${scope}/${encodeURIComponent(refId)}`, fields);
 }
@@ -283,6 +283,8 @@ export interface Run {
   project: string | null;
   project_auto: boolean;
   app_id: string | null;
+  budget_usd?: number | null;        // per-run cost ceiling (0.11 spend meter)
+  burn_last_hour_usd?: number;       // spend in the last hour (detail only)
 }
 
 /** Plain-words tooltip for a run's status badge. */

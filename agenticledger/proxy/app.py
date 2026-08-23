@@ -291,6 +291,16 @@ def create_app(
         # persisted as marker rows so a restart keeps the wall up.
         app.state.stopped_runs = set(
             (await app.state.store.get_labels("stopped")).keys())
+        # 0.11 spend meter: per-run cost ceilings ride the label rows, so
+        # they survive restarts like the walls do. Spend counters seed
+        # lazily from the store (once per ceiling'd run per process) and
+        # tick in memory on every capture — the hot path pays no query.
+        app.state.run_ceilings = {
+            rid: lab["budget_usd"]
+            for rid, lab in (await app.state.store.get_labels("run")).items()
+            if lab.get("budget_usd")}
+        app.state.run_spend = {}
+        app.state.ceiling_alerted = set()
         # Inferred-run identity survives restarts (#100): signatures still
         # inside the run gap are reloaded, so a loop's next iteration joins
         # the same tile and a stopped run's wall still matches it. Every
@@ -383,6 +393,18 @@ def create_app(
     app.state.capture_dropped = 0
     app.state.capture_persisted = 0
 
+    async def _run_spent(app_obj, run_id: str) -> float:
+        """The run's spend so far, for ceiling checks: seeded from the
+        store once per process, ticked in memory on every capture."""
+        spend = app_obj.state.run_spend.get(run_id)
+        if spend is None:
+            spend = 0.0
+            with suppress(Exception):
+                run = await app_obj.state.store.get_run(run_id)
+                spend = float((run or {}).get("total_cost_usd") or 0)
+            app_obj.state.run_spend[run_id] = spend
+        return spend
+
     async def _persist(job: _CaptureJob) -> None:
         """Do the post-call work for a captured request. The store write is the
         critical part (and counts the capture); span/broadcast/alerts are best-effort."""
@@ -414,6 +436,26 @@ def create_app(
             with suppress(Exception):
                 await store.save_tool_executions(tool_executions)
         app.state.capture_persisted += 1
+        # Spend meter tick: keep the ceiling check query-free on the hot
+        # path, and say something BEFORE the wall (80%), not only at it.
+        _tick_run = loop_fields.get("run_id") or job.meta.get("run_id")
+        if _tick_run and _tick_run in app.state.run_ceilings:
+            spent = await _run_spent(app, _tick_run) + float(job.resp.cost_usd or 0)
+            app.state.run_spend[_tick_run] = spent
+            ceiling = app.state.run_ceilings[_tick_run]
+            if (spent >= 0.8 * ceiling and _tick_run not in app.state.ceiling_alerted
+                    and _alert_config.webhook_url):
+                app.state.ceiling_alerted.add(_tick_run)
+                with suppress(Exception):
+                    from .alerts import _fire
+                    await _fire(_alert_config.webhook_url, {
+                        "type": "run_ceiling_approaching",
+                        "run_id": _tick_run,
+                        "spent_usd": round(spent, 4),
+                        "ceiling_usd": ceiling,
+                        "text": (f"run '{_tick_run}' has spent ${spent:.2f} "
+                                 f"of its ${ceiling:.2f} ceiling"),
+                    })
         with suppress(Exception):
             emit_span(job.action_id, job.req, job.resp, status_code=job.status_code, **job.meta)
         with suppress(Exception):
@@ -744,6 +786,7 @@ def create_app(
             r["label"] = lab.get("name")
             r["pinned"] = bool(lab.get("pinned"))
             r["project"] = lab.get("project")
+            r["budget_usd"] = lab.get("budget_usd")
             r["project_auto"] = False
             # Auto-filing, weakest-to-strongest: a session inherits its
             # run's project (filing a loop files its sessions), an app
@@ -905,14 +948,34 @@ def create_app(
                                     detail=f"{field} must be a string ≤ {limit} chars")
         if "pinned" in payload and not isinstance(payload["pinned"], bool):
             raise HTTPException(status_code=400, detail="pinned must be true/false")
+        budget = payload.get("budget_usd")
+        if budget is not None:
+            if not isinstance(budget, (int, float)) or budget < 0 or budget > 1_000_000:
+                raise HTTPException(status_code=400,
+                                    detail="budget_usd must be a number between 0 and 1000000 (0 clears it)")
+            if scope != "run":
+                raise HTTPException(status_code=400,
+                                    detail="budget_usd applies to runs only")
         row = await request.app.state.store.set_label(
             scope, ref_id,
             name=payload.get("name"),
             pinned=payload.get("pinned"),
             project=payload.get("project"),
+            budget_usd=budget,
         )
+        if scope == "run" and budget is not None:
+            # The wall reads these in memory; keep them in the same
+            # render as the click (honesty rule 6, server edition).
+            if budget:
+                request.app.state.run_ceilings[ref_id] = float(budget)
+                request.app.state.ceiling_alerted.discard(ref_id)
+                await _run_spent(request.app, ref_id)
+            else:
+                request.app.state.run_ceilings.pop(ref_id, None)
+                request.app.state.ceiling_alerted.discard(ref_id)
         await _audit(principal, request, "set_label", f"{scope}:{ref_id}",
-                     json.dumps({k: payload[k] for k in ("name", "pinned", "project")
+                     json.dumps({k: payload[k]
+                                 for k in ("name", "pinned", "project", "budget_usd")
                                  if k in payload}))
         return JSONResponse(row)
 
@@ -1748,6 +1811,11 @@ def create_app(
         # renamed run reads as two different runs (tile vs header).
         run = _annotate_labels([run], await store.get_labels("run"), "run_id",
                                await store.get_project_rules())[0]
+        # Burn rate for the spend meter: the last hour's cost, so the
+        # detail can say "at this pace" honestly (0 when quiet).
+        with suppress(Exception):
+            run["burn_last_hour_usd"] = round(
+                await store.get_run_recent_cost(run_id, time.time() - 3600), 6)
         return JSONResponse(_with_run_status(
             run, loop_run_gap_seconds,
             explicitly_ended=_end_marker_holds(run, ended.get(run["run_id"])),
@@ -2168,14 +2236,26 @@ def create_app(
         # read-only. (#74)
         _stopped_run = meta.get("run_id")
         if (_stopped_run is None and is_llm_path and not is_count_tokens
-                and request.app.state.stopped_runs):
+                and (request.app.state.stopped_runs
+                     or request.app.state.run_ceilings)):
             with suppress(Exception):
                 _stopped_run = _attribution.resolve(
                     meta, normalize_request(body_json, path)).run_id
-        if (is_llm_path and not is_count_tokens and _stopped_run
-                and _stopped_run in request.app.state.stopped_runs):
-            reason = (f"calls under run '{_stopped_run}' are blocked by the "
-                      "operator; allow them again from the dashboard")
+        reason = None
+        if is_llm_path and not is_count_tokens and _stopped_run:
+            if _stopped_run in request.app.state.stopped_runs:
+                reason = (f"calls under run '{_stopped_run}' are blocked by the "
+                          "operator; allow them again from the dashboard")
+            elif _stopped_run in request.app.state.run_ceilings:
+                # The bill, before the bill: the run's own ceiling refuses
+                # the call while it would still cost nothing.
+                _ceiling = request.app.state.run_ceilings[_stopped_run]
+                _spent = await _run_spent(request.app, _stopped_run)
+                if _spent >= _ceiling:
+                    reason = (f"run '{_stopped_run}' reached its cost ceiling "
+                              f"(${_spent:.2f} of ${_ceiling:.2f}); raise or "
+                              "clear the ceiling from the dashboard")
+        if reason:
             try:
                 canonical_req = normalize_request(body_json, path)
                 # The tracker must see refusals too: without this, the
@@ -2221,7 +2301,9 @@ def create_app(
             except Exception:
                 _record_capture_drop(request.app, action_id)
             return JSONResponse(
-                {"error": {"type": "run_stopped", "message": reason}},
+                {"error": {"type": ("run_ceiling_reached"
+                                    if "cost ceiling" in reason else "run_stopped"),
+                           "message": reason}},
                 status_code=budget_status,
             )
 

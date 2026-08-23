@@ -193,6 +193,29 @@ body {
    and so the title doesn't reflow when hovering reveals the buttons. */
 .sidebar .card-title { padding-right: 74px; }
 
+/* 0.11 spend meter — the bill, before the bill. The track fills toward
+ * the ceiling; amber from 80% (the wall is near), and at 100% the wall
+ * itself speaks through blocked rows, so the track stays amber, not red:
+ * refused on purpose is never "broken". */
+.spend-meter {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 2px 0 12px; font-size: 13px;
+}
+.meter-track {
+  width: 140px; height: 8px; border-radius: 4px;
+  background: var(--bg-hover); overflow: hidden; display: inline-block;
+}
+.meter-fill {
+  display: block; height: 100%; border-radius: 4px;
+  background: var(--accent); transition: width 0.4s ease;
+}
+.meter-track.near .meter-fill, .meter-track.at .meter-fill { background: var(--amber); }
+.ceiling-input {
+  width: 90px; font-size: 13px; padding: 3px 6px;
+  background: var(--bg-hover); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px;
+}
+
 /* #96 — Live Loop: the run detail stages calls the moment the proxy
  * announces them. The dot breathes while the run is live; each arriving
  * row slides in once and settles. Amber and red stay judgments. */

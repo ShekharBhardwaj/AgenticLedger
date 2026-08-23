@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The spend meter: the bill, before the bill.** A run's detail now
+  reads its money live — spent so far, burning $X/h (the last hour's
+  pace), and "at this pace $Y by 8:00 AM" — and any run can carry a
+  **cost ceiling**: once spend reaches it, the proxy refuses further
+  calls (amber, `run_ceiling_reached`, costing nothing) until you raise
+  or clear it. Set it from the run detail while the loop runs; it rides
+  the label row, so it survives restarts, and it walls inferred runs the
+  same as named ones. A webhook alert fires at 80% of the ceiling. The
+  $6,000-overnight story, answered at the wire.
+
 ### Fixed
 - **The open-server notice stopped celebrating.** The ⚿ panel described a
   server with no access key in green, as if an unlocked door were good

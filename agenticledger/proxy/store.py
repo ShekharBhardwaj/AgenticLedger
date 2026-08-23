@@ -266,14 +266,16 @@ class Store(ABC):
     async def set_label(self, scope: str, ref_id: str,
                         name: Optional[str] = None,
                         pinned: Optional[bool] = None,
-                        project: Optional[str] = None) -> dict[str, Any]:
+                        project: Optional[str] = None,
+                        budget_usd: Optional[float] = None) -> dict[str, Any]:
         """Upsert a human label for a session or run — only the provided
-        fields change; empty string clears a text field. Returns the row."""
+        fields change; empty string clears a text field, 0 clears the
+        budget ceiling. Returns the row."""
         ...
 
     @abstractmethod
     async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
-        """ref_id → {name, pinned, project} for one scope."""
+        """ref_id → {name, pinned, project, budget_usd} for one scope."""
         ...
 
     @abstractmethod
@@ -341,6 +343,11 @@ class Store(ABC):
     async def upsert_run_signature(self, app_key: str, digest: str, run_id: str,
                                    iteration: Optional[int], last_seen: float) -> None:
         """Write-through for one loop signature: claim, refresh, or advance."""
+        ...
+
+    @abstractmethod
+    async def get_run_recent_cost(self, run_id: str, since_ts: float) -> float:
+        """The run's spend since `since_ts` — the burn-rate numerator."""
         ...
 
     @abstractmethod
@@ -536,6 +543,9 @@ class _SqliteStore(Store):
         """)
         with contextlib.suppress(Exception):
             await db.execute("ALTER TABLE api_tokens ADD COLUMN budget_daily REAL")
+        # 0.11 spend meter: a run's cost ceiling rides its label row.
+        with contextlib.suppress(Exception):
+            await db.execute("ALTER TABLE labels ADD COLUMN budget_usd REAL")
         await db.commit()
         return cls(db)
 
@@ -812,28 +822,32 @@ class _SqliteStore(Store):
             rows = await cur.fetchall()
         return [_sqlite_row(r) for r in rows]
 
-    async def set_label(self, scope, ref_id, name=None, pinned=None, project=None):
+    async def set_label(self, scope, ref_id, name=None, pinned=None, project=None,
+                        budget_usd=None):
         import time as _time
         row = await self._get_label(scope, ref_id)
         merged = {
             "name": row.get("name") if name is None else (name or None),
             "pinned": bool(row.get("pinned")) if pinned is None else bool(pinned),
             "project": row.get("project") if project is None else (project or None),
+            "budget_usd": (row.get("budget_usd") if budget_usd is None
+                           else (float(budget_usd) or None)),
         }
         await self._db.execute(
-            "INSERT INTO labels (scope, ref_id, name, pinned, project, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "INSERT INTO labels (scope, ref_id, name, pinned, project, budget_usd, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(scope, ref_id) DO UPDATE SET name=excluded.name, "
-            "pinned=excluded.pinned, project=excluded.project, updated_at=excluded.updated_at",
+            "pinned=excluded.pinned, project=excluded.project, "
+            "budget_usd=excluded.budget_usd, updated_at=excluded.updated_at",
             (scope, ref_id, merged["name"], 1 if merged["pinned"] else 0,
-             merged["project"], _time.time()),
+             merged["project"], merged["budget_usd"], _time.time()),
         )
         await self._db.commit()
         return {"scope": scope, "ref_id": ref_id, **merged}
 
     async def _get_label(self, scope: str, ref_id: str) -> dict[str, Any]:
         async with self._db.execute(
-            "SELECT name, pinned, project FROM labels WHERE scope = ? AND ref_id = ?",
+            "SELECT name, pinned, project, budget_usd FROM labels WHERE scope = ? AND ref_id = ?",
             (scope, ref_id),
         ) as cur:
             row = await cur.fetchone()
@@ -841,11 +855,12 @@ class _SqliteStore(Store):
 
     async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
         async with self._db.execute(
-            "SELECT ref_id, name, pinned, project FROM labels WHERE scope = ?",
+            "SELECT ref_id, name, pinned, project, budget_usd FROM labels WHERE scope = ?",
             (scope,),
         ) as cur:
             rows = await cur.fetchall()
         return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
+                              "budget_usd": r["budget_usd"],
                               "project": r["project"]} for r in rows}
 
     async def delete_label(self, scope: str, ref_id: str) -> int:
@@ -947,6 +962,14 @@ class _SqliteStore(Store):
             (app_key, digest, run_id, iteration, last_seen),
         )
         await self._db.commit()
+
+    async def get_run_recent_cost(self, run_id: str, since_ts: float) -> float:
+        async with self._db.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls "
+            "WHERE run_id = ? AND timestamp >= ?",
+            (run_id, since_ts),
+        ) as cur:
+            return float((await cur.fetchone())[0] or 0)
 
     async def get_run_end_markers(self, run_ids: list[str]) -> dict[str, float]:
         if not run_ids:
@@ -1326,6 +1349,8 @@ class _PostgresStore(Store):
             """)
             await conn.execute(
                 "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS budget_daily DOUBLE PRECISION")
+            await conn.execute(
+                "ALTER TABLE labels ADD COLUMN IF NOT EXISTS budget_usd DOUBLE PRECISION")
             await conn.execute("ALTER TABLE llm_calls ALTER COLUMN temperature TYPE DOUBLE PRECISION")
             await conn.execute("ALTER TABLE llm_calls ALTER COLUMN cost_usd TYPE DOUBLE PRECISION")
         return cls(pool)
@@ -1626,34 +1651,41 @@ class _PostgresStore(Store):
                 run_id)
         return [_pg_row(r) for r in rows]
 
-    async def set_label(self, scope, ref_id, name=None, pinned=None, project=None):
+    async def set_label(self, scope, ref_id, name=None, pinned=None, project=None,
+                        budget_usd=None):
         import time as _time
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT name, pinned, project FROM labels WHERE scope = $1 AND ref_id = $2",
+                "SELECT name, pinned, project, budget_usd FROM labels "
+                "WHERE scope = $1 AND ref_id = $2",
                 scope, ref_id)
             prev = _pg_plain(row) if row else {}
             merged = {
                 "name": prev.get("name") if name is None else (name or None),
                 "pinned": bool(prev.get("pinned")) if pinned is None else bool(pinned),
                 "project": prev.get("project") if project is None else (project or None),
+                "budget_usd": (prev.get("budget_usd") if budget_usd is None
+                               else (float(budget_usd) or None)),
             }
             await conn.execute(
-                "INSERT INTO labels (scope, ref_id, name, pinned, project, updated_at) "
-                "VALUES ($1, $2, $3, $4, $5, $6) "
+                "INSERT INTO labels (scope, ref_id, name, pinned, project, budget_usd, updated_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7) "
                 "ON CONFLICT (scope, ref_id) DO UPDATE SET name=EXCLUDED.name, "
-                "pinned=EXCLUDED.pinned, project=EXCLUDED.project, updated_at=EXCLUDED.updated_at",
+                "pinned=EXCLUDED.pinned, project=EXCLUDED.project, "
+                "budget_usd=EXCLUDED.budget_usd, updated_at=EXCLUDED.updated_at",
                 scope, ref_id, merged["name"], merged["pinned"], merged["project"],
-                _time.time(),
+                merged["budget_usd"], _time.time(),
             )
         return {"scope": scope, "ref_id": ref_id, **merged}
 
     async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT ref_id, name, pinned, project FROM labels WHERE scope = $1", scope)
+                "SELECT ref_id, name, pinned, project, budget_usd "
+                "FROM labels WHERE scope = $1", scope)
         return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
-                              "project": r["project"]} for r in rows}
+                              "project": r["project"],
+                              "budget_usd": r["budget_usd"]} for r in rows}
 
     async def delete_label(self, scope: str, ref_id: str) -> int:
         async with self._pool.acquire() as conn:
@@ -1754,6 +1786,16 @@ class _PostgresStore(Store):
                 "last_seen = EXCLUDED.last_seen",
                 app_key, digest, run_id, iteration, last_seen,
             )
+
+    async def get_run_recent_cost(self, run_id: str, since_ts: float) -> float:
+        import datetime as _dt
+        since = _dt.datetime.fromtimestamp(since_ts, tz=_dt.timezone.utc)
+        async with self._pool.acquire() as conn:
+            val = await conn.fetchval(
+                "SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls "
+                "WHERE run_id = $1 AND timestamp >= $2",
+                run_id, since)
+        return float(val or 0)
 
     async def get_run_end_markers(self, run_ids: list[str]) -> dict[str, float]:
         if not run_ids:

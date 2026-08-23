@@ -7,6 +7,7 @@ import {
 } from "../api";
 import CompareView from "./CompareView";
 import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, TimeSortToggle, timeSorted } from "./LabelBits";
+import { setLabel } from "../api";
 import ProviderMark from "./ProviderMark";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
@@ -121,6 +122,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   // Live Loop (#96): calls staged the moment the proxy announces them,
   // scoped to the open run. Cleared on every run switch.
   const [feed, setFeed] = useState<(LiveCall & { at: number })[]>([]);
+  const [ceilingEdit, setCeilingEdit] = useState<string | null>(null);
   const selectedRef = useRef<string | null>(null);
   useEffect(() => { selectedRef.current = selected; setFeed([]); }, [selected]);
 
@@ -341,6 +343,73 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                 <div className="l">flagged calls</div>
               </div>
             </div>
+
+            {(() => {
+              // The bill, before the bill (#0.11): burn, projection, and
+              // the run's own ceiling — editable while it runs.
+              const burn = detail.burn_last_hour_usd ?? 0;
+              const ceiling = detail.budget_usd ?? null;
+              const spent = detail.total_cost_usd || 0;
+              const liveNow = detail.status === "running" || detail.status === "flagged";
+              const morning = new Date();
+              morning.setHours(8, 0, 0, 0);
+              if (morning.getTime() <= Date.now()) morning.setDate(morning.getDate() + 1);
+              const hoursToMorning = (morning.getTime() - Date.now()) / 3_600_000;
+              const projected = spent + burn * hoursToMorning;
+              const frac = ceiling ? Math.min(spent / ceiling, 1) : 0;
+              const saveCeiling = (v: number) => {
+                setLabel("run", detail.run_id, { budget_usd: v })
+                  .then(refresh).catch(() => {});
+                setCeilingEdit(null);
+              };
+              return (
+                <div className="spend-meter">
+                  <span className="mono">{fmtUsd(spent)} spent</span>
+                  {liveNow && burn > 0 && (
+                    <span className="muted"
+                          title="the last hour's spend, projected forward unchanged">
+                      · burning {fmtUsd(burn)}/h · at this pace {fmtUsd(projected)} by{" "}
+                      {morning.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                  )}
+                  {ceiling ? (
+                    <>
+                      <span className={`meter-track ${frac >= 1 ? "at" : frac >= 0.8 ? "near" : ""}`}
+                            title={`ceiling: calls are refused once spend reaches ${fmtUsd(ceiling)}`}>
+                        <span className="meter-fill" style={{ width: `${frac * 100}%` }} />
+                      </span>
+                      <span className="mono">{fmtUsd(ceiling)} ceiling</span>
+                      <button className="link-btn" onClick={() => setCeilingEdit(String(ceiling))}>edit</button>
+                      <button className="link-btn" title="remove the ceiling; calls flow again"
+                              onClick={() => saveCeiling(0)}>clear</button>
+                    </>
+                  ) : ceilingEdit === null ? (
+                    <button className="link-btn"
+                            title="refuse this run's calls at the proxy once its spend reaches a dollar amount; survives restarts"
+                            onClick={() => setCeilingEdit("")}>+ cost ceiling</button>
+                  ) : null}
+                  {ceilingEdit !== null && (
+                    <span className="key-actions">
+                      <input autoFocus className="ceiling-input" placeholder="$"
+                             value={ceilingEdit}
+                             onChange={(e) => setCeilingEdit(e.target.value)}
+                             onKeyDown={(e) => {
+                               if (e.key === "Enter") {
+                                 const v = parseFloat(ceilingEdit);
+                                 if (!Number.isNaN(v) && v >= 0) saveCeiling(v);
+                               }
+                               if (e.key === "Escape") setCeilingEdit(null);
+                             }} />
+                      <button className="link-btn" onClick={() => {
+                        const v = parseFloat(ceilingEdit);
+                        if (!Number.isNaN(v) && v >= 0) saveCeiling(v);
+                      }}>Save</button>
+                      <button className="link-btn" onClick={() => setCeilingEdit(null)}>Cancel</button>
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {(
               <>
