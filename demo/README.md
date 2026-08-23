@@ -28,7 +28,7 @@ steps aside for the recording and comes back after:
 
 ```bash
 cd <path-to>/AgenticLedger
-agenticledger upgrade --from .
+agenticledger upgrade
 agenticledger stop
 rm -f /tmp/demo-ledger.db
 AGENTICLEDGER_PORT=8003 \
@@ -38,7 +38,13 @@ agenticledger start
 ```
 
 No log spew, terminal freed, `agenticledger logs` if you need them —
-exactly the product experience the video is selling. After the shoot:
+exactly the product experience the video is selling, on exactly the
+release viewers can install. (`agenticledger upgrade` pulls the latest
+from PyPI; recording unreleased work instead is `upgrade --from .`.)
+
+One feature gate: the cost-ceiling beat in Act 1 needs 0.11. On an
+older release, play the wall moment with **⊘ block calls** instead —
+same amber refusals, same story. After the shoot:
 
 ```bash
 agenticledger stop && agenticledger start
