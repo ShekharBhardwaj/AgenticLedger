@@ -80,3 +80,19 @@ def test_healthy_machine_has_no_verdicts():
 
 def test_empty_path_says_install():
     assert "pip install agentic-ledger" in diagnose([], {"running": False})[0]
+
+
+def test_effective_port_prefers_the_recorded_truth(tmp_path, monkeypatch):
+    """status/doctor probe the port the service RECORDED at start, not the
+    probing shell's config — a service on a non-default port read as down
+    from any other terminal (found live)."""
+    from agenticledger import service
+    monkeypatch.setattr(service, "PORT_STATE_FILE", tmp_path / "proxy.port")
+    monkeypatch.setattr(service, "_read_pid", lambda: 12345)
+    monkeypatch.setattr(service, "_alive", lambda pid: True)
+    (tmp_path / "proxy.port").write_text("8003")
+    assert service.effective_port() == 8003
+    # Dead service: fall back to this shell's configuration.
+    monkeypatch.setattr(service, "_alive", lambda pid: False)
+    monkeypatch.setattr(service, "_port", lambda: 8000)
+    assert service.effective_port() == 8000

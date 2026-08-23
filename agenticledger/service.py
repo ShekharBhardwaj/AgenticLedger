@@ -30,6 +30,11 @@ LOG_FILE = STATE_DIR / "proxy.log"
 # (empty when it started without one). `config set` compares against this
 # to warn when an edit lands in a file the running proxy never saw.
 CONFIG_STATE_FILE = STATE_DIR / "proxy.config"
+# The port the RUNNING proxy answers on. The service inherits its env at
+# start, but status/doctor run later in shells without that env — probing
+# the default port then misreads a healthy service as down (found live
+# during a demo on a non-default port).
+PORT_STATE_FILE = STATE_DIR / "proxy.port"
 
 
 def _port() -> int:
@@ -90,6 +95,17 @@ def running_proxy_config() -> tuple[bool, Optional[Path]]:
     return True, (Path(text) if text else None)
 
 
+def effective_port() -> int:
+    """The port the running service actually answers on: the one recorded
+    at start while the process lives, else this shell's configuration."""
+    if _alive(_read_pid()):
+        try:
+            return int(PORT_STATE_FILE.read_text().strip())
+        except (OSError, ValueError):
+            pass
+    return _port()
+
+
 def _read_pid() -> Optional[int]:
     try:
         return int(PID_FILE.read_text().strip())
@@ -137,6 +153,7 @@ def start() -> int:
                                 stdout=log, env=_child_env(), **kwargs)
     PID_FILE.parent.mkdir(exist_ok=True)
     PID_FILE.write_text(str(proc.pid))
+    PORT_STATE_FILE.write_text(str(port))
 
     # Wait for it to answer, so "start" means started — not "maybe".
     for _ in range(40):
@@ -177,7 +194,7 @@ def stop() -> int:
 
 
 def status() -> int:
-    port = _port()
+    port = effective_port()
     pid = _read_pid()
     running = _alive(pid)
     health = _health(port) if running else None

@@ -190,7 +190,7 @@ def doctor_command() -> int:
 
     pid = service._read_pid()
     alive = service._alive(pid)
-    port = service._port()
+    port = service.effective_port()
     health = service._health(port) if alive else None
     service_state = {
         "running": bool(alive and health),

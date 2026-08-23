@@ -5,6 +5,15 @@ All notable changes to Agentic Ledger are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **status and doctor probe the port the service actually runs on.** The
+  service inherits its env (including the port) at start, but status and
+  doctor run later in shells without that env and probed the default
+  port, misreading a healthy service on :8003 as down. The port is now
+  recorded at start and read back while the process lives.
+
 ## [0.11.0] - 2026-08-23
 
 ### Added
