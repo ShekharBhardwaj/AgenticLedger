@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   200: probes and transient failures the ledger counts apart show their
   status code, muted, instead.
 
+- **Project-scoped reports (#107).** A project dropdown on Reports (same
+  vocabulary as the Sessions and Loop Lens filters, run-default groups
+  included) scopes every number on the page — spend per day, model mix,
+  latencies, agents, teams, cache savings — and the CSV export, to one
+  project. Resolution follows the same three-source rule the sidebar
+  files sessions by: hand label, then app binding, then run inheritance.
 - **`agenticledger upgrade` (#92).** Self-upgrade with the Python that owns
   the install — no more guessing which pip. Prints old and new version and
   the restart reminder; `--from <path>` upgrades from a local checkout;
