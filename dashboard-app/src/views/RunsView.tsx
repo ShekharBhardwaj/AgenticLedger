@@ -381,7 +381,12 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                             : ev.error ? <span className="badge error">error</span>
                             : ev.flags.length > 0 ? <span className="badge flagged">{ev.flags.join(", ")}</span>
                             : ev.budget_warning ? <span className="badge flagged">budget warning</span>
-                            : <span className="live-ok">ok</span>}
+                            : ev.status_code !== 200 ? (
+                              <span className="live-ok"
+                                    title="counted apart: a probe or transient failure the ledger does not count as an agent error">
+                                {ev.status_code}
+                              </span>
+                            ) : <span className="live-ok">ok</span>}
                         </span>
                       </div>
                     ))}

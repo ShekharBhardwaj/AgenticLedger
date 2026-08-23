@@ -16,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   possible instead of forcing a page-level refetch; stats and the
   iteration bars keep ticking as before. Built against the UI honesty
   rules: absolute times (nothing freezes), colors only as judgments, raw
-  ids visible, and the run's status lives in ONE place (the badge) — an
+  ids visible, the run's status lives in ONE place (the badge) — an
   earlier draft repeated it in the panel header with different words,
-  which read as two disagreeing states, and was removed.
+  which read as two disagreeing states, and was removed — and "ok" means
+  200: probes and transient failures the ledger counts apart show their
+  status code, muted, instead.
 
 - **`agenticledger upgrade` (#92).** Self-upgrade with the Python that owns
   the install — no more guessing which pip. Prints old and new version and
