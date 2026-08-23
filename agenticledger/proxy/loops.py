@@ -32,6 +32,7 @@ Inference metadata is never a security boundary.
 """
 
 import contextlib
+import datetime as _dt
 import json
 import re
 import time
@@ -475,3 +476,46 @@ def _as_int(value) -> Optional[int]:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def end_marker_holds(run: dict, ended_at: Optional[float]) -> bool:
+    """The runner's "loop exited" marker holds only until the run speaks
+    again: calls newer than the marker mean the loop came back (a rerun of
+    the same name, an always-on agent), and the run is live again until
+    the runner ends it anew or the silence window closes. Without this, a
+    run that ended once read ended FOREVER, mid-stream included."""
+    if ended_at is None:
+        return False
+    with contextlib.suppress(Exception):
+        last = _dt.datetime.fromisoformat(str(run.get("last_call_at")))
+        return last.timestamp() <= float(ended_at)
+    return True
+
+
+def with_run_status(run: dict, run_gap_seconds: float = DEFAULT_RUN_GAP_SECONDS,
+                     explicitly_ended: bool = False, stopped: bool = False) -> dict:
+    """Derive a runner-facing status from the aggregate row.
+
+    Precedence: operator stop (the kill switch outranks everything: the
+    human said stop) → completion promise → an explicit end marker (the
+    runner told us the loop exited) → inactivity inference (last call
+    older than the run-gap window) → flags → running. Flags describe a
+    LIVE run in trouble; a run that went silent days ago is ended, flags
+    or not — a 3-day-dead flagged run reading "live" was found on the
+    user's own board."""
+    promise_seen = bool(run.pop("promise_seen", 0))
+    if stopped:
+        run["status"] = "stopped"
+    elif promise_seen:
+        run["status"] = "complete"
+    elif explicitly_ended:
+        run["status"] = "ended"
+    else:
+        run["status"] = "flagged" if run.get("flagged_calls") else "running"
+        last = run.get("last_call_at")
+        with contextlib.suppress(Exception):
+            last_dt = _dt.datetime.fromisoformat(str(last))
+            age = (_dt.datetime.now(_dt.timezone.utc) - last_dt).total_seconds()
+            if age > run_gap_seconds:
+                run["status"] = "ended"
+    return run

@@ -420,3 +420,27 @@ def test_search_defaults_to_summaries_too(proxy):
 
     fat = call({"query": "needle", "include_messages": True})
     assert len(fat) > 120_000
+
+
+def test_mcp_status_agrees_with_the_api_on_a_revived_run(proxy):
+    """The MCP surface once mirrored the status derivation and drifted,
+    keeping the permanent-end-marker bug alive there. Both surfaces now
+    share one derivation: a run that speaks after its end marker reads
+    running on BOTH."""
+    import httpx as _httpx
+
+    from .conftest import openai_response as _openai_response
+
+    client = proxy(handler=lambda r: _httpx.Response(200, json=_openai_response()))
+    hdr = {"x-agenticledger-run-id": "phoenix-mcp", "x-agenticledger-session-id": "pm-1"}
+    body = {"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}
+    client.post("/v1/chat/completions", json=body, headers=hdr)
+    client.post("/api/runs/phoenix-mcp/end")
+    client.post("/v1/chat/completions", json=body,
+                headers={**hdr, "x-agenticledger-session-id": "pm-2"})
+
+    assert client.get("/api/runs/phoenix-mcp").json()["status"] == "running"
+    status, resp = _rpc(client, "tools/call",
+                        {"name": "get_run_status", "arguments": {"run_id": "phoenix-mcp"}})
+    assert status == 200
+    assert '"status": "running"' in resp["result"]["content"][0]["text"]

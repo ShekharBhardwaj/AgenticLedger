@@ -102,6 +102,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   itself; a test enforces that invariant.
 
 ### Fixed
+- **MCP and the API tell the same run status.** The MCP tools carried a
+  mirror copy of the status derivation, which had drifted: over MCP a
+  revived run still read "ended" forever and a long-dead flagged run
+  still read live. Both surfaces now share one derivation, pinned by a
+  test that asks both about the same revived run.
 - **A dead upstream leaves a record (#106).** A call whose upstream
   connection failed (refused, DNS, TLS, timeout) used to return a bare
   500 and vanish from the ledger entirely. The flight recorder now

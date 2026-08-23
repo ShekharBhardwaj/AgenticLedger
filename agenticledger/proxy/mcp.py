@@ -179,29 +179,13 @@ _TOOLS = [
 ]
 
 
-def _run_status(run: dict, explicitly_ended: bool = False,
-                stopped: bool = False) -> dict:
-    """Mirror the /api/runs status derivation for MCP consumers (using the
-    default run-gap window: MCP has no per-proxy config)."""
-    import contextlib
-    import datetime as _dt
-
-    promise_seen = bool(run.pop("promise_seen", 0))
-    if stopped:
-        run["status"] = "stopped"
-    elif promise_seen:
-        run["status"] = "complete"
-    elif run.get("flagged_calls"):
-        run["status"] = "flagged"
-    elif explicitly_ended:
-        run["status"] = "ended"
-    else:
-        run["status"] = "running"
-        with contextlib.suppress(Exception):
-            last = _dt.datetime.fromisoformat(str(run.get("last_call_at")))
-            if (_dt.datetime.now(_dt.timezone.utc) - last).total_seconds() > 900:
-                run["status"] = "ended"
-    return run
+def _run_status(run: dict, ended_at=None, stopped: bool = False) -> dict:
+    """THE status derivation, shared with /api/runs (using the default
+    run-gap window: MCP has no per-proxy config). A mirror copy here once
+    drifted and kept two fixed bugs alive on this surface."""
+    from .loops import end_marker_holds, with_run_status
+    return with_run_status(
+        run, explicitly_ended=end_marker_holds(run, ended_at), stopped=stopped)
 
 
 async def handle_mcp(request: Request) -> JSONResponse:
@@ -324,7 +308,7 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         raw = await store.list_runs(limit=limit)
         ended = await store.get_run_end_markers([r["run_id"] for r in raw])
         stopped = set((await store.get_labels("stopped")).keys())
-        runs = [_run_status(r, explicitly_ended=r["run_id"] in ended,
+        runs = [_run_status(r, ended_at=ended.get(r["run_id"]),
                             stopped=r["run_id"] in stopped) for r in raw]
         return (_ok(id_, _text_content(json.dumps(runs, indent=2, default=str))))
 
@@ -338,7 +322,7 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         ended = await store.get_run_end_markers([run_id])
         stopped = set((await store.get_labels("stopped")).keys())
         return (_ok(id_, _text_content(json.dumps(
-            _run_status(run, explicitly_ended=run_id in ended,
+            _run_status(run, ended_at=ended.get(run_id),
                         stopped=run_id in stopped), indent=2, default=str))))
 
     return (_err(id_, -32601, f"Unknown tool: {name!r}"))
