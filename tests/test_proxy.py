@@ -1233,3 +1233,44 @@ def test_a_revived_run_reads_running_again(proxy):
     # And the runner ending it anew holds again.
     client.post("/api/runs/phoenix/end")
     assert client.get("/api/runs/phoenix").json()["status"] == "ended"
+
+
+# ── #106: a dead upstream leaves a record ────────────────────────────────────
+
+def _refuse_connection(_request):
+    raise httpx.ConnectError("connection refused")
+
+
+def test_unreachable_upstream_is_recorded_not_swallowed(proxy):
+    """The flight recorder records the ATTEMPT: upstream connection failure
+    returns a named 502 and captures the call, instead of a bare 500 with
+    no record (#106)."""
+    client = proxy(handler=_refuse_connection)
+    resp = client.post("/v1/chat/completions", json=_CHAT_BODY,
+                       headers={"x-agenticledger-session-id": "dead-upstream"})
+    assert resp.status_code == 502
+    assert resp.json()["error"]["type"] == "upstream_unreachable"
+
+    rows = client.get("/session/dead-upstream").json()
+    assert len(rows) == 1
+    assert rows[0]["status_code"] == 502
+    assert rows[0]["error_detail"].startswith("upstream_unreachable: ConnectError")
+
+
+def test_unreachable_upstream_recorded_for_streaming_too(proxy):
+    client = proxy(handler=_refuse_connection)
+    resp = client.post(
+        "/v1/chat/completions", json={**_CHAT_BODY, "stream": True},
+        headers={"x-agenticledger-session-id": "dead-stream"})
+    assert resp.status_code == 502
+    assert resp.json()["error"]["type"] == "upstream_unreachable"
+    rows = client.get("/session/dead-stream").json()
+    assert len(rows) == 1
+    assert rows[0]["error_detail"].startswith("upstream_unreachable:")
+
+
+def test_non_llm_traffic_to_dead_upstream_gets_502_without_capture(proxy):
+    client = proxy(handler=_refuse_connection)
+    resp = client.get("/v1/models")
+    assert resp.status_code == 502
+    assert "x-agenticledger-action-id" not in resp.headers

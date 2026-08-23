@@ -2292,13 +2292,19 @@ def create_app(
         query = dict(request.query_params)
         forward_headers = _outbound_headers(request.app, client, path, request.method,
                                             forward_headers, body_bytes, query)
-        upstream_resp = await client.request(
-            method=request.method,
-            url=f"/{path}",
-            content=body_bytes,
-            headers=forward_headers,
-            params=query,
-        )
+        try:
+            upstream_resp = await client.request(
+                method=request.method,
+                url=f"/{path}",
+                content=body_bytes,
+                headers=forward_headers,
+                params=query,
+            )
+        except httpx.TransportError as exc:
+            return await _upstream_unreachable(
+                request, path, body_json, action_id, meta, _capture,
+                _budget_warning, exc, (time.monotonic() - start) * 1000,
+                is_llm_call)
         latency_ms = (time.monotonic() - start) * 1000
 
         if is_llm_call:
@@ -2339,6 +2345,42 @@ def create_app(
     return app
 
 
+async def _upstream_unreachable(
+    request: Request,
+    path: str,
+    body_json: dict,
+    action_id: str,
+    meta: dict,
+    capture,
+    budget_warning: Optional[str],
+    exc: Exception,
+    latency_ms: float,
+    is_llm_call: bool,
+) -> JSONResponse:
+    """The upstream never answered (connection refused, DNS, TLS, timeout).
+    The flight recorder records the attempt (#106): a 502 capture with the
+    failure named, and the same story to the agent — never a bare 500 with
+    no record."""
+    detail = (f"upstream_unreachable: {type(exc).__name__} on "
+              f"{request.method} /{path}: {exc}")[:300]
+    if is_llm_call:
+        with suppress(Exception):
+            canonical_req = normalize_request(body_json, path)
+            await capture(_CaptureJob(
+                action_id, canonical_req, _empty_response(latency_ms),
+                502, detail, meta, budget_warning,
+            ))
+    return JSONResponse(
+        {"error": {
+            "type": "upstream_unreachable",
+            "message": (f"the ledger could not reach the upstream: "
+                        f"{type(exc).__name__}: {exc}"),
+        }},
+        status_code=502,
+        headers=({"x-agenticledger-action-id": action_id} if is_llm_call else {}),
+    )
+
+
 async def _streaming_proxy(
     request: Request,
     path: str,
@@ -2349,7 +2391,7 @@ async def _streaming_proxy(
     meta: dict,
     capture,
     budget_warning: Optional[str] = None,
-) -> StreamingResponse:
+) -> Response:
     client: httpx.AsyncClient = _upstream_client(request.app, path)
     query = dict(request.query_params)
     forward_headers = _outbound_headers(request.app, client, path, request.method,
@@ -2363,8 +2405,13 @@ async def _streaming_proxy(
         params=query,
     )
 
-    upstream = await stream_ctx.__aenter__()
     start = time.monotonic()
+    try:
+        upstream = await stream_ctx.__aenter__()
+    except httpx.TransportError as exc:
+        return await _upstream_unreachable(
+            request, path, body_json, action_id, meta, capture,
+            budget_warning, exc, (time.monotonic() - start) * 1000, True)
 
     canonical_req: Optional[CanonicalRequest] = None
     try:

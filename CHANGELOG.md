@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which read as two disagreeing states, and was removed.
 
 ### Fixed
+- **A dead upstream leaves a record (#106).** A call whose upstream
+  connection failed (refused, DNS, TLS, timeout) used to return a bare
+  500 and vanish from the ledger entirely. The flight recorder now
+  records the attempt: a 502 capture naming the failure, the same story
+  to the agent, on both the plain and streaming paths.
 - **A run that speaks again is live again.** The runner's "loop exited"
   marker used to hold forever: rerun the same run name and it read
   "ended" even while calls were streaming in — the live state was
