@@ -238,3 +238,33 @@ def test_filing_a_run_files_its_sessions(proxy):
     rows = {s["session_id"]: s for s in client.get("/api/sessions").json()}
     assert rows["iter-1"]["project"] == "Special"
     assert rows["iter-0"]["project"] == "Loop Project"
+
+
+def test_purge_reaches_run_inherited_sessions(proxy):
+    """Purging a project must delete the sessions filed under it via RUN
+    inheritance too — the user purged a project and watched the loop and
+    its sessions survive."""
+    import httpx as _hx
+
+    from .conftest import openai_response
+
+    client = proxy(handler=lambda r: _hx.Response(200, json=openai_response()))
+    body = {"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}
+    client.post("/v1/chat/completions", json=body,
+                headers={"x-agenticledger-run-id": "filed-loop",
+                         "x-agenticledger-session-id": "inherited-1"})
+    client.post("/v1/chat/completions", json=body,
+                headers={"x-agenticledger-session-id": "unrelated"})
+    # File the RUN under the project; the session inherits, nothing is
+    # hand-labeled.
+    client.put("/api/labels/run/filed-loop", json={"project": "doomed"})
+
+    resp = client.delete("/api/projects/doomed?purge=true").json()
+    assert resp["sessions_deleted"] == 1
+    assert resp["calls_deleted"] >= 1
+
+    # The loop's session and its calls are gone; the run tile with them.
+    assert client.get("/session/inherited-1").status_code == 404
+    assert "filed-loop" not in [r["run_id"] for r in client.get("/api/runs").json()]
+    # The bystander survives.
+    assert client.get("/session/unrelated").status_code == 200

@@ -136,6 +136,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   itself; a test enforces that invariant.
 
 ### Fixed
+- **Purging a project reaches run-inherited sessions.** Delete-with-purge
+  only knew two of the three filing sources (hand labels, app bindings),
+  so a project whose sessions were filed via their run's `--project`
+  survived its own purge: the project row vanished, the loop and its
+  sessions stayed. The purge collector now resolves membership by the
+  same three-source rule the views use.
 - **MCP and the API tell the same run status.** The MCP tools carried a
   mirror copy of the status derivation, which had drifted: over MCP a
   revived run still read "ended" forever and a long-dead flagged run

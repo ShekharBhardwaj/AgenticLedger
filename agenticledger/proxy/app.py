@@ -1014,16 +1014,20 @@ def create_app(
                             status_code=201)
 
     async def _project_sessions(store, name: str) -> list[str]:
-        """Every session under a project: hand-filed labels plus app-rule
-        matches — the same resolution the views use."""
+        """Every session under a project, by the SAME three-source rule the
+        views file with: hand label, then app binding, then run
+        inheritance. Purge missing the third source deleted the project
+        row and left the loop and its sessions standing (user finding)."""
         labels = await store.get_labels("session")
         rules = await store.get_project_rules()
-        bound_apps = {app for app, proj in rules.items() if proj == name}
+        run_projects = await _run_project_map(store)
         out = []
         for srow in await store.list_sessions(limit=10_000):
             sid = srow["session_id"]
-            explicit = (labels.get(sid) or {}).get("project")
-            if explicit == name or (explicit is None and srow.get("app_id") in bound_apps):
+            resolved = ((labels.get(sid) or {}).get("project")
+                        or rules.get(srow.get("app_id") or "")
+                        or run_projects.get(srow.get("run_id") or ""))
+            if resolved == name:
                 out.append(sid)
         return out
 
