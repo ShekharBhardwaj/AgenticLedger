@@ -21,14 +21,24 @@ function Logo({ size = 24 }: { size?: number }) {
 /** Plain-words answer to "what is this key?" for the ⚿ panel. */
 function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
   if (!w.auth) {
-    // No configured key now means: open on this machine, guarded from
-    // everywhere else by the auto-generated remote key. A fact, stated
-    // plainly — neither an alarm nor a promise of more than it is.
+    // No configured key: open on the ledger's own machine, guarded from
+    // everywhere else by the auto-generated remote key. Say which side
+    // of that line THIS browser is on — the panel confused people when
+    // it answered generically.
+    if (w.source === "remote-key") {
+      return {
+        text: "Paired device: this browser holds the remote key, so it can "
+              + "see everything. To un-pair every device at once, rotate "
+              + "the key on the ledger's machine.",
+        tone: "ok",
+      };
+    }
     return {
-      text: "No access key is set: open on this machine. Visitors from "
-            + "other machines need the remote key — run `agenticledger "
-            + "remote` there for the pairing link. For full key control, "
-            + "set AGENTICLEDGER_API_KEY and restart.",
+      text: "You are on the ledger's own machine, so no key is needed "
+            + "here — the dashboard works with or without one. Keys only "
+            + "matter when opening this dashboard from another device: "
+            + "run `agenticledger remote` in a terminal for the pairing "
+            + "link.",
       tone: "ok",
     };
   }
@@ -95,8 +105,8 @@ function KeyPanel() {
     <div className="key-wrap">
       <button
         className={`key-btn ${stored ? "set" : ""}`}
-        title={stored ? "Access key is set. Click to inspect, change, or clear"
-          : "Set the dashboard access key (needed when AGENTICLEDGER_API_KEY is configured)"}
+        title={stored ? "Dashboard access key: one is saved. Click to inspect, change, or clear"
+          : "Dashboard access key: only needed when opening this dashboard from another device, or on a keyed server"}
         onClick={() => setOpen(!open)}
       >
         ⚿

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`agenticledger share`: the dashboard in your pocket, over https
+  (#110, part 2).** One command opens an https tunnel you own (via
+  cloudflared, no account needed), prints the pairing link with the key
+  built in, and draws a QR code in the terminal — point the phone's
+  camera and the dashboard is in your hand. `--stop` closes the door
+  and the old link dies. No relay of ours: traffic flows only through
+  your machine and the tunnel provider you chose.
 - **The remote guard (#110, part 1).** The default bind is 0.0.0.0, and
   until now an unconfigured install was an open book to anyone on the
   network. Now loopback callers keep the zero-config open dashboard,
@@ -20,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command named after itself, so the uvx one-liner needs no --from.
 
 ### Fixed
+- **Tunneled and reverse-proxied visitors are judged by who they are,
+  not where they enter.** cloudflared, tailscale serve, and nginx all
+  deliver visitors from loopback; the guard now honors the forwarded
+  client address, so `share` visitors face the key exactly like direct
+  remote ones. Spoofing the header can only make a caller look more
+  remote, so it fails safe.
+- **/api/whoami obeys the remote guard** — a keyless remote caller was
+  told "everything open" while every data endpoint refused it.
+- **The ⚿ key panel says which side of the line you are on**: on the
+  ledger's own machine it now explains that no key is needed there and
+  when one would matter; on a paired device it identifies the remote
+  key. Saving or clearing a key on an open local server no longer looks
+  like it "didn't take" — the panel states that keys are ignored here.
 - **status and doctor probe the port the service actually runs on.** The
   service inherits its env (including the port) at start, but status and
   doctor run later in shells without that env and probed the default

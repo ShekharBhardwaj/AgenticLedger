@@ -611,10 +611,25 @@ def create_app(
     _remote_key = None if _auth_enabled else load_or_create_remote_key(
         Path.home() / ".agenticledger" / "remote.key")
 
-    def _open_access_allowed(carrier) -> bool:
-        """May this credential-less carrier use the open (no-key) dashboard?"""
+    def _effective_client_host(carrier) -> Optional[str]:
+        """The caller's real address: the forwarded client when a proxy in
+        front says so, else the socket peer. One definition, used everywhere
+        localness is judged — two judges disagreeing was a real bug."""
         client = getattr(carrier, "client", None)
-        if client_is_local(client.host if client else None):
+        return (carrier.headers.get("cf-connecting-ip")
+                or carrier.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                or (client.host if client else None))
+
+    def _open_access_allowed(carrier) -> bool:
+        """May this credential-less carrier use the open (no-key) dashboard?
+
+        The caller's address is the forwarded client when a proxy in front
+        says so (cloudflared, tailscale serve, nginx all deliver visitors
+        FROM loopback — without this, `agenticledger share` would hand every
+        stranger the trusted-local dashboard). Spoofing these headers can
+        only make a caller look MORE remote, never local, so it fails safe.
+        """
+        if client_is_local(_effective_client_host(carrier)):
             return True
         if _remote_key is None:
             return False
@@ -1902,7 +1917,16 @@ def create_app(
         including team cards, which can't open the dashboard but deserve a
         clear "this is team X's agent card" instead of a bare 401."""
         if not _auth_enabled:
-            return JSONResponse({"auth": False, "role": ROLE_ADMIN, "source": "open",
+            # The remote guard applies here too — otherwise a keyless remote
+            # caller is TOLD "all open" while every data endpoint refuses it.
+            if not _open_access_allowed(request):
+                raise HTTPException(
+                    status_code=401,
+                    detail="Remote access needs the key. On the machine running "
+                           "the ledger: agenticledger remote prints the pairing link.")
+            local = client_is_local(_effective_client_host(request))
+            return JSONResponse({"auth": False, "role": ROLE_ADMIN,
+                                 "source": "open" if local else "remote-key",
                                  "name": None, "team": None, "dashboard": True})
         principal = await _authenticate(request)
         if principal is None:

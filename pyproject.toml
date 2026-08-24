@@ -28,6 +28,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "qrcode>=7",   # terminal QR for `agenticledger share` pairing
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     # <1.0.dev0 (not <1.0) so `pip install --pre` can't resolve httpx's 1.0

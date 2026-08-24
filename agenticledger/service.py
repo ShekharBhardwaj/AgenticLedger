@@ -243,6 +243,114 @@ def remote() -> int:
     return 0
 
 
+SHARE_PID_FILE = STATE_DIR / "share.pid"
+SHARE_LOG_FILE = STATE_DIR / "share.log"
+
+
+def _share_stop() -> int:
+    try:
+        pid = int(SHARE_PID_FILE.read_text().strip())
+    except (OSError, ValueError):
+        print("No share tunnel is running.")
+        return 0
+    import signal
+    from contextlib import suppress
+    with suppress(OSError):
+        os.kill(pid, signal.SIGTERM)
+    SHARE_PID_FILE.unlink(missing_ok=True)
+    print(f"Share tunnel stopped (pid {pid}). The old link is dead.")
+    return 0
+
+
+def _print_qr(url: str) -> None:
+    """A QR code in the terminal, so pairing is point-a-camera. Optional:
+    without the qrcode package the link alone still works."""
+    try:
+        import qrcode
+    except ImportError:
+        return
+    qr = qrcode.QRCode(border=1)
+    qr.add_data(url)
+    qr.print_ascii(invert=True)
+
+
+def share(stop: bool = False) -> int:
+    """One command, dashboard in your pocket: https tunnel you own, key
+    enforced, QR to pair. No relay of ours — the tunnel is Cloudflare's
+    standard quick tunnel, started and stopped on this machine."""
+    import shutil
+    import subprocess
+    import time as _time
+    if stop:
+        return _share_stop()
+    if not _alive(_read_pid()):
+        print("The ledger is not running — start it first:  agenticledger start")
+        return 1
+    if os.environ.get("AGENTICLEDGER_API_KEY"):
+        key = None   # explicit-key mode: visitors use that key or a minted token
+    else:
+        try:
+            key = (STATE_DIR / "remote.key").read_text().strip()
+        except OSError:
+            print("No remote key found — this build predates the remote guard.")
+            print("Upgrade and restart, then run share again.")
+            return 1
+    cloudflared = shutil.which("cloudflared")
+    if not cloudflared:
+        print("share needs the cloudflared tool (a tunnel you own; no account")
+        print("needed). Install it, then rerun:")
+        print("  brew install cloudflared")
+        return 1
+    if SHARE_PID_FILE.exists():
+        _share_stop()
+    port = effective_port()
+    with open(SHARE_LOG_FILE, "wb") as log:
+        proc = subprocess.Popen(
+            [cloudflared, "tunnel", "--url", f"http://localhost:{port}"],
+            stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            start_new_session=True)
+    SHARE_PID_FILE.write_text(str(proc.pid))
+    print("Opening the tunnel", end="", flush=True)
+    url = None
+    import re
+    for _ in range(60):
+        _time.sleep(0.5)
+        print(".", end="", flush=True)
+        try:
+            m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com",
+                          SHARE_LOG_FILE.read_text())
+        except OSError:
+            m = None
+        if m:
+            url = m.group(0)
+            break
+        if proc.poll() is not None:
+            break
+    print()
+    if not url:
+        print("The tunnel did not come up. Last log lines:")
+        try:
+            for line in SHARE_LOG_FILE.read_text().splitlines()[-5:]:
+                print(f"  {line}")
+        except OSError:
+            pass
+        SHARE_PID_FILE.unlink(missing_ok=True)
+        return 1
+    pairing = f"{url}/app?api_key={key}" if key else f"{url}/app"
+    print()
+    print("Your dashboard, from anywhere, over https:")
+    print(f"  {pairing}")
+    print()
+    _print_qr(pairing)
+    print("Point your phone's camera at the code, or open the link.")
+    if key:
+        print("The link carries the key: share it only with your own devices.")
+    else:
+        print("Visitors sign in with your AGENTICLEDGER_API_KEY or a minted token.")
+    print("Close the door with:  agenticledger share --stop")
+    return 0
+
+
 def status() -> int:
     port = effective_port()
     pid = _read_pid()

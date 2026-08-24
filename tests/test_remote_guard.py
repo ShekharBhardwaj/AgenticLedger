@@ -71,3 +71,22 @@ async def test_explicit_api_key_mode_is_unchanged(tmp_path, monkeypatch):
         assert (await local.get("/api/sessions")).status_code == 401
         assert (await local.get("/api/sessions?api_key=master-key")).status_code == 200
         await local.aclose()
+
+
+@pytest.mark.asyncio
+async def test_tunnel_visitors_are_remote_even_from_loopback(guarded_app):
+    """cloudflared/nginx deliver visitors FROM 127.0.0.1 — the forwarded
+    client header must decide, or `share` hands strangers the open board."""
+    app, key = guarded_app
+    async with app.router.lifespan_context(app):
+        tunneled = AsyncClient(transport=ASGITransport(app=app, client=("127.0.0.1", 9)),
+                               base_url="http://t")
+        hdr = {"x-forwarded-for": "203.0.113.9"}
+        assert (await tunneled.get("/api/sessions", headers=hdr)).status_code == 401
+        assert (await tunneled.get(f"/api/sessions?api_key={key}",
+                                   headers=hdr)).status_code == 200
+        assert (await tunneled.get("/api/whoami", headers=hdr)).status_code == 401
+        ok = await tunneled.get(f"/api/whoami?api_key={key}", headers=hdr)
+        assert ok.status_code == 200
+        assert ok.json()["source"] == "remote-key"
+        await tunneled.aclose()

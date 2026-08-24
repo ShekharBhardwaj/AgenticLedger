@@ -439,6 +439,13 @@ def main(argv: Optional[list] = None) -> int:
              "shadows whom, what can actually run, and what is serving.",
     )
 
+    share_p = sub.add_parser(
+        "share",
+        help="Dashboard in your pocket: an https tunnel you own (via "
+             "cloudflared), key enforced, QR code to pair. --stop closes it.",
+    )
+    share_p.add_argument("--stop", action="store_true",
+                         help="Close the tunnel; the old link dies.")
     sub.add_parser(
         "remote",
         help="Print the pairing link for opening the dashboard from your "
@@ -511,6 +518,9 @@ def main(argv: Optional[list] = None) -> int:
     if args.subcommand == "remote":
         from agenticledger.service import remote
         return remote()
+    if args.subcommand == "share":
+        from agenticledger.service import share
+        return share(stop=args.stop)
     if args.subcommand == "pricing":
         from .pricing_update import update
         return update()
