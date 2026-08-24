@@ -163,7 +163,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   const maxCost = Math.max(...iterations.map((i) => i.cost_usd || 0), 0.000001);
 
   return (
-    <div className="layout">
+    <div className={`layout ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
         {error && <div className="empty">{error}</div>}
         {runs.length === 0 && !error && (
@@ -249,6 +249,11 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
       </div>
 
       <div className="main">
+        {selected && (
+          <button className="mobile-back" onClick={() => setSelected(null)}>
+            ← all runs
+          </button>
+        )}
         {compare.length === 2 ? (
           <CompareView
             a={compare[0]}

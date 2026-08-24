@@ -68,7 +68,7 @@ body {
 .topbar h1 span { color: var(--accent); }
 .tabs { display: flex; gap: 4px; }
 .tab {
-  padding: 6px 14px; border-radius: 7px; cursor: pointer;
+  padding: 6px 14px; border-radius: 7px; cursor: pointer; white-space: nowrap;
   color: var(--text-dim); border: none; background: none; font-size: 14px;
   transition: background var(--ease), color var(--ease);
 }
@@ -796,3 +796,40 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 }
 .console-footer a { color: var(--text-dim); text-decoration: none; white-space: nowrap; }
 .console-footer a:hover { color: var(--text); text-decoration: underline; }
+
+/* ── Phone widths (#54) — the pocket dashboard ────────────────────────────
+   One pane at a time: the list, or (after a tap) the detail with a back
+   button. Desktop keeps the two-pane layout untouched; nothing below
+   applies above 720px. */
+.mobile-back { display: none; }
+
+@media (max-width: 720px) {
+  .topbar { gap: 8px; padding: 8px 10px; }
+  /* The raccoon carries the identity; the wordmark's space goes to the tabs. */
+  .topbar h1 { display: none; }
+  .tab { padding: 6px 9px; font-size: 13px; }
+
+  /* Master-detail becomes one pane at a time. */
+  .sidebar { width: 100%; min-width: 0; border-right: none; }
+  .layout > .main { display: none; }
+  .layout.has-detail > .sidebar { display: none; }
+  .layout.has-detail > .main { display: block; padding: 12px; }
+  /* Reports and Settings render .main without a .layout — full width. */
+  .main.reports, .main.settings { padding: 12px; }
+
+  .mobile-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin: 0 0 12px; padding: 7px 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-panel); color: var(--text);
+    font-size: 13.5px; cursor: pointer;
+  }
+
+  /* Wide content scrolls inside itself; the page never scrolls sideways.
+     Tables become their own scroll containers (display:block) — clipping
+     them under overflow:hidden would silently hide the right-hand columns. */
+  .live-feed { overflow-x: auto; }
+  .rtable, table.grid { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  .console-footer { flex-wrap: wrap; gap: 6px 14px; padding: 10px 12px 0; }
+}

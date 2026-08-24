@@ -440,7 +440,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
   const shown = results ?? calls;
 
   return (
-    <div className="layout">
+    <div className={`layout ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
         <input
           className="search"
@@ -598,6 +598,11 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
         })()}
       </div>
       <div className="main">
+        {selected && (
+          <button className="mobile-back" onClick={() => setSelected(null)}>
+            ← all sessions
+          </button>
+        )}
         {results === null && selected && (
           <>
             <SessionHeader
