@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`agenticledger share`: the dashboard in your pocket, over https
-  (#110, part 2).** One command opens an https tunnel you own (via
-  cloudflared, no account needed), prints the pairing link with the key
-  built in, and draws a QR code in the terminal — point the phone's
-  camera and the dashboard is in your hand. `--stop` closes the door
-  and the old link dies. No relay of ours: traffic flows only through
-  your machine and the tunnel provider you chose.
+  (#110, part 2).** One verb for "get my dashboard onto another
+  device": the default opens an https tunnel you own (via cloudflared,
+  no account needed) and draws a QR code in the terminal — point the
+  phone's camera and the dashboard is in your hand. `--wifi` prints
+  the same-network link without a tunnel, `--rotate` mints a fresh key
+  (every paired device un-pairs at once), `--stop` closes the door and
+  the old link dies. No relay of ours: traffic flows only through your
+  machine and the tunnel provider you chose.
 - **The remote guard (#110, part 1).** The default bind is 0.0.0.0, and
   until now an unconfigured install was an open book to anyone on the
   network. Now loopback callers keep the zero-config open dashboard,

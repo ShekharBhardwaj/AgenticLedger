@@ -48,7 +48,7 @@ async def test_loopback_stays_open_remote_needs_the_key(guarded_app):
         assert (await local.get("/api/sessions")).status_code == 200
         denied = await remote.get("/api/sessions")
         assert denied.status_code == 401
-        assert "agenticledger remote" in denied.json()["detail"]
+        assert "agenticledger share" in denied.json()["detail"]
         assert (await remote.get(f"/api/sessions?api_key={key}")).status_code == 200
         assert (await remote.get("/api/sessions",
                                  headers={"x-agenticledger-api-key": key})).status_code == 200

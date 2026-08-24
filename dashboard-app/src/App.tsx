@@ -28,8 +28,8 @@ function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
     if (w.source === "remote-key") {
       return {
         text: "Paired device: this browser holds the remote key, so it can "
-              + "see everything. To un-pair every device at once, rotate "
-              + "the key on the ledger's machine.",
+              + "see everything. To un-pair every device at once, run "
+              + "`agenticledger share --rotate` on the ledger's machine.",
         tone: "ok",
       };
     }
@@ -37,7 +37,7 @@ function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
       text: "You are on the ledger's own machine, so no key is needed "
             + "here — the dashboard works with or without one. Keys only "
             + "matter when opening this dashboard from another device: "
-            + "run `agenticledger remote` in a terminal for the pairing "
+            + "run `agenticledger share` in a terminal for the pairing "
             + "link.",
       tone: "ok",
     };

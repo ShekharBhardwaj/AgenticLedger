@@ -212,37 +212,6 @@ def _lan_ip() -> Optional[str]:
         return None
 
 
-def remote() -> int:
-    """Print the pairing link for reaching the dashboard from another device."""
-    import os
-    if os.environ.get("AGENTICLEDGER_API_KEY"):
-        print("AGENTICLEDGER_API_KEY is set, so remote visitors use that key")
-        print("(or a minted token) — there is no separate remote key.")
-        return 0
-    key_file = STATE_DIR / "remote.key"
-    try:
-        key = key_file.read_text().strip()
-    except OSError:
-        print("No remote key yet. It is created the first time the ledger")
-        print("starts. Start it, then run this again:  agenticledger start")
-        return 1
-    port = effective_port()
-    ip = _lan_ip()
-    print("From this machine, the dashboard needs no key:")
-    print(f"  http://localhost:{port}/app")
-    print()
-    print("From your phone or another machine on the same network (or")
-    print("tailnet), open the pairing link:")
-    if ip:
-        print(f"  http://{ip}:{port}/app?api_key={key}")
-    else:
-        print(f"  http://<this-machine's-address>:{port}/app?api_key={key}")
-    print()
-    print("The link carries the key: share it only with your own devices.")
-    print(f"To rotate it, delete {key_file} and restart.")
-    return 0
-
-
 SHARE_PID_FILE = STATE_DIR / "share.pid"
 SHARE_LOG_FILE = STATE_DIR / "share.log"
 
@@ -274,36 +243,78 @@ def _print_qr(url: str) -> None:
     qr.print_ascii(invert=True)
 
 
-def share(stop: bool = False) -> int:
-    """One command, dashboard in your pocket: https tunnel you own, key
-    enforced, QR to pair. No relay of ours — the tunnel is Cloudflare's
-    standard quick tunnel, started and stopped on this machine."""
+def _remote_key() -> Optional[str]:
+    if os.environ.get("AGENTICLEDGER_API_KEY"):
+        return None   # explicit-key mode: visitors use that key or a minted token
+    try:
+        return (STATE_DIR / "remote.key").read_text().strip()
+    except OSError:
+        return None
+
+
+def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
+    """One verb for "get my dashboard onto another device".
+
+    Default: an https tunnel you own (cloudflared quick tunnel, no account),
+    pairing link with the key built in, QR in the terminal — works from
+    anywhere. --wifi skips the tunnel and prints the same-network link.
+    --rotate mints a fresh key (every paired device un-pairs at once).
+    --stop closes the tunnel. No relay of ours, ever.
+    """
     import shutil
     import subprocess
     import time as _time
     if stop:
         return _share_stop()
+    if rotate:
+        if os.environ.get("AGENTICLEDGER_API_KEY"):
+            print("AGENTICLEDGER_API_KEY is set — rotate that key instead; the")
+            print("auto-generated remote key is not in use.")
+            return 1
+        (STATE_DIR / "remote.key").unlink(missing_ok=True)
+        print("Remote key rotated: the old key is dead on the next restart.")
+        print("Restart to mint the new one, then share again:")
+        print("  agenticledger stop && agenticledger start && agenticledger share")
+        return 0
     if not _alive(_read_pid()):
         print("The ledger is not running — start it first:  agenticledger start")
         return 1
-    if os.environ.get("AGENTICLEDGER_API_KEY"):
-        key = None   # explicit-key mode: visitors use that key or a minted token
-    else:
-        try:
-            key = (STATE_DIR / "remote.key").read_text().strip()
-        except OSError:
-            print("No remote key found — this build predates the remote guard.")
-            print("Upgrade and restart, then run share again.")
+    key = _remote_key()
+    if key is None and not os.environ.get("AGENTICLEDGER_API_KEY"):
+        print("No remote key found — this build predates the remote guard.")
+        print("Upgrade and restart, then run share again.")
+        return 1
+    port = effective_port()
+
+    if wifi:
+        ip = _lan_ip()
+        if not ip:
+            print("No network address found — is this machine online?")
             return 1
+        pairing = (f"http://{ip}:{port}/app?api_key={key}" if key
+                   else f"http://{ip}:{port}/app")
+        print("Your dashboard, for devices on the same wifi (or tailnet):")
+        print(f"  {pairing}")
+        print()
+        _print_qr(pairing)
+        print("Point your phone's camera at the code, or open the link.")
+        if key:
+            print("The link carries the key: share it only with your own devices.")
+        print("Note: this link is plain http. For https (and for devices not")
+        print("on this network), run:  agenticledger share")
+        return 0
+
     cloudflared = shutil.which("cloudflared")
     if not cloudflared:
         print("share needs the cloudflared tool (a tunnel you own; no account")
         print("needed). Install it, then rerun:")
         print("  brew install cloudflared")
+        print()
+        print("Or, for devices on the same wifi, no tunnel needed:")
+        print("  agenticledger share --wifi")
         return 1
     if SHARE_PID_FILE.exists():
         _share_stop()
-    port = effective_port()
     with open(SHARE_LOG_FILE, "wb") as log:
         proc = subprocess.Popen(
             [cloudflared, "tunnel", "--url", f"http://localhost:{port}"],

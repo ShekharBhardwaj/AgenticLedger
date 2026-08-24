@@ -670,7 +670,7 @@ def create_app(
             raise HTTPException(
                 status_code=401,
                 detail="Remote access needs the key. On the machine running the "
-                       "ledger: agenticledger remote prints the pairing link.")
+                       "ledger: agenticledger share prints the pairing link.")
         principal = await _authenticate(request)
         if principal is None:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -1208,7 +1208,7 @@ def create_app(
                 means="The key needed to read the ledger. Not set means open on "
                       "this machine only; visitors from other machines must "
                       "present the auto-generated remote key (agenticledger "
-                      "remote prints the pairing link).",
+                      "share prints the pairing link).",
                 key="[keys] api_key / api_key_file"),
             row("Access", "ingest key (relay)",
                 key_state(bool(_ingest_key)) + ("" if _ingest_key else " — OPEN RELAY"),
@@ -1923,7 +1923,7 @@ def create_app(
                 raise HTTPException(
                     status_code=401,
                     detail="Remote access needs the key. On the machine running "
-                           "the ledger: agenticledger remote prints the pairing link.")
+                           "the ledger: agenticledger share prints the pairing link.")
             local = client_is_local(_effective_client_host(request))
             return JSONResponse({"auth": False, "role": ROLE_ADMIN,
                                  "source": "open" if local else "remote-key",
