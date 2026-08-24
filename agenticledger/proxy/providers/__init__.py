@@ -15,12 +15,14 @@ from .anthropic import AnthropicProvider
 from .azure import AzureProvider
 from .base import Provider
 from .bedrock import BedrockProvider
+from .bedrock_converse import BedrockConverseProvider
 from .openai import OpenAIProvider
 from .responses import ResponsesProvider
 
 PROVIDERS: tuple[Provider, ...] = (
     ResponsesProvider(),
     BedrockProvider(),  # model/<id>/invoke paths; Anthropic-shaped bodies, binary streams
+    BedrockConverseProvider(),  # model/<id>/converse paths; Converse bodies, direct-JSON frames
     AnthropicProvider(),
     AzureProvider(),    # OpenAI's wire under a deployment path; claims by path only
     OpenAIProvider(),   # fallback: must stay last

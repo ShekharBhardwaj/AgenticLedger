@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every paired device un-pairs at once), `--stop` closes the door and
   the old link dies. No relay of ours: traffic flows only through your
   machine and the tunnel provider you chose.
+- **Direct Bedrock capture speaks Converse (#111).** Modern boto3
+  agents use the Converse and ConverseStream APIs; those calls passed
+  through the ledger unpriced. A second Bedrock adapter now converts
+  Converse shapes to the pipeline's common dialect at the boundary, so
+  loop stitching, tool pairing, drift diffs, and cache-aware pricing
+  all work unchanged — including the direct-JSON event stream, tool
+  streaming, and the same SigV4 re-signing wall as InvokeModel.
 - **The dashboard fits a phone (#54).** Under 720px it shows one pane
   at a time — the list, or after a tap the detail with a back button.
   Tabs stop wrapping, wide tables scroll inside themselves instead of

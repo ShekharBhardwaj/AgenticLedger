@@ -2849,7 +2849,8 @@ def _upstream_client(app, path: str) -> httpx.AsyncClient:
 
 
 def _is_bedrock(path: str) -> bool:
-    return providers.for_path(path).wire == "bedrock-invoke"
+    # Both Bedrock wires (invoke and converse) ride the signed upstream.
+    return providers.for_path(path).name == "bedrock"
 
 
 def _outbound_headers(app, client: httpx.AsyncClient, path: str, method: str,
