@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { connectionStatus, health, whoami, WhoAmI } from "./api";
+import { connectionStatus, health, shareInfo, shareQr, whoami, WhoAmI } from "./api";
 import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
@@ -101,6 +101,23 @@ function KeyPanel() {
       .catch((e) => setStatus({ text: e.message, tone: "warn" }));
   };
 
+  // "Pair a device": the server draws a QR of the pairing link. Tunnel
+  // link when `agenticledger share` is running, wifi link otherwise.
+  const [pair, setPair] = useState<{ svg: string; url: string; kind: string } | null>(null);
+  const [pairErr, setPairErr] = useState<string | null>(null);
+  useEffect(() => { if (!open) { setPair(null); setPairErr(null); } }, [open]);
+  const loadPair = () => {
+    setPairErr(null);
+    shareInfo()
+      .then(async (info) => {
+        const kind = info.tunnel_url ? "tunnel" : "wifi";
+        const url = info.tunnel_url ?? info.wifi_url;
+        if (!url) { setPairErr("No network address found — is this machine online?"); return; }
+        setPair({ svg: await shareQr(kind as "wifi" | "tunnel"), url, kind });
+      })
+      .catch(() => setPairErr("Pairing needs dashboard access on this server."));
+  };
+
   return (
     <div className="key-wrap">
       <button
@@ -134,7 +151,21 @@ function KeyPanel() {
               </button>
             )}
             <button className="link-btn" onClick={() => setOpen(false)}>Close</button>
+            <span className="spacer" />
+            <button className="link-btn" onClick={loadPair}>Pair a device</button>
           </div>
+          {pairErr && <div className="key-status warn">{pairErr}</div>}
+          {pair && (
+            <div className="pair-box">
+              <div className="pair-qr" dangerouslySetInnerHTML={{ __html: pair.svg }} />
+              <div className="pair-note">
+                {pair.kind === "tunnel"
+                  ? "Scan with your phone's camera — works from anywhere, over https."
+                  : "Scan with your phone's camera — same wifi only. For anywhere-access over https, run `agenticledger share` in a terminal first, then press Pair again."}
+                {" "}The code carries the access key: show it only to your own devices.
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

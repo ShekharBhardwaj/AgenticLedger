@@ -90,3 +90,29 @@ async def test_tunnel_visitors_are_remote_even_from_loopback(guarded_app):
         assert ok.status_code == 200
         assert ok.json()["source"] == "remote-key"
         await tunneled.aclose()
+
+
+@pytest.mark.asyncio
+async def test_pairing_info_is_gated_and_keyed(guarded_app, tmp_path):
+    """/api/share and its QR carry the key — open to the local machine,
+    refused to keyless remote callers."""
+    app, key = guarded_app
+    async with app.router.lifespan_context(app):
+        local = AsyncClient(transport=ASGITransport(app=app, client=("127.0.0.1", 9)),
+                            base_url="http://t")
+        remote = AsyncClient(transport=ASGITransport(app=app, client=("203.0.113.9", 9)),
+                             base_url="http://t")
+        assert (await remote.get("/api/share")).status_code == 401
+        info = await local.get("/api/share")
+        assert info.status_code == 200
+        body = info.json()
+        assert body["keyed"] is True
+        assert body["wifi_url"] is None or key in body["wifi_url"]
+        qr = await local.get("/api/share/qr.svg")
+        # 404 is legitimate on a runner with no LAN address; otherwise SVG.
+        assert qr.status_code in (200, 404)
+        if qr.status_code == 200:
+            assert qr.headers["content-type"].startswith("image/svg")
+            assert b"<svg" in qr.content[:200] or b"svg" in qr.content[:200]
+        await local.aclose()
+        await remote.aclose()

@@ -117,6 +117,24 @@ export async function whoami(key: string | null): Promise<WhoAmI> {
   return resp.json();
 }
 
+export interface ShareInfo {
+  keyed: boolean;
+  wifi_url: string | null;
+  tunnel_url: string | null;
+}
+
+export function shareInfo(): Promise<ShareInfo> {
+  return get<ShareInfo>("/api/share");
+}
+
+/** The pairing QR as SVG markup (fetched with auth headers — an <img>
+ *  can't carry them). */
+export async function shareQr(which: "wifi" | "tunnel"): Promise<string> {
+  const resp = await fetch(`/api/share/qr.svg?which=${which}`, { headers: headers() });
+  if (!resp.ok) throw new Error(`qr: ${resp.status}`);
+  return resp.text();
+}
+
 export async function get<T>(path: string): Promise<T> {
   const resp = await fetch(path, { headers: headers() });
   if (!resp.ok) {

@@ -833,3 +833,9 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 
   .console-footer { flex-wrap: wrap; gap: 6px 14px; padding: 10px 12px 0; }
 }
+
+/* ── Pair a device (QR in the ⚿ panel) ──────────────────────────────────── */
+.pair-box { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pair-qr { background: #fff; border-radius: 8px; padding: 8px; align-self: center; }
+.pair-qr svg { display: block; width: 168px; height: 168px; }
+.pair-note { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }

@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every paired device un-pairs at once), `--stop` closes the door and
   the old link dies. No relay of ours: traffic flows only through your
   machine and the tunnel provider you chose.
+- **The dashboard fits a phone (#54).** Under 720px it shows one pane
+  at a time — the list, or after a tap the detail with a back button.
+  Tabs stop wrapping, wide tables scroll inside themselves instead of
+  being clipped, the footer wraps like prose, and the page never
+  scrolls sideways. Desktop is untouched.
+- **Pair a device from the dashboard.** The ⚿ panel gains a "Pair a
+  device" button: the server draws the pairing link as a QR code
+  (tunnel link when `share` is running, wifi link otherwise) — behind
+  the admin gate, since the code carries the key.
 - **The remote guard (#110, part 1).** The default bind is 0.0.0.0, and
   until now an unconfigured install was an open book to anyone on the
   network. Now loopback callers keep the zero-config open dashboard,

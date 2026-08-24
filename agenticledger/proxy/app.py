@@ -1911,6 +1911,52 @@ def create_app(
         entries = await request.app.state.store.list_audit(limit=max(1, min(limit, 1000)))
         return JSONResponse(entries)
 
+    @app.get("/api/share")
+    async def api_share(request: Request) -> JSONResponse:
+        """Pairing info for another device — links carry the key, so this
+        sits behind the admin gate (open-local counts)."""
+        await _require(request, ROLE_ADMIN)
+        from agenticledger import service as _svc
+        key = None if _auth_enabled else _remote_key
+        port = request.url.port or 8000
+        ip = _svc._lan_ip()
+        suffix = f"/app?api_key={key}" if key else "/app"
+        tunnel = None
+        if _svc.SHARE_PID_FILE.exists():
+            try:
+                pid = int(_svc.SHARE_PID_FILE.read_text().strip())
+                if _svc._alive(pid):
+                    import re as _re
+                    m = _re.search(r"https://[a-z0-9-]+\.trycloudflare\.com",
+                                   _svc.SHARE_LOG_FILE.read_text())
+                    if m:
+                        tunnel = m.group(0) + suffix
+            except (OSError, ValueError):
+                pass
+        return JSONResponse({
+            "keyed": key is not None,
+            "wifi_url": f"http://{ip}:{port}{suffix}" if ip else None,
+            "tunnel_url": tunnel,
+        })
+
+    @app.get("/api/share/qr.svg")
+    async def api_share_qr(request: Request, which: str = "wifi") -> Response:
+        """The pairing link as a QR code, drawn by the server (it already
+        owns the qrcode library) so the SPA ships no QR code of its own."""
+        await _require(request, ROLE_ADMIN)
+        info = json.loads((await api_share(request)).body)
+        target = info.get("tunnel_url") if which == "tunnel" else info.get("wifi_url")
+        if not target:
+            raise HTTPException(status_code=404, detail=f"no {which} link available")
+        import io as _io
+
+        import qrcode
+        import qrcode.image.svg
+        img = qrcode.make(target, image_factory=qrcode.image.svg.SvgPathImage)
+        buf = _io.BytesIO()
+        img.save(buf)
+        return Response(buf.getvalue(), media_type="image/svg+xml")
+
     @app.get("/api/whoami")
     async def api_whoami(request: Request) -> JSONResponse:
         """What is the key I'm holding? Answers for any valid credential —
