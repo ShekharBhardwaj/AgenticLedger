@@ -54,7 +54,8 @@ async def test_loopback_stays_open_remote_needs_the_key(guarded_app):
                                  headers={"x-agenticledger-api-key": key})).status_code == 200
         # A wrong key is a wrong key.
         assert (await remote.get("/api/sessions?api_key=agl_wrong")).status_code == 401
-        await local.aclose(); await remote.aclose()
+        await local.aclose()
+        await remote.aclose()
 
 
 @pytest.mark.asyncio
