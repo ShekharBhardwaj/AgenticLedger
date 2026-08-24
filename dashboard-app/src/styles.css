@@ -801,7 +801,7 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
    One pane at a time: the list, or (after a tap) the detail with a back
    button. Desktop keeps the two-pane layout untouched; nothing below
    applies above 720px. */
-.mobile-back { display: none; }
+.mobile-back, .mobile-nav { display: none; }
 
 @media (max-width: 720px) {
   .topbar { gap: 8px; padding: 8px 10px; }
@@ -817,13 +817,26 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
   /* Reports and Settings render .main without a .layout — full width. */
   .main.reports, .main.settings { padding: 12px; }
 
+  .mobile-nav { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+  .mnav-spacer { flex: 1; }
+  .mobile-pos { font-size: 12px; color: var(--text-dim); }
+  .mobile-step {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; padding: 7px 0;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-panel); color: var(--text);
+    font-size: 15px; cursor: pointer;
+  }
+  .mobile-step:disabled { opacity: 0.35; cursor: default; }
   .mobile-back {
     display: inline-flex; align-items: center; gap: 6px;
-    margin: 0 0 12px; padding: 7px 12px;
+    padding: 7px 12px;
     border: 1px solid var(--border); border-radius: 8px;
     background: var(--bg-panel); color: var(--text);
     font-size: 13.5px; cursor: pointer;
   }
+  /* Sessions keeps the standalone back button; give it its margin back. */
+  .layout > .main > .mobile-back { margin: 0 0 12px; }
 
   /* Wide content scrolls inside itself; the page never scrolls sideways.
      Tables become their own scroll containers (display:block) — clipping

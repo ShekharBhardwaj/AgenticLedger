@@ -162,6 +162,10 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
 
   const maxCost = Math.max(...iterations.map((i) => i.cost_usd || 0), 0.000001);
 
+  // The list in its rendered order — the phone's prev/next arrows walk
+  // exactly what the eye saw, pins and sort direction included.
+  const ordered = pinnedFirst(timeSorted(runs.filter((r) => matchesFilter(r, projectFilter)), oldestFirst));
+
   return (
     <div className={`layout ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
@@ -183,7 +187,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                        onCreated={refresh}
                        sessionCount={runs.filter((x) => matchesFilter(x, projectFilter)).length} />
         <TimeSortToggle oldestFirst={oldestFirst} onChange={setOldestFirst} />
-        {pinnedFirst(timeSorted(runs.filter((r) => matchesFilter(r, projectFilter)), oldestFirst)).map((r) => (
+        {ordered.map((r) => (
           <div
             key={r.run_id}
             className={`card ${selected === r.run_id ? "selected" : ""}`}
@@ -249,11 +253,22 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
       </div>
 
       <div className="main">
-        {selected && (
-          <button className="mobile-back" onClick={() => setSelected(null)}>
-            ← all runs
-          </button>
-        )}
+        {selected && (() => {
+          const idx = ordered.findIndex((r) => r.run_id === selected);
+          return (
+            <div className="mobile-nav">
+              <button className="mobile-back" onClick={() => setSelected(null)}>
+                ← all runs
+              </button>
+              <span className="mnav-spacer" />
+              {idx >= 0 && <span className="mobile-pos">{idx + 1} / {ordered.length}</span>}
+              <button className="mobile-step" disabled={idx <= 0}
+                      onClick={() => setSelected(ordered[idx - 1].run_id)}>‹</button>
+              <button className="mobile-step" disabled={idx < 0 || idx >= ordered.length - 1}
+                      onClick={() => setSelected(ordered[idx + 1].run_id)}>›</button>
+            </div>
+          );
+        })()}
         {compare.length === 2 ? (
           <CompareView
             a={compare[0]}

@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Tabs stop wrapping, wide tables scroll inside themselves instead of
   being clipped, the footer wraps like prose, and the page never
   scrolls sideways. Desktop is untouched.
+- **Flip between runs on the phone.** The detail view gains prev/next
+  arrows and a "2 / 3" position marker (phone widths only — desktop
+  already shows the list) walking the list in its rendered order, pins
+  and sort direction included.
 - **Pair a device from the dashboard.** The ⚿ panel gains a "Pair a
   device" button: the server draws the pairing link as a QR code
   (tunnel link when `share` is running, wifi link otherwise) — behind
