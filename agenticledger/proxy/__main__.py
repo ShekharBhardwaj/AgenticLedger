@@ -222,10 +222,10 @@ if not _secret_env("AGENTICLEDGER_INGEST_KEY"):
         "before exposing the proxy beyond localhost."
     )
 if not _secret_env("AGENTICLEDGER_API_KEY"):
-    _logger.warning(
-        "AGENTICLEDGER_API_KEY is not set — the dashboard, API, and MCP endpoints are "
-        "UNAUTHENTICATED. Set it (or configure API tokens) before exposing Agentic Ledger "
-        "beyond localhost."
+    _logger.info(
+        "AGENTICLEDGER_API_KEY is not set — the dashboard is open on this machine; "
+        "visitors from other machines must present the auto-generated remote key "
+        "(`agenticledger remote` prints the pairing link)."
     )
 
 uvicorn.run(app, host=host, port=port)

@@ -439,6 +439,11 @@ def main(argv: Optional[list] = None) -> int:
              "shadows whom, what can actually run, and what is serving.",
     )
 
+    sub.add_parser(
+        "remote",
+        help="Print the pairing link for opening the dashboard from your "
+             "phone or another machine. Local use never needs a key.",
+    )
     sub.add_parser("stop", help="Stop the background proxy.")
     sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
     logs_p = sub.add_parser("logs", help="Show the background proxy's log.")
@@ -503,6 +508,9 @@ def main(argv: Optional[list] = None) -> int:
     if args.subcommand == "doctor":
         from agenticledger.doctor import doctor_command
         return doctor_command()
+    if args.subcommand == "remote":
+        from agenticledger.service import remote
+        return remote()
     if args.subcommand == "pricing":
         from .pricing_update import update
         return update()

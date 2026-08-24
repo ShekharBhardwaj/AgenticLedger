@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The remote guard (#110, part 1).** The default bind is 0.0.0.0, and
+  until now an unconfigured install was an open book to anyone on the
+  network. Now loopback callers keep the zero-config open dashboard,
+  while callers from any other machine must present an auto-generated
+  remote key (created once, stable across restarts, stored like an SSH
+  key). `agenticledger remote` prints the pairing link for your phone
+  or another machine. Setting AGENTICLEDGER_API_KEY still switches to
+  full explicit-key mode, unchanged.
+- **`uvx agentic-ledger` just works** — the package now also installs a
+  command named after itself, so the uvx one-liner needs no --from.
+
 ### Fixed
 - **status and doctor probe the port the service actually runs on.** The
   service inherits its env (including the port) at start, but status and

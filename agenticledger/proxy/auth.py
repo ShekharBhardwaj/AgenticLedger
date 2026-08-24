@@ -23,6 +23,7 @@ Roles are hierarchical:
 
 import hashlib
 import secrets
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Optional
 
@@ -65,3 +66,42 @@ class Principal:
     source: str               # "open" | "master" | "token"
     token_id: Optional[str] = None
     name: Optional[str] = None
+
+
+def client_is_local(host: Optional[str]) -> bool:
+    """True when a request's client address is this machine itself.
+
+    The remote guard's question: loopback callers keep the zero-config open
+    dashboard, anyone else must present a key. Absent or unparseable
+    addresses count as local — they mean an in-process caller (tests, ASGI
+    embedding), not a network peer; a real network peer always has an IP.
+    """
+    if not host or host == "testclient":
+        return True
+    import ipaddress
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host == "localhost"
+
+
+def load_or_create_remote_key(path) -> str:
+    """The auto-generated key remote dashboard visitors must present when no
+    AGENTICLEDGER_API_KEY is configured. Created once, kept across restarts
+    (a pairing link that changes every restart is a pairing link nobody
+    trusts), stored raw and chmod 0600 like an SSH key — the pairing link
+    needs the real value, so a hash-only store cannot serve here."""
+    from pathlib import Path
+    p = Path(path)
+    try:
+        existing = p.read_text().strip()
+        if existing.startswith(TOKEN_PREFIX):
+            return existing
+    except OSError:
+        pass
+    raw = TOKEN_PREFIX + secrets.token_urlsafe(32)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(raw + "\n")
+    with suppress(OSError):
+        p.chmod(0o600)
+    return raw

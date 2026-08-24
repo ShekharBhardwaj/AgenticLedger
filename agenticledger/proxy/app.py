@@ -46,6 +46,7 @@ import io
 import json
 import logging
 import os
+import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -67,8 +68,10 @@ from .auth import (
     ROLE_INGEST,
     ROLE_VIEWER,
     Principal,
+    client_is_local,
     generate_token,
     hash_token,
+    load_or_create_remote_key,
     role_satisfies,
     valid_role,
 )
@@ -600,6 +603,27 @@ def create_app(
     # The master key grants admin (and is the bootstrap for minting tokens); API
     # tokens grant their own role. When unset, access is open (dev UX) and __main__ warns.
     _auth_enabled = bool(_api_key)
+    # The remote guard: with no configured key, LOOPBACK callers keep the
+    # zero-config open dashboard, but a caller from any other machine must
+    # present the auto-generated remote key (`agenticledger remote` prints the
+    # pairing link). The default bind is 0.0.0.0, so without this the default
+    # install is an open book to the whole network.
+    _remote_key = None if _auth_enabled else load_or_create_remote_key(
+        Path.home() / ".agenticledger" / "remote.key")
+
+    def _open_access_allowed(carrier) -> bool:
+        """May this credential-less carrier use the open (no-key) dashboard?"""
+        client = getattr(carrier, "client", None)
+        if client_is_local(client.host if client else None):
+            return True
+        if _remote_key is None:
+            return False
+        candidates = (
+            carrier.headers.get("x-agenticledger-api-key"),
+            carrier.query_params.get("api_key"),
+            _extract_token(carrier),
+        )
+        return any(c and secrets.compare_digest(c, _remote_key) for c in candidates)
 
     async def _authenticate(carrier) -> Optional[Principal]:
         """Resolve a Principal from a request/websocket, or None if no valid credential.
@@ -626,7 +650,12 @@ def create_app(
     async def _require(request: Request, role: str) -> Principal:
         """Enforce that the request carries a credential satisfying ``role``."""
         if not _auth_enabled:
-            return Principal(ROLE_ADMIN, "open")
+            if _open_access_allowed(request):
+                return Principal(ROLE_ADMIN, "open")
+            raise HTTPException(
+                status_code=401,
+                detail="Remote access needs the key. On the machine running the "
+                       "ledger: agenticledger remote prints the pairing link.")
         principal = await _authenticate(request)
         if principal is None:
             raise HTTPException(status_code=401, detail="Unauthorized")
@@ -766,6 +795,9 @@ def create_app(
         # Live events carry call metadata (session ids, status codes) — require
         # the same credential as the dashboard when auth is configured. Closing
         # before accept rejects the handshake with 1008 (policy violation).
+        if not _auth_enabled and not _open_access_allowed(websocket):
+            await websocket.close(code=4401)
+            return
         if _auth_enabled and await _authenticate(websocket) is None:
             await websocket.close(code=1008)
             return
@@ -1158,8 +1190,10 @@ def create_app(
                 key="[proxy] port"),
             row("Access", "dashboard key", key_state(_auth_enabled),
                 "AGENTICLEDGER_API_KEY",
-                means="The key needed to read the ledger. Not set means anyone "
-                      "who can reach this port can read everything.",
+                means="The key needed to read the ledger. Not set means open on "
+                      "this machine only; visitors from other machines must "
+                      "present the auto-generated remote key (agenticledger "
+                      "remote prints the pairing link).",
                 key="[keys] api_key / api_key_file"),
             row("Access", "ingest key (relay)",
                 key_state(bool(_ingest_key)) + ("" if _ingest_key else " — OPEN RELAY"),

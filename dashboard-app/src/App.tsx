@@ -21,14 +21,15 @@ function Logo({ size = 24 }: { size?: number }) {
 /** Plain-words answer to "what is this key?" for the ⚿ panel. */
 function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
   if (!w.auth) {
-    // An open server is a fact, not good news — no green here. Fine on
-    // your own machine; a risk the moment this port is reachable by
-    // anyone else.
+    // No configured key now means: open on this machine, guarded from
+    // everywhere else by the auto-generated remote key. A fact, stated
+    // plainly — neither an alarm nor a promise of more than it is.
     return {
-      text: "No access key is set: everything on this server is open. "
-            + "That is fine on your own machine. Before exposing this "
-            + "server, set AGENTICLEDGER_API_KEY and restart.",
-      tone: "warn",
+      text: "No access key is set: open on this machine. Visitors from "
+            + "other machines need the remote key — run `agenticledger "
+            + "remote` there for the pairing link. For full key control, "
+            + "set AGENTICLEDGER_API_KEY and restart.",
+      tone: "ok",
     };
   }
   if (w.team) {

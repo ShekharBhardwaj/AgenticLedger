@@ -41,6 +41,8 @@ dependencies = [
 
 [project.scripts]
 agenticledger = "agenticledger.cli:main"
+# Alias matching the PyPI name, so `uvx agentic-ledger` just works.
+agentic-ledger = "agenticledger.cli:main"
 
 [project.optional-dependencies]
 postgres = [

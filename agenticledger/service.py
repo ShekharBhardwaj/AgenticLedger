@@ -199,6 +199,50 @@ def stop() -> int:
     return 0
 
 
+def _lan_ip() -> Optional[str]:
+    """This machine's address on the local network, or None when offline.
+    A UDP connect never sends a packet; it only asks the OS which interface
+    would carry one."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("203.0.113.1", 1))
+            return sock.getsockname()[0]
+    except OSError:
+        return None
+
+
+def remote() -> int:
+    """Print the pairing link for reaching the dashboard from another device."""
+    import os
+    if os.environ.get("AGENTICLEDGER_API_KEY"):
+        print("AGENTICLEDGER_API_KEY is set, so remote visitors use that key")
+        print("(or a minted token) — there is no separate remote key.")
+        return 0
+    key_file = STATE_DIR / "remote.key"
+    try:
+        key = key_file.read_text().strip()
+    except OSError:
+        print("No remote key yet. It is created the first time the ledger")
+        print("starts. Start it, then run this again:  agenticledger start")
+        return 1
+    port = effective_port()
+    ip = _lan_ip()
+    print("From this machine, the dashboard needs no key:")
+    print(f"  http://localhost:{port}/app")
+    print()
+    print("From your phone or another machine on the same network (or")
+    print("tailnet), open the pairing link:")
+    if ip:
+        print(f"  http://{ip}:{port}/app?api_key={key}")
+    else:
+        print(f"  http://<this-machine's-address>:{port}/app?api_key={key}")
+    print()
+    print("The link carries the key: share it only with your own devices.")
+    print(f"To rotate it, delete {key_file} and restart.")
+    return 0
+
+
 def status() -> int:
     port = effective_port()
     pid = _read_pid()
