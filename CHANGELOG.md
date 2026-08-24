@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **DeepSeek and Mistral pricing packs.** Agent calls using current DeepSeek
+  and Mistral text models now receive built-in input, output, and cached-input
+  cost estimates without requiring a runtime pricing override.
+
 ### Fixed
 - **status and doctor probe the port the service actually runs on.** The
   service inherits its env (including the port) at start, but status and

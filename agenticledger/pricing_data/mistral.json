@@ -1,0 +1,18 @@
+{
+  "provider": "mistral",
+  "checked": "2026-08-24",
+  "pricing_page": "https://docs.mistral.ai/inference/pricing",
+  "notes": [
+    "Standard API prices are USD per million tokens: {\"input\": in, \"output\": out}.",
+    "Mistral bills cached input at 10% of the standard input rate, recorded as cache_read."
+  ],
+  "models": {
+    "mistral-medium": {"input": 1.50, "output": 7.50, "cache_read": 0.150},
+    "mistral-small":  {"input": 0.15, "output": 0.60, "cache_read": 0.015},
+    "mistral-large":  {"input": 0.50, "output": 1.50, "cache_read": 0.050},
+    "ministral-14b":  {"input": 0.20, "output": 0.20, "cache_read": 0.020},
+    "ministral-8b":   {"input": 0.15, "output": 0.15, "cache_read": 0.015},
+    "ministral-3b":   {"input": 0.10, "output": 0.10, "cache_read": 0.010},
+    "codestral":      {"input": 0.30, "output": 0.90, "cache_read": 0.030}
+  }
+}
