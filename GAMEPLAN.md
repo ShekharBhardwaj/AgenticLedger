@@ -189,7 +189,7 @@ Kit-per-week cadence down the ranked list; MCP registry + package one-liners + b
 
 The ROADMAP's Phase 1–2 work (ingest auth, tokens/roles, redaction, retention) is not displaced — it's *load-bearing* for this plan: the new positioning is unattended agents with real spend and full prompts on disk, which makes trustworthy capture and a closed relay more urgent, not less. The pragmatic merge: ROADMAP quick wins ride along in Phase A; token/RBAC and redaction land with Phase C when the SPA needs a real auth story anyway; multi-tenancy and enterprise stay downstream — framework adoption (this plan) is what creates the fleet operators the enterprise edition later monetizes.
 
-## 0.10 — "Everywhere, live" (locked 2026-08-19)
+## 0.10 — "Everywhere, live" (locked 2026-08-19; shipped 2026-08-23 as v0.10.0)
 
 Two pillars, one story: the ledger records every provider, and shows you
 the loop while it runs. Milestone:
@@ -245,3 +245,53 @@ report card, settings editing from the UI.
 
 Build order A → B → C → D, user-zero hands on every seam, tag on the
 word — the 0.9.2 retest discipline is the permanent process now.
+
+## Where the plan stands (2026-08-24)
+
+The section above is history now. The ledger of it:
+
+**0.10.0 "Everywhere, live" shipped 2026-08-23.** Every phase landed:
+the adapter architecture (#94) with the wire-truth corpus under it
+(#97), direct Bedrock capture (#95), the Live Loop view (#96), and
+Phase T's promoted first item, store-backed run signatures, shipped
+inside 0.10 itself: inferred runs and their walls survive restarts.
+
+**0.11.0 "The bill, before the bill" shipped 2026-08-23, same day.**
+Unplanned by the old phases, demanded by the story: the spend meter
+(live burn rate and by-morning projection) and per-run cost ceilings,
+enforced in the request path, surviving restarts, guarding inferred
+loops. Plus `agenticledger upgrade` (#92, from Phase D),
+`agenticledger doctor` (born from user zero's worst install day), and
+a purge that reaches run-inherited sessions. Launch campaign built and
+site refreshed; the release video records against released bits only.
+
+**0.12.0 "In your pocket" is the live slate**, tracked as milestone 2:
+https://github.com/ShekharBhardwaj/AgenticLedger/milestone/2
+
+- **The pillar: remote control without a relay (#110 + #54).** The
+  ceiling webhook is a fire alarm you cannot act on away from the
+  laptop. Dashboard auth token first, then `agenticledger share`: one
+  command, a tunnel the user owns (Tailscale or cloudflared), a QR
+  code in the terminal, the kill switch on the phone. Explicit
+  non-goal: no relay of ours; "your data never leaves your machines"
+  survives with no asterisk. The narrow-width dashboard (#54) is the
+  other half of this feature, not polish.
+- **Coverage:** Bedrock Converse/ConverseStream (#111, completing
+  #95's promise for modern boto3 agents), Gemini CLI fingerprint
+  (#67), DeepSeek/Mistral pricing (#65).
+- **Companions:** named instances (#108, born from demo-rig pain),
+  re-detect breakdown (#70), session run chips (#91).
+- **Bridge and foundation:** the Helicone/LangSmith migration page
+  (#112) for campaign traffic that already uses something, and the
+  httpx 1.x migration (#93) before the version cap bites anyone.
+
+**Held for pull, on purpose:** the rest of #100 (enterprise posture),
+Redis multi-replica (#15), settings editing (#60), CrewAI/LangGraph
+detection, the semantic report card, and any hosted relay. Built when
+someone real asks. The slate deliberately leaves room: if launch
+feedback converges on one missing thing, that thing takes the room.
+
+Process unchanged and permanent: user-zero hands on every seam, the
+primary scenario passes under those hands before any tag, docs and
+site audited against the release before the tag, and the tag ships on
+the word.
