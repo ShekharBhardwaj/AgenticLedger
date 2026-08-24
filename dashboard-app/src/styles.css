@@ -835,8 +835,6 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
     background: var(--bg-panel); color: var(--text);
     font-size: 13.5px; cursor: pointer;
   }
-  /* Sessions keeps the standalone back button; give it its margin back. */
-  .layout > .main > .mobile-back { margin: 0 0 12px; }
 
   /* Wide content scrolls inside itself; the page never scrolls sideways.
      Tables become their own scroll containers (display:block) — clipping

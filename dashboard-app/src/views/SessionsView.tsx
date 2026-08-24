@@ -439,6 +439,35 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
 
   const shown = results ?? calls;
 
+  // The grouped list in its rendered order. Computed once so the JSX and
+  // the phone's prev/next arrows walk the same sequence — the eye's order,
+  // headings and pins included.
+  const groupedList = (() => {
+    const list = pinnedFirst(timeSorted(sessions.filter((s) => matchesFilter(s, projectFilter)), oldestFirst));
+    const groups: { key: string | null; title: string | null; items: typeof list }[] = [];
+    if (projectFilter !== "") {
+      groups.push({ key: null, title: null, items: list });
+    } else {
+      const byKey = new Map<string, typeof list>();
+      for (const sess of list) {
+        const key = sess.project ?? (sess.run_id ? RUN_PREFIX + sess.run_id : "");
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key)!.push(sess);
+      }
+      for (const [key, items] of byKey) {
+        groups.push({
+          key: key || null,
+          title: key.startsWith(RUN_PREFIX)
+            ? key.slice(RUN_PREFIX.length)
+            : (key || "unfiled"),
+          items,
+        });
+      }
+    }
+    return groups;
+  })();
+  const ordered = groupedList.flatMap((g) => g.items);
+
   return (
     <div className={`layout ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
@@ -456,41 +485,7 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
                        sessionCount={sessions.filter((x) => matchesFilter(x, projectFilter)).length} />
         <TimeSortToggle oldestFirst={oldestFirst} onChange={setOldestFirst} />
         {(() => {
-          const list = pinnedFirst(timeSorted(sessions.filter((s) => matchesFilter(s, projectFilter)), oldestFirst));
-          // The "all projects" view reads as sections: a heading per
-          // project, sessions beneath, the unfiled ones under their own
-          // heading (#105). Groups keep the list's order, so the project
-          // that spoke most recently sits on top. A chosen project (or
-          // the starred view) is already one group — no headings there.
-          const groups: { key: string | null; title: string | null; items: typeof list }[] = [];
-          if (projectFilter !== "") {
-            groups.push({ key: null, title: null, items: list });
-          } else {
-            // A session nobody filed still belongs to its run, so the run
-            // acts as its default project group; only truly runless,
-            // projectless sessions land under "unfiled".
-            const byKey = new Map<string, typeof list>();
-            for (const sess of list) {
-              const key = sess.project ?? (sess.run_id ? RUN_PREFIX + sess.run_id : "");
-              if (!byKey.has(key)) byKey.set(key, []);
-              byKey.get(key)!.push(sess);
-            }
-            // Groups in pure recency order, unfiled included: the list
-            // is already sorted newest-first, so first appearance = most
-            // recent voice. The flight recorder never hides who spoke
-            // last — burying fresh unfiled work under project sections
-            // made brand-new sessions invisible (user-zero finding).
-            for (const [key, items] of byKey) {
-              groups.push({
-                key: key || null,
-                title: key.startsWith(RUN_PREFIX)
-                  ? key.slice(RUN_PREFIX.length)
-                  : (key || "unfiled"),
-                items,
-              });
-            }
-          }
-          return groups.map((g) => (
+          return groupedList.map((g) => (
             <div key={g.key ?? g.title ?? "all"} className="proj-group">
               {g.title && (
                 <div
@@ -598,11 +593,22 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
         })()}
       </div>
       <div className="main">
-        {selected && (
-          <button className="mobile-back" onClick={() => setSelected(null)}>
-            ← all sessions
-          </button>
-        )}
+        {selected && (() => {
+          const idx = ordered.findIndex((x) => x.session_id === selected);
+          return (
+            <div className="mobile-nav">
+              <button className="mobile-back" onClick={() => setSelected(null)}>
+                ← all sessions
+              </button>
+              <span className="mnav-spacer" />
+              {idx >= 0 && <span className="mobile-pos">{idx + 1} / {ordered.length}</span>}
+              <button className="mobile-step" disabled={idx <= 0}
+                      onClick={() => { setQuery(""); setSelected(ordered[idx - 1].session_id); }}>‹</button>
+              <button className="mobile-step" disabled={idx < 0 || idx >= ordered.length - 1}
+                      onClick={() => { setQuery(""); setSelected(ordered[idx + 1].session_id); }}>›</button>
+            </div>
+          );
+        })()}
         {results === null && selected && (
           <>
             <SessionHeader
