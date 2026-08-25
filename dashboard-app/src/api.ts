@@ -445,6 +445,10 @@ export function liveUpdates(onEvent: () => void, onCall?: (ev: LiveCall) => void
   let ws: WebSocket | null = null;
   let closed = false;
   let debounce: number | undefined;
+  // Rejections back off (3s doubling to 60s). A dashboard holding a stale
+  // key was hammering a rejecting server several times a second, forever —
+  // seen live after a key rotation. A socket that OPENS resets the delay.
+  let retryDelay = 3000;
 
   const connect = () => {
     if (closed) return;
@@ -454,6 +458,7 @@ export function liveUpdates(onEvent: () => void, onCall?: (ev: LiveCall) => void
     let counted = false;
     ws.onopen = () => {
       counted = true;
+      retryDelay = 3000;
       openSockets += 1;
       notifyStatus();
     };
@@ -473,7 +478,10 @@ export function liveUpdates(onEvent: () => void, onCall?: (ev: LiveCall) => void
         openSockets -= 1;
         notifyStatus();
       }
-      if (!closed) window.setTimeout(connect, 3000);
+      if (!closed) {
+        window.setTimeout(connect, retryDelay);
+        if (!counted) retryDelay = Math.min(retryDelay * 2, 60000);
+      }
     };
   };
   connect();

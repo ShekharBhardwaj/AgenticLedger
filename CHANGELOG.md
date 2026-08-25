@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command named after itself, so the uvx one-liner needs no --from.
 
 ### Fixed
+- **A rejected dashboard backs off instead of besieging.** A dashboard
+  holding a stale key (after `share --rotate`) retried its websocket
+  several times a second, forever. Reconnects now back off from 3s
+  doubling to 60s while the server refuses, and reset the moment a
+  connection succeeds.
 - **Tunneled and reverse-proxied visitors are judged by who they are,
   not where they enter.** cloudflared, tailscale serve, and nginx all
   deliver visitors from loopback; the guard now honors the forwarded
