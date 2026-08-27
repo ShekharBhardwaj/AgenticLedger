@@ -106,7 +106,7 @@ def test_named_instances_have_their_own_state(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "PID_FILE", tmp_path / "proxy.pid")
     service.use_instance("demo")
     try:
-        assert service.PID_FILE == tmp_path / "instances" / "demo" / "proxy.pid"
+        assert tmp_path / "instances" / "demo" / "proxy.pid" == service.PID_FILE
         assert service.LOG_FILE.parent == service.PID_FILE.parent
         assert service.SHARE_PID_FILE.parent == service.PID_FILE.parent
         assert service._port_state_file().parent == service.PID_FILE.parent
@@ -126,7 +126,8 @@ def test_named_instances_have_their_own_state(tmp_path, monkeypatch):
 
 
 def test_instance_names_are_validated():
-    from agenticledger import service
     import pytest as _pytest
+
+    from agenticledger import service
     with _pytest.raises(SystemExit):
         service.use_instance("Bad Name!")
