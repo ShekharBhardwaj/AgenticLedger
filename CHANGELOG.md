@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every paired device un-pairs at once), `--stop` closes the door and
   the old link dies. No relay of ours: traffic flows only through your
   machine and the tunnel provider you chose.
+- **Named instances (#108).** `agenticledger start --name demo --port
+  8003` runs a second ledger BESIDE the everyday one instead of
+  displacing it: own state directory, own log, own database, own share
+  tunnel. `stop`, `status`, `logs`, and `share` all take `--name`;
+  plain `status` mentions the named instances it can see, and doctor
+  reports every ledger on the machine. Born from our own demo rig,
+  where recording meant the real ledger had to step aside.
 - **Direct Bedrock capture speaks Converse (#111).** Modern boto3
   agents use the Converse and ConverseStream APIs; those calls passed
   through the ledger unpriced. A second Bedrock adapter now converts

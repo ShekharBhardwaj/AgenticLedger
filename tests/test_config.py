@@ -169,6 +169,9 @@ def test_service_pins_default_db_to_the_state_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTICLEDGER_CONFIG", str(tmp_path / "empty.toml"))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(service, "STATE_DIR", tmp_path / "state")
+    # The default db derives from the pidfile's home (named instances move
+    # both together, #108) — keep them siblings here as they are in prod.
+    monkeypatch.setattr(service, "PID_FILE", tmp_path / "state" / "proxy.pid")
     dsn = service._child_env()["AGENTICLEDGER_DSN"]
     assert dsn == f"sqlite:///{tmp_path / 'state' / 'agenticledger.db'}"
     # The path part is absolute once the store parses the URL.

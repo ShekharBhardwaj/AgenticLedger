@@ -208,6 +208,30 @@ def doctor_command() -> int:
     else:
         print("  not running" + (f" (stale pid file: {service.PID_FILE})" if pid else ""))
 
+    # Named instances (#108): a second ledger beside the everyday one.
+    # Doctor reports every instance, or its picture of the machine is half
+    # the truth.
+    for name in service.instances():
+        base = service.STATE_DIR / "instances" / name
+        try:
+            ipid = int((base / "proxy.pid").read_text().strip())
+        except (OSError, ValueError):
+            ipid = None
+        if not service._alive(ipid):
+            print(f"  [{name}] not running")
+            continue
+        try:
+            iport = int((base / "proxy.port").read_text().strip())
+        except (OSError, ValueError):
+            iport = None
+        health = service._health(iport) if iport else None
+        if health:
+            print(f"  [{name}] running (pid {ipid}) — v{health.get('version', '?')} on "
+                  f"port {iport}, dashboard http://localhost:{iport}")
+        else:
+            print(f"  [{name}] process alive (pid {ipid}) but not answering on "
+                  f"port {iport} — see agenticledger logs --name {name}")
+
     verdicts = diagnose(installs, service_state)
     print("\nVerdict:")
     if not verdicts:

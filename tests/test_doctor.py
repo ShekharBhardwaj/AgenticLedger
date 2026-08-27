@@ -96,3 +96,37 @@ def test_effective_port_prefers_the_recorded_truth(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "_alive", lambda pid: False)
     monkeypatch.setattr(service, "_port", lambda: 8000)
     assert service.effective_port() == 8000
+
+
+def test_named_instances_have_their_own_state(tmp_path, monkeypatch):
+    """#108: a named instance moves EVERY state path into its directory,
+    including the default database, so two ledgers never share state."""
+    from agenticledger import service
+    monkeypatch.setattr(service, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(service, "PID_FILE", tmp_path / "proxy.pid")
+    service.use_instance("demo")
+    try:
+        assert service.PID_FILE == tmp_path / "instances" / "demo" / "proxy.pid"
+        assert service.LOG_FILE.parent == service.PID_FILE.parent
+        assert service.SHARE_PID_FILE.parent == service.PID_FILE.parent
+        assert service._port_state_file().parent == service.PID_FILE.parent
+        monkeypatch.delenv("AGENTICLEDGER_DSN", raising=False)
+        env = service._child_env()
+        assert "instances/demo/agenticledger.db" in env["AGENTICLEDGER_DSN"]
+        (tmp_path / "instances" / "demo").mkdir(parents=True)
+        assert service.instances() == ["demo"]
+    finally:
+        # Module globals were rebound; restore for other tests.
+        service.INSTANCE = None
+        service.PID_FILE = service.STATE_DIR / "proxy.pid"
+        service.LOG_FILE = service.STATE_DIR / "proxy.log"
+        service.CONFIG_STATE_FILE = service.STATE_DIR / "proxy.config"
+        service.SHARE_PID_FILE = service.STATE_DIR / "share.pid"
+        service.SHARE_LOG_FILE = service.STATE_DIR / "share.log"
+
+
+def test_instance_names_are_validated():
+    from agenticledger import service
+    import pytest as _pytest
+    with _pytest.raises(SystemExit):
+        service.use_instance("Bad Name!")

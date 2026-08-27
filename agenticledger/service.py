@@ -12,6 +12,7 @@ configured, the service stores captures in ~/.agenticledger/agenticledger.db
 """
 
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -26,10 +27,40 @@ from .config import apply_config, find_config
 STATE_DIR = Path.home() / ".agenticledger"
 PID_FILE = STATE_DIR / "proxy.pid"
 LOG_FILE = STATE_DIR / "proxy.log"
+# The selected instance (#108). None = the default, everyday ledger, whose
+# state lives at the STATE_DIR root exactly as before. A named instance
+# gets its own state directory — pid, log, port record, share tunnel, and
+# its own default database — so a second ledger (a demo rig, a per-project
+# recorder) runs BESIDE the everyday one instead of displacing it.
+INSTANCE: Optional[str] = None
 # The absolute path of the config file the background proxy read at start
 # (empty when it started without one). `config set` compares against this
 # to warn when an edit lands in a file the running proxy never saw.
 CONFIG_STATE_FILE = STATE_DIR / "proxy.config"
+
+
+def use_instance(name: str) -> None:
+    """Select a named instance: every state path moves to its directory.
+    The default database moves with them (_child_env derives it from the
+    pidfile's home), so instances never share a SQLite file."""
+    global INSTANCE, PID_FILE, LOG_FILE, CONFIG_STATE_FILE, SHARE_PID_FILE, SHARE_LOG_FILE
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", name):
+        raise SystemExit(f"instance names are lowercase letters, digits, and dashes (got {name!r})")
+    INSTANCE = name
+    base = STATE_DIR / "instances" / name
+    PID_FILE = base / "proxy.pid"
+    LOG_FILE = base / "proxy.log"
+    CONFIG_STATE_FILE = base / "proxy.config"
+    SHARE_PID_FILE = base / "share.pid"
+    SHARE_LOG_FILE = base / "share.log"
+
+
+def instances() -> list[str]:
+    """Named instances that exist on this machine (running or not)."""
+    try:
+        return sorted(d.name for d in (STATE_DIR / "instances").iterdir() if d.is_dir())
+    except OSError:
+        return []
 
 
 def _port_state_file() -> Path:
@@ -63,7 +94,7 @@ def _child_env() -> dict:
     apply_config()  # the config file's db value, if any, is in os.environ now
     env = dict(os.environ)
     if not env.get("AGENTICLEDGER_DSN"):
-        default_db = STATE_DIR / "agenticledger.db"
+        default_db = PID_FILE.parent / "agenticledger.db"
         env["AGENTICLEDGER_DSN"] = f"sqlite:///{default_db}"
         stray = Path("agenticledger.db")
         if stray.is_file():
@@ -143,10 +174,17 @@ def start() -> int:
     port = _port()
     pid = _read_pid()
     if _alive(pid):
-        print(f"Already running (pid {pid}) — dashboard: http://localhost:{port}/app")
+        tag = f" [{INSTANCE}]" if INSTANCE else ""
+        print(f"Already running{tag} (pid {pid}) — dashboard: http://localhost:{effective_port()}/app")
         return 0
 
     STATE_DIR.mkdir(exist_ok=True)
+    # The instance's whole state home, before anything opens a file in it.
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if INSTANCE and not os.environ.get("AGENTICLEDGER_PORT"):
+        print("A named instance needs its own port (the default ledger has 8000):")
+        print(f"  agenticledger start --name {INSTANCE} --port 8003")
+        return 1
     _record_loaded_config()
     kwargs: dict = {"stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL}
     if os.name == "posix":
@@ -157,7 +195,7 @@ def start() -> int:
         # The child inherits the fd; closing our handle after spawn is fine.
         proc = subprocess.Popen([sys.executable, "-m", "agenticledger.proxy"],
                                 stdout=log, env=_child_env(), **kwargs)
-    PID_FILE.parent.mkdir(exist_ok=True)
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(proc.pid))
     _port_state_file().write_text(str(port))
 
@@ -363,6 +401,10 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
 
 
 def status() -> int:
+    if INSTANCE is None:
+        others = [n for n in instances()]
+        if others:
+            print(f"named instances: {', '.join(others)} (status --name <name>)")
     port = effective_port()
     pid = _read_pid()
     running = _alive(pid)

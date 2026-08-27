@@ -410,11 +410,16 @@ def main(argv: Optional[list] = None) -> int:
     init_p.add_argument("--path", default="agenticledger.toml",
                         help="Where to write it (default: ./agenticledger.toml)")
 
-    sub.add_parser(
+    start_p = sub.add_parser(
         "start",
         help="Run the proxy in the background — terminal freed, survives the "
              "window closing; logs to ~/.agenticledger/proxy.log.",
     )
+    start_p.add_argument("--name", default=None,
+                         help="Start a NAMED instance beside the everyday ledger "
+                              "(own state, own database). Needs --port.")
+    start_p.add_argument("--port", type=int, default=None,
+                         help="Port for this instance (sets AGENTICLEDGER_PORT).")
     pricing_p = sub.add_parser(
         "pricing", help="Price pack utilities.")
     pricing_sub = pricing_p.add_subparsers(dest="pricing_cmd", required=True)
@@ -452,9 +457,14 @@ def main(argv: Optional[list] = None) -> int:
                          help="Mint a fresh remote key; every paired device un-pairs.")
     share_p.add_argument("--stop", action="store_true",
                          help="Close the tunnel; the old link dies.")
-    sub.add_parser("stop", help="Stop the background proxy.")
-    sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
+    share_p.add_argument("--name", default=None,
+                         help="Share a named instance instead of the everyday ledger.")
+    stop_p = sub.add_parser("stop", help="Stop the background proxy.")
+    stop_p.add_argument("--name", default=None, help="Stop a named instance.")
+    status_p = sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
+    status_p.add_argument("--name", default=None, help="Status of a named instance.")
     logs_p = sub.add_parser("logs", help="Show the background proxy's log.")
+    logs_p.add_argument("--name", default=None, help="Logs of a named instance.")
     logs_p.add_argument("-n", "--lines", type=int, default=50)
     logs_p.add_argument("-f", "--follow", action="store_true")
     sub.add_parser(
@@ -517,8 +527,10 @@ def main(argv: Optional[list] = None) -> int:
         from agenticledger.doctor import doctor_command
         return doctor_command()
     if args.subcommand == "share":
-        from agenticledger.service import share
-        return share(stop=args.stop, wifi=args.wifi, rotate=args.rotate)
+        from agenticledger import service
+        if args.name:
+            service.use_instance(args.name)
+        return service.share(stop=args.stop, wifi=args.wifi, rotate=args.rotate)
     if args.subcommand == "pricing":
         from .pricing_update import update
         return update()
@@ -530,9 +542,15 @@ def main(argv: Optional[list] = None) -> int:
         return 0
     if args.subcommand in ("start", "stop", "status"):
         from agenticledger import service
+        if getattr(args, "name", None):
+            service.use_instance(args.name)
+        if getattr(args, "port", None):
+            os.environ["AGENTICLEDGER_PORT"] = str(args.port)
         return getattr(service, args.subcommand)()
     if args.subcommand == "logs":
         from agenticledger import service
+        if args.name:
+            service.use_instance(args.name)
         return service.logs(lines=args.lines, follow=args.follow)
     if args.subcommand == "serve":
         os.execv(sys.executable, [sys.executable, "-m", "agenticledger.proxy"])
