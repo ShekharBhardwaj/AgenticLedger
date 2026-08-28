@@ -425,6 +425,8 @@ def status() -> int:
     print(f"Running (pid {pid}) — v{health.get('version', '?')} on port {port}, "
           f"store {ready}")
     print(f"  dashboard: http://localhost:{port}/app")
+    if health.get("bedrock"):
+        print(f"  bedrock:   {health['bedrock']}")
     return 0
 
 

@@ -57,6 +57,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command named after itself, so the uvx one-liner needs no --from.
 
 ### Fixed
+- **`aws login` heals a running ledger.** The Bedrock signer resolved
+  once at boot, so credentials appearing later (a login, a fixed
+  profile, an installed dependency) silently demanded a restart nobody
+  would guess at. A Bedrock call finding no signer now retries the
+  chain live (throttled), and the fix takes effect within seconds.
+- **The credential story is visible everywhere it matters.** /health
+  and `agenticledger status` report the Bedrock signing state with its
+  reason; `agenticledger doctor` gains a "Bedrock credentials" section
+  that tells this shell's chain apart from the running service's — the
+  distinction that cost the original hour.
 - **Bedrock's credential refusal names the actual reason.** When the
   AWS chain fails (an expired `aws login` session, a missing crt
   dependency, a broken profile), the 502 now carries the chain's own

@@ -232,6 +232,30 @@ def doctor_command() -> int:
             print(f"  [{name}] process alive (pid {ipid}) but not answering on "
                   f"port {iport} — see agenticledger logs --name {name}")
 
+    # AWS/Bedrock: the layer that cost an hour of digging. Two sides, told
+    # apart explicitly: what THIS shell's chain can do, and what the RUNNING
+    # service booted with (a different shell's environment, often).
+    print("\nBedrock credentials:")
+    try:
+        from agenticledger.proxy.bedrock_auth import BedrockSigner
+        shell_signer = BedrockSigner.from_environment()
+        if shell_signer is not None:
+            print(f"  this shell: chain resolves, region {shell_signer.region}")
+        elif BedrockSigner.last_failure:
+            print(f"  this shell: chain FAILS — {BedrockSigner.last_failure}")
+        else:
+            print("  this shell: no AWS credentials (fine unless you use Bedrock)")
+    except ImportError:
+        print("  this shell: signing library not installed "
+              "(pip install \"agentic-ledger[bedrock]\")")
+    if service_state.get("running"):
+        svc = (service._health(port) or {}).get("bedrock")
+        if svc:
+            print(f"  the service: {svc}")
+        print("  (the service keeps the environment of the shell that STARTED it —")
+        print("   a Bedrock call also retries the chain live, so `aws login` heals")
+        print("   a running ledger within seconds.)")
+
     verdicts = diagnose(installs, service_state)
     print("\nVerdict:")
     if not verdicts:

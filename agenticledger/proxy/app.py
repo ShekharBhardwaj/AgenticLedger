@@ -708,7 +708,17 @@ def create_app(
             _version = _v("agentic-ledger")
         except Exception:
             _version = "unknown"
-        return JSONResponse({"status": "ok", "version": _version})
+        # The Bedrock signing truth, reason included — which shell started
+        # the service (and with what credentials) is otherwise invisible,
+        # and that invisibility cost an hour of digging on a real machine.
+        signer = getattr(app.state, "bedrock_signer", None)
+        if signer is not None:
+            bedrock = f"signing as the ledger in {signer.region}"
+        elif BedrockSigner.last_failure:
+            bedrock = f"off — {BedrockSigner.last_failure}"
+        else:
+            bedrock = "off — no AWS credentials in the service's environment"
+        return JSONResponse({"status": "ok", "version": _version, "bedrock": bedrock})
 
     @app.get("/readyz")
     async def readyz() -> JSONResponse:
@@ -2419,6 +2429,8 @@ def create_app(
         # resource. Under zero-config routing we would forward to
         # api.openai.com and hand back a baffling 404, so refuse with the fix.
         if is_llm_path and _is_bedrock(path) and getattr(request.app.state, "bedrock_signer", None) is None:
+            _retry_bedrock_signer(request.app)
+        if is_llm_path and _is_bedrock(path) and getattr(request.app.state, "bedrock_signer", None) is None:
             return JSONResponse(
                 {"error": {"type": "upstream_not_configured",
                            "message": BedrockSigner.why_unavailable()}},
@@ -2846,6 +2858,24 @@ def _upstream_client(app, path: str) -> httpx.AsyncClient:
     if anthropic is not None and _wire_format(path) == "anthropic":
         return anthropic
     return app.state.client
+
+
+def _retry_bedrock_signer(app) -> None:
+    """A Bedrock call arrived and the ledger has no signer: try the chain
+    again (throttled to once per 5s). Credentials often appear AFTER the
+    ledger started — `aws login`, a fixed profile, an installed dependency —
+    and demanding a restart for each turned one expired session into an
+    hour of digging on user zero's machine."""
+    now = time.time()
+    if now - getattr(app.state, "bedrock_retry_at", 0.0) < 5.0:
+        return
+    app.state.bedrock_retry_at = now
+    signer = BedrockSigner.from_environment()
+    if signer is None:
+        return
+    app.state.bedrock_signer = signer
+    app.state.client_bedrock = httpx.AsyncClient(
+        base_url=signer.endpoint, timeout=httpx.Timeout(120.0))
 
 
 def _is_bedrock(path: str) -> bool:

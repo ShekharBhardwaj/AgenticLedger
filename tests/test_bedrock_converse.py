@@ -184,3 +184,30 @@ def test_signer_failure_reason_reaches_the_error(monkeypatch):
     assert "aws login" in msg
     monkeypatch.setattr(BedrockSigner, "last_failure", None)
     assert "standard chain" in BedrockSigner.why_unavailable()
+
+
+def test_a_late_aws_login_heals_a_running_ledger(proxy, monkeypatch):
+    """The signer used to resolve once at boot; credentials appearing later
+    (aws login) demanded a restart nobody would guess at. A Bedrock call
+    finding no signer now retries the chain live."""
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE",
+                "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION"):
+        monkeypatch.delenv(var, raising=False)
+    client = proxy(handler=lambda r: httpx.Response(200, json=_converse_json()))
+    assert client.post(f"/{CONVERSE}", json=BODY).status_code in (400, 502, 503)
+    # "aws login" happens (credentials appear) — no restart follows.
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIATESTKEY")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    import agenticledger.proxy.app as app_mod
+    # The heal builds a real Bedrock client; keep this test off the network
+    # by routing any client the heal creates to the fixture's mock upstream.
+    real_client = httpx.AsyncClient
+    def mocked(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(client.upstream)
+        return real_client(**kwargs)
+    monkeypatch.setattr(app_mod.httpx, "AsyncClient", mocked)
+    client.app.state.bedrock_retry_at = 0.0   # skip the 5s retry throttle
+    resp = client.post(f"/{CONVERSE}", json=BODY)
+    assert resp.status_code == 200
+    assert resp.json()["output"]["message"]["content"][0]["text"] == "pong"
