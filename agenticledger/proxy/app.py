@@ -71,7 +71,7 @@ from .auth import (
     client_is_local,
     generate_token,
     hash_token,
-    load_or_create_remote_key,
+    load_or_create_pairing_key,
     role_satisfies,
     valid_role,
 )
@@ -605,11 +605,11 @@ def create_app(
     _auth_enabled = bool(_api_key)
     # The remote guard: with no configured key, LOOPBACK callers keep the
     # zero-config open dashboard, but a caller from any other machine must
-    # present the auto-generated remote key (`agenticledger remote` prints the
+    # present the auto-generated pairing key (`agenticledger remote` prints the
     # pairing link). The default bind is 0.0.0.0, so without this the default
     # install is an open book to the whole network.
-    _remote_key = None if _auth_enabled else load_or_create_remote_key(
-        Path.home() / ".agenticledger" / "remote.key")
+    _pairing_key = None if _auth_enabled else load_or_create_pairing_key(
+        Path.home() / ".agenticledger" / "pairing.key")
 
     def _effective_client_host(carrier) -> Optional[str]:
         """The caller's real address: the forwarded client when a proxy in
@@ -631,14 +631,14 @@ def create_app(
         """
         if client_is_local(_effective_client_host(carrier)):
             return True
-        if _remote_key is None:
+        if _pairing_key is None:
             return False
         candidates = (
             carrier.headers.get("x-agenticledger-api-key"),
             carrier.query_params.get("api_key"),
             _extract_token(carrier),
         )
-        return any(c and secrets.compare_digest(c, _remote_key) for c in candidates)
+        return any(c and secrets.compare_digest(c, _pairing_key) for c in candidates)
 
     async def _authenticate(carrier) -> Optional[Principal]:
         """Resolve a Principal from a request/websocket, or None if no valid credential.
@@ -1217,7 +1217,7 @@ def create_app(
                 "AGENTICLEDGER_API_KEY",
                 means="The key needed to read the ledger. Not set means open on "
                       "this machine only; visitors from other machines must "
-                      "present the auto-generated remote key (agenticledger "
+                      "present the auto-generated pairing key (agenticledger "
                       "share prints the pairing link).",
                 key="[keys] api_key / api_key_file"),
             row("Access", "ingest key (relay)",
@@ -1927,7 +1927,7 @@ def create_app(
         sits behind the admin gate (open-local counts)."""
         await _require(request, ROLE_ADMIN)
         from agenticledger import service as _svc
-        key = None if _auth_enabled else _remote_key
+        key = None if _auth_enabled else _pairing_key
         port = request.url.port or 8000
         ip = _svc._lan_ip()
         suffix = f"/app?api_key={key}" if key else "/app"
@@ -1982,7 +1982,7 @@ def create_app(
                            "the ledger: agenticledger share prints the pairing link.")
             local = client_is_local(_effective_client_host(request))
             return JSONResponse({"auth": False, "role": ROLE_ADMIN,
-                                 "source": "open" if local else "remote-key",
+                                 "source": "open" if local else "pairing-key",
                                  "name": None, "team": None, "dashboard": True})
         principal = await _authenticate(request)
         if principal is None:

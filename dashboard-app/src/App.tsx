@@ -22,12 +22,12 @@ function Logo({ size = 24 }: { size?: number }) {
 function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
   if (!w.auth) {
     // No configured key: open on the ledger's own machine, guarded from
-    // everywhere else by the auto-generated remote key. Say which side
+    // everywhere else by the auto-generated pairing key. Say which side
     // of that line THIS browser is on — the panel confused people when
     // it answered generically.
-    if (w.source === "remote-key") {
+    if (w.source === "pairing-key") {
       return {
-        text: "Paired device: this browser holds the remote key, so it can "
+        text: "Paired device: this browser holds the pairing key, so it can "
               + "see everything. To un-pair every device at once, run "
               + "`agenticledger share --rotate` on the ledger's machine.",
         tone: "ok",

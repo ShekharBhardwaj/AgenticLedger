@@ -281,11 +281,11 @@ def _print_qr(url: str) -> None:
     qr.print_ascii(invert=True)
 
 
-def _remote_key() -> Optional[str]:
+def _pairing_key() -> Optional[str]:
     if os.environ.get("AGENTICLEDGER_API_KEY"):
         return None   # explicit-key mode: visitors use that key or a minted token
     try:
-        return (STATE_DIR / "remote.key").read_text().strip()
+        return (STATE_DIR / "pairing.key").read_text().strip()
     except OSError:
         return None
 
@@ -307,19 +307,19 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
     if rotate:
         if os.environ.get("AGENTICLEDGER_API_KEY"):
             print("AGENTICLEDGER_API_KEY is set — rotate that key instead; the")
-            print("auto-generated remote key is not in use.")
+            print("auto-generated pairing key is not in use.")
             return 1
-        (STATE_DIR / "remote.key").unlink(missing_ok=True)
-        print("Remote key rotated: the old key is dead on the next restart.")
+        (STATE_DIR / "pairing.key").unlink(missing_ok=True)
+        print("Pairing key rotated: the old key is dead on the next restart.")
         print("Restart to mint the new one, then share again:")
         print("  agenticledger stop && agenticledger start && agenticledger share")
         return 0
     if not _alive(_read_pid()):
         print("The ledger is not running — start it first:  agenticledger start")
         return 1
-    key = _remote_key()
+    key = _pairing_key()
     if key is None and not os.environ.get("AGENTICLEDGER_API_KEY"):
-        print("No remote key found — this build predates the remote guard.")
+        print("No pairing key found — this build predates the remote guard.")
         print("Upgrade and restart, then run share again.")
         return 1
     port = effective_port()

@@ -224,7 +224,7 @@ if not _secret_env("AGENTICLEDGER_INGEST_KEY"):
 if not _secret_env("AGENTICLEDGER_API_KEY"):
     _logger.info(
         "AGENTICLEDGER_API_KEY is not set — the dashboard is open on this machine; "
-        "visitors from other machines must present the auto-generated remote key "
+        "visitors from other machines must present the auto-generated pairing key "
         "(`agenticledger share` prints the pairing link)."
     )
 

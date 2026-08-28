@@ -1,12 +1,12 @@
 """The remote guard: loopback callers keep the zero-config open dashboard;
-callers from other machines must present the auto-generated remote key.
+callers from other machines must present the auto-generated pairing key.
 Born in #110 — the default bind is 0.0.0.0, so before this the default
 install was an open book to the whole network."""
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from agenticledger.proxy.auth import client_is_local, load_or_create_remote_key
+from agenticledger.proxy.auth import client_is_local, load_or_create_pairing_key
 
 
 def test_client_is_local_knows_its_neighbors():
@@ -19,9 +19,9 @@ def test_client_is_local_knows_its_neighbors():
     assert not client_is_local("203.0.113.9")
 
 
-def test_remote_key_is_stable_across_restarts(tmp_path):
-    first = load_or_create_remote_key(tmp_path / "remote.key")
-    second = load_or_create_remote_key(tmp_path / "remote.key")
+def test_pairing_key_is_stable_across_restarts(tmp_path):
+    first = load_or_create_pairing_key(tmp_path / "pairing.key")
+    second = load_or_create_pairing_key(tmp_path / "pairing.key")
     assert first == second
     assert first.startswith("agl_")
 
@@ -33,7 +33,7 @@ def guarded_app(tmp_path, monkeypatch):
     monkeypatch.delenv("AGENTICLEDGER_API_KEY", raising=False)
     from agenticledger.proxy.app import create_app
     app = create_app("http://upstream.invalid", f"sqlite:///{tmp_path}/t.db")
-    key = (tmp_path / ".agenticledger" / "remote.key").read_text().strip()
+    key = (tmp_path / ".agenticledger" / "pairing.key").read_text().strip()
     return app, key
 
 
@@ -88,7 +88,7 @@ async def test_tunnel_visitors_are_remote_even_from_loopback(guarded_app):
         assert (await tunneled.get("/api/whoami", headers=hdr)).status_code == 401
         ok = await tunneled.get(f"/api/whoami?api_key={key}", headers=hdr)
         assert ok.status_code == 200
-        assert ok.json()["source"] == "remote-key"
+        assert ok.json()["source"] == "pairing-key"
         await tunneled.aclose()
 
 
@@ -116,3 +116,13 @@ async def test_pairing_info_is_gated_and_keyed(guarded_app, tmp_path):
             assert b"<svg" in qr.content[:200] or b"svg" in qr.content[:200]
         await local.aclose()
         await remote.aclose()
+
+
+def test_legacy_remote_key_file_is_adopted(tmp_path):
+    """The key file was born as remote.key; the pairing-key rename must not
+    silently un-pair every device that holds the old secret."""
+    legacy = tmp_path / "remote.key"
+    legacy.write_text("agl_legacy-secret\n")
+    key = load_or_create_pairing_key(tmp_path / "pairing.key")
+    assert key == "agl_legacy-secret"
+    assert not legacy.exists()

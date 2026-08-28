@@ -85,14 +85,20 @@ def client_is_local(host: Optional[str]) -> bool:
         return host == "localhost"
 
 
-def load_or_create_remote_key(path) -> str:
-    """The auto-generated key remote dashboard visitors must present when no
+def load_or_create_pairing_key(path) -> str:
+    """The auto-generated PAIRING key remote dashboard visitors must present when no
     AGENTICLEDGER_API_KEY is configured. Created once, kept across restarts
     (a pairing link that changes every restart is a pairing link nobody
     trusts), stored raw and chmod 0600 like an SSH key — the pairing link
     needs the real value, so a hash-only store cannot serve here."""
     from pathlib import Path
     p = Path(path)
+    # The file was born as remote.key; adopt an existing one under the new
+    # name so the rename does not silently un-pair every device.
+    legacy = p.with_name("remote.key")
+    if not p.exists() and legacy.exists():
+        with suppress(OSError):
+            legacy.rename(p)
     try:
         existing = p.read_text().strip()
         if existing.startswith(TOKEN_PREFIX):

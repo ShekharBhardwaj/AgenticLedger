@@ -57,6 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command named after itself, so the uvx one-liner needs no --from.
 
 ### Fixed
+- **One name for the credential: the pairing key.** The feature spoke
+  three dialects (`share` the verb, "pairing link" the artifact,
+  "remote key" the credential); now you share the dashboard via a
+  pairing link that carries the pairing key. The key file renames to
+  `pairing.key`, and an existing `remote.key` is adopted in place so
+  no device is silently un-paired. "Remote" survives only where it is
+  genuinely about location (the guard's refusal).
 - **`aws login` heals a running ledger.** The Bedrock signer resolved
   once at boot, so credentials appearing later (a login, a fixed
   profile, an installed dependency) silently demanded a restart nobody
