@@ -170,3 +170,17 @@ def test_without_credentials_converse_is_refused_with_the_fix_named(proxy, monke
     resp = client.post(f"/{CONVERSE}", json=BODY)
     assert resp.status_code in (400, 502, 503)
     assert "credential" in resp.text.lower() or "aws" in resp.text.lower()
+
+
+def test_signer_failure_reason_reaches_the_error(monkeypatch):
+    """A three-layer credential dig on user zero's machine (missing profile,
+    missing crt dependency, expired login session) was hidden behind a
+    generic 'set credentials and restart'. The chain's actual reason must
+    surface."""
+    from agenticledger.proxy.bedrock_auth import BedrockSigner
+    monkeypatch.setattr(BedrockSigner, "last_failure",
+                        "Your session has expired ... 'aws login'.")
+    msg = BedrockSigner.why_unavailable()
+    assert "aws login" in msg
+    monkeypatch.setattr(BedrockSigner, "last_failure", None)
+    assert "standard chain" in BedrockSigner.why_unavailable()

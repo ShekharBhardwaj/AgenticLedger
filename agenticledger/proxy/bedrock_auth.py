@@ -29,6 +29,9 @@ class BedrockSigner:
         self.region = region
         self.endpoint = f"https://bedrock-runtime.{region}.amazonaws.com"
 
+    # Why the last from_environment returned None, when the chain said so.
+    last_failure: Optional[str] = None
+
     @classmethod
     def from_environment(cls) -> Optional["BedrockSigner"]:
         """Resolve credentials and region through botocore's standard chain.
@@ -44,11 +47,18 @@ class BedrockSigner:
             region = (os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
                       or session.get_config_variable("region"))
             if credentials is None or not region:
+                cls.last_failure = None if credentials is None else "no region configured"
                 return None
             # Touch the frozen credentials once so a broken profile fails here, not mid-call.
             credentials.get_frozen_credentials()
+            cls.last_failure = None
             return cls(credentials, region)
-        except Exception:
+        except Exception as exc:
+            # The chain KNOWS why it failed (an expired login session, a
+            # missing crt dependency, a broken profile) — losing that reason
+            # cost a three-layer debugging dig on user zero's machine. Keep
+            # it for why_unavailable.
+            cls.last_failure = str(exc)[:300]
             return None
 
     @staticmethod
@@ -58,6 +68,10 @@ class BedrockSigner:
         except ImportError:
             return ("direct Bedrock capture needs the ledger's own signing library: "
                     "pip install \"agentic-ledger[bedrock]\", then restart")
+        if getattr(BedrockSigner, "last_failure", None):
+            return ("direct Bedrock capture could not use this machine's AWS "
+                    f"credentials: {BedrockSigner.last_failure} — fix that, then "
+                    "restart the ledger")
         return ("direct Bedrock capture needs AWS credentials and a region the ledger can "
                 "read from the standard chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or "
                 "AWS_PROFILE, plus AWS_REGION), scoped to bedrock:InvokeModel; set them "

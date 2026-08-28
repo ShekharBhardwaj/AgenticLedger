@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command named after itself, so the uvx one-liner needs no --from.
 
 ### Fixed
+- **Bedrock's credential refusal names the actual reason.** When the
+  AWS chain fails (an expired `aws login` session, a missing crt
+  dependency, a broken profile), the 502 now carries the chain's own
+  message instead of a generic "set credentials and restart" — that
+  generic line cost a three-layer debugging dig on a real machine.
 - **A rejected dashboard backs off instead of besieging.** A dashboard
   holding a stale key (after `share --rotate`) retried its websocket
   several times a second, forever. Reconnects now back off from 3s
