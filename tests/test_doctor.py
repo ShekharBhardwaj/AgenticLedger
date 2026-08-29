@@ -158,8 +158,9 @@ def test_named_instance_ignores_the_config_files_db(tmp_path, monkeypatch):
 
 
 def test_pick_keeper_prefers_the_highest_version():
-    from agenticledger.doctor import Install, pick_keeper
     from pathlib import Path as P
+
+    from agenticledger.doctor import Install, pick_keeper
     old = Install(script=P("/framework/agenticledger"), interpreter=P("/framework/python3"),
                   version="0.11.0", wins=True)
     new = Install(script=P("/usr/local/bin/agenticledger"), interpreter=P("/good/python"),
@@ -171,8 +172,9 @@ def test_pick_keeper_prefers_the_highest_version():
 
 
 def test_skew_verdict_never_advises_a_downgrade():
-    from agenticledger.doctor import Install, diagnose
     from pathlib import Path as P
+
+    from agenticledger.doctor import Install, diagnose
     shadow = Install(script=P("/framework/agenticledger"), interpreter=P("/f/python3"),
                      version="0.11.0", wins=True)
     verdicts = diagnose([shadow], {"running": True, "version": "0.11.1.dev27"})
