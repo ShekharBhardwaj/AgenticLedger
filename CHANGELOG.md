@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every paired device un-pairs at once), `--stop` closes the door and
   the old link dies. No relay of ours: traffic flows only through your
   machine and the tunnel provider you chose.
+- **`doctor --fix` (#116).** Doctor stops handing you homework: --fix
+  evicts shadow installs (keeping the highest-versioned working copy,
+  each shadow removed with its own interpreter's pip), offers to
+  comment out the python.org PATH prepend in ~/.zprofile (asking
+  first — it is your shell config), and re-diagnoses. Also: the
+  version-skew verdict now refuses to advise a downgrade when the
+  running service is newer than the shell's shadowed install.
 - **The run wrapper says when nothing reached the ledger.** A loop
   whose command failed before calling any model used to end with "open
   the dashboard" — an empty dashboard. It now says plainly that zero

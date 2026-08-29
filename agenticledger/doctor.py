@@ -116,6 +116,76 @@ def find_installs(path_env: Optional[str] = None) -> list[Install]:
     return installs
 
 
+def _version_key(v: Optional[str]) -> tuple:
+    """Orderable form of a version string; dev builds count as later than
+    the release they follow (0.11.1.dev27 > 0.11.0)."""
+    return tuple(int(n) for n in re.findall(r"\d+", v or "")) or (0,)
+
+
+def pick_keeper(installs: list["Install"]) -> Optional["Install"]:
+    """The install worth keeping: the highest-versioned working one
+    (PATH order breaks ties). Everything else is eviction material."""
+    working = [i for i in installs if not i.broken]
+    if not working:
+        return None
+    return max(working, key=lambda i: (_version_key(i.version), i.wins))
+
+
+def apply_fixes(installs: list["Install"], keeper: "Install") -> list[str]:
+    """Evict every install that is not the keeper, each with its OWN
+    interpreter's pip — the only honest way to remove it. Returns log
+    lines; destructive only toward the shadows."""
+    lines: list[str] = []
+    for inst in installs:
+        if inst.script == keeper.script:
+            continue
+        if not inst.interpreter:
+            lines.append(f"cannot fix {inst.script}: no interpreter found — remove it by hand")
+            continue
+        result = subprocess.run(
+            [str(inst.interpreter), "-m", "pip", "uninstall", "-y", "agentic-ledger"],
+            capture_output=True, text=True, timeout=120)
+        if result.returncode == 0:
+            lines.append(f"evicted {inst.script} (v{inst.version or '?'}) via its own pip")
+        else:
+            tail = (result.stderr or result.stdout).strip().splitlines()[-1:] or ["unknown error"]
+            lines.append(f"could not evict {inst.script}: {tail[0]}")
+    return lines
+
+
+_PYTHON_ORG_BLOCK = re.compile(
+    r"# Setting PATH for Python [\d.]+\n(?:#[^\n]*\n)?PATH=\"/Library/Frameworks/Python\.framework[^\n]*\n(?:export PATH\n?)?")
+
+
+def offer_zprofile_fix() -> Optional[str]:
+    """The python.org installer's PATH prepend is how shadows outrank the
+    real install in every new terminal. Editing someone's shell profile
+    is theirs to approve: ask, then comment the block out (never delete)."""
+    import sys as _sys
+    profile = Path.home() / ".zprofile"
+    try:
+        text = profile.read_text()
+    except OSError:
+        return None
+    m = _PYTHON_ORG_BLOCK.search(text)
+    if not m:
+        return None
+    if not _sys.stdin.isatty():
+        return (f"{profile} still prepends the python.org bin directory to PATH "
+                f"— remove that block (or rerun doctor --fix in a terminal to be asked).")
+    print(f"\n{profile} contains the python.org PATH prepend that lets shadows")
+    print("outrank the real install in every new terminal:")
+    for line in m.group(0).strip().splitlines():
+        print(f"    {line}")
+    answer = input("Comment it out? [y/N] ").strip().lower()
+    if answer != "y":
+        return "left the PATH prepend in place (your call) — shadows can return until it goes."
+    commented = "".join(f"# [disabled by agenticledger doctor --fix] {ln}\n"
+                        for ln in m.group(0).splitlines())
+    profile.write_text(text.replace(m.group(0), commented))
+    return f"commented the PATH prepend out of {profile} — open a NEW terminal for it to take effect."
+
+
 def diagnose(installs: list[Install], service_state: dict) -> list[str]:
     """Plain-words verdicts, each carrying its fix. Pure function so the
     reasoning is testable without a real machine."""
@@ -159,15 +229,22 @@ def diagnose(installs: list[Install], service_state: dict) -> list[str]:
                 "the background service is not running. Start it: "
                 "agenticledger start")
         elif served and winner.version and served != winner.version:
-            verdicts.append(
-                f"the running proxy serves v{served} but the installed code "
-                f"is v{winner.version} — a restart applies it: "
-                f"agenticledger stop && agenticledger start")
+            if _version_key(served) > _version_key(winner.version):
+                verdicts.append(
+                    f"the running proxy serves v{served}, NEWER than this "
+                    f"shell's install (v{winner.version}) — this shell is "
+                    f"running an older copy (see above); a restart from "
+                    f"here would DOWNGRADE the service.")
+            else:
+                verdicts.append(
+                    f"the running proxy serves v{served} but the installed code "
+                    f"is v{winner.version} — a restart applies it: "
+                    f"agenticledger stop && agenticledger start")
 
     return verdicts
 
 
-def doctor_command() -> int:
+def doctor_command(fix: bool = False, _second_pass: bool = False) -> int:
     from agenticledger import service
 
     print("agenticledger doctor\n")
@@ -263,4 +340,19 @@ def doctor_command() -> int:
         return 0
     for v in verdicts:
         print(f"  - {v}")
+
+    if fix and not _second_pass:
+        keeper = pick_keeper(installs)
+        if keeper and len(installs) > 1:
+            print("\nApplying fixes (keeping the highest-versioned install, "
+                  f"{keeper.script}, v{keeper.version}):")
+            for line in apply_fixes(installs, keeper):
+                print(f"  - {line}")
+        note = offer_zprofile_fix()
+        if note:
+            print(f"  - {note}")
+        print("  - run `hash -r` (or open a new terminal) so the shell "
+              "forgets where the evicted command lived.")
+        print("\nSecond opinion after fixing:")
+        return doctor_command(fix=False, _second_pass=True)
     return 1

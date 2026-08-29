@@ -155,3 +155,26 @@ def test_named_instance_ignores_the_config_files_db(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTICLEDGER_DSN", "sqlite:///deliberate.db")
     monkeypatch.setattr(service, "_EXPLICIT_DSN", "sqlite:///deliberate.db")
     assert service._child_env()["AGENTICLEDGER_DSN"] == "sqlite:///deliberate.db"
+
+
+def test_pick_keeper_prefers_the_highest_version():
+    from agenticledger.doctor import Install, pick_keeper
+    from pathlib import Path as P
+    old = Install(script=P("/framework/agenticledger"), interpreter=P("/framework/python3"),
+                  version="0.11.0", wins=True)
+    new = Install(script=P("/usr/local/bin/agenticledger"), interpreter=P("/good/python"),
+                  version="0.11.1.dev27", wins=False)
+    assert pick_keeper([old, new]) is new
+    # A broken install can never be the keeper, whatever its version.
+    broken = Install(script=P("/x"), interpreter=P("/y"), version="9.9.9", error="boom")
+    assert pick_keeper([broken, old]) is old
+
+
+def test_skew_verdict_never_advises_a_downgrade():
+    from agenticledger.doctor import Install, diagnose
+    from pathlib import Path as P
+    shadow = Install(script=P("/framework/agenticledger"), interpreter=P("/f/python3"),
+                     version="0.11.0", wins=True)
+    verdicts = diagnose([shadow], {"running": True, "version": "0.11.1.dev27"})
+    assert any("DOWNGRADE" in v for v in verdicts)
+    assert not any("a restart applies it" in v for v in verdicts)

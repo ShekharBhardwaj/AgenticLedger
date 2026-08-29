@@ -456,11 +456,15 @@ def main(argv: Optional[list] = None) -> int:
                            help="Install from a local checkout instead of "
                                 "PyPI (path to the repo)")
 
-    sub.add_parser(
+    doctor_p = sub.add_parser(
         "doctor",
         help="The whole truth of this machine: every install on PATH, who "
-             "shadows whom, what can actually run, and what is serving.",
+             "shadows whom, what can actually run, and what is serving. "
+             "--fix applies the fixes it names.",
     )
+    doctor_p.add_argument("--fix", action="store_true",
+                          help="Evict shadow installs (keeping the newest), "
+                               "offer the PATH-prepend cleanup, re-diagnose.")
 
     share_p = sub.add_parser(
         "share",
@@ -543,7 +547,7 @@ def main(argv: Optional[list] = None) -> int:
         return upgrade_command(args)
     if args.subcommand == "doctor":
         from agenticledger.doctor import doctor_command
-        return doctor_command()
+        return doctor_command(fix=args.fix)
     if args.subcommand == "share":
         from agenticledger import service
         if args.name:
