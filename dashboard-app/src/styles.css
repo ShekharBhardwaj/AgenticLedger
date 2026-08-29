@@ -853,3 +853,14 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 .pair-qr { background: #fff; border-radius: 8px; padding: 8px; align-self: center; }
 .pair-qr svg { display: block; width: 168px; height: 168px; }
 .pair-note { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
+
+/* ── Instance chip: which ledger am I looking at? ───────────────────────────
+   A named instance wears its name in the topbar (amber, unmissable) so a
+   scratch or demo dashboard can never pass for the everyday one. */
+.instance-chip {
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(255, 179, 71, 0.14); color: var(--amber, #ffb347);
+  border: 1px solid rgba(255, 179, 71, 0.35);
+  font-size: 12px; font-weight: 650; letter-spacing: 0.02em;
+  font-family: var(--mono, monospace);
+}

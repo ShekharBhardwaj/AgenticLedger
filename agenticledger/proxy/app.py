@@ -718,7 +718,8 @@ def create_app(
             bedrock = f"off — {BedrockSigner.last_failure}"
         else:
             bedrock = "off — no AWS credentials in the service's environment"
-        return JSONResponse({"status": "ok", "version": _version, "bedrock": bedrock})
+        return JSONResponse({"status": "ok", "version": _version, "bedrock": bedrock,
+                             "instance": os.environ.get("AGENTICLEDGER_INSTANCE") or None})
 
     @app.get("/readyz")
     async def readyz() -> JSONResponse:

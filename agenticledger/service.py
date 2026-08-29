@@ -91,9 +91,23 @@ def _child_env() -> dict:
     place every time. Explicit AGENTICLEDGER_DSN and `serve` keep their
     old behavior.
     """
+    explicit_dsn = os.environ.get("AGENTICLEDGER_DSN")  # before the config file speaks
     apply_config()  # the config file's db value, if any, is in os.environ now
     env = dict(os.environ)
-    if not env.get("AGENTICLEDGER_DSN"):
+    if INSTANCE:
+        # The proxy wears its name: /health reports it and the dashboard
+        # shows it, so a scratch ledger can never impersonate the real one.
+        env["AGENTICLEDGER_INSTANCE"] = INSTANCE
+    if INSTANCE and not explicit_dsn:
+        # The config file describes THE everyday ledger; a named instance
+        # inheriting its db would share one SQLite file between two writers.
+        # Found live: user zero's scratch instance opened the real database.
+        # Only a deliberate AGENTICLEDGER_DSN on the start command overrides.
+        if env.get("AGENTICLEDGER_DSN"):
+            print(f"note: the config file's db is the everyday ledger's; "
+                  f"instance [{INSTANCE}] keeps its own database.", file=sys.stderr)
+        env["AGENTICLEDGER_DSN"] = f"sqlite:///{PID_FILE.parent / 'agenticledger.db'}"
+    elif not env.get("AGENTICLEDGER_DSN"):
         default_db = PID_FILE.parent / "agenticledger.db"
         env["AGENTICLEDGER_DSN"] = f"sqlite:///{default_db}"
         stray = Path("agenticledger.db")

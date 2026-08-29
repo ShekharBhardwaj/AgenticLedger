@@ -177,8 +177,17 @@ export default function App() {
   const [focusSession, setFocusSession] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [instance, setInstance] = useState<string | null>(null);
   useEffect(() => connectionStatus(setLive), []);
-  useEffect(() => { health().then((h) => setVersion(h.version)).catch(() => {}); }, []);
+  useEffect(() => {
+    health().then((h) => {
+      setVersion(h.version);
+      setInstance(h.instance ?? null);
+      // The tab wears the name too — two dashboards side by side must
+      // be tellable apart from the tab bar alone.
+      if (h.instance) document.title = `Agentic Ledger · ${h.instance}`;
+    }).catch(() => {});
+  }, []);
 
   const openSession = (sessionId: string) => {
     setFocusSession(sessionId);
@@ -192,6 +201,12 @@ export default function App() {
         <h1>
           Agentic <span>Ledger</span>
         </h1>
+        {instance && (
+          <span className="instance-chip"
+                title={`This is the "${instance}" instance — a separate ledger with its own database, not your everyday one.`}>
+            {instance}
+          </span>
+        )}
         <div className="tabs">
           <button className={`tab ${tab === "runs" ? "active" : ""}`} onClick={() => setTab("runs")}>
             Loop Lens

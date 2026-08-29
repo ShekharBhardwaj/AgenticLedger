@@ -131,3 +131,24 @@ def test_instance_names_are_validated():
     from agenticledger import service
     with _pytest.raises(SystemExit):
         service.use_instance("Bad Name!")
+
+
+def test_named_instance_ignores_the_config_files_db(tmp_path, monkeypatch):
+    """Found live: a config file with [proxy] db pointed the scratch
+    instance at the REAL database — two writers, one SQLite file. The
+    config file describes the everyday ledger; a named instance always
+    keeps its own database unless AGENTICLEDGER_DSN is set explicitly."""
+    from agenticledger import service
+    monkeypatch.delenv("AGENTICLEDGER_DSN", raising=False)
+    cfg = tmp_path / "agenticledger.toml"
+    cfg.write_text('[proxy]\ndb = "sqlite:////real/main.db"\n')
+    monkeypatch.setenv("AGENTICLEDGER_CONFIG", str(cfg))
+    monkeypatch.setattr(service, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(service, "PID_FILE", tmp_path / "instances" / "demo" / "proxy.pid")
+    monkeypatch.setattr(service, "INSTANCE", "demo")
+    dsn = service._child_env()["AGENTICLEDGER_DSN"]
+    assert "instances/demo/agenticledger.db" in dsn
+    assert "real/main.db" not in dsn
+    # An explicit env DSN on the start command is deliberate and wins.
+    monkeypatch.setenv("AGENTICLEDGER_DSN", "sqlite:///deliberate.db")
+    assert service._child_env()["AGENTICLEDGER_DSN"] == "sqlite:///deliberate.db"

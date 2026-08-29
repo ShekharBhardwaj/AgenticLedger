@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every paired device un-pairs at once), `--stop` closes the door and
   the old link dies. No relay of ours: traffic flows only through your
   machine and the tunnel provider you chose.
+- **A named instance can never borrow the real database.** Found in
+  user zero's hands: a config file with `[proxy] db` pointed the
+  scratch instance at the everyday ledger's database — two writers,
+  one SQLite file. The config file describes the everyday ledger;
+  named instances now always keep their own database (an explicit
+  AGENTICLEDGER_DSN on the start command remains the deliberate
+  override).
+- **The dashboard wears its instance name.** A named ledger's
+  dashboard shows an amber name chip in the topbar and puts the name
+  in the tab title, so a scratch or demo dashboard can never pass for
+  the real one.
 - **Named instances (#108).** `agenticledger start --name demo --port
   8003` runs a second ledger BESIDE the everyday one instead of
   displacing it: own state directory, own log, own database, own share

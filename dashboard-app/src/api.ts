@@ -110,7 +110,7 @@ export function getCall(actionId: string): Promise<Call> {
 
 /** Version of the running proxy. /health needs no key, so this works even
  *  before one is pasted. */
-export function health(): Promise<{ status: string; version: string }> {
+export function health(): Promise<{ status: string; version: string; instance?: string | null }> {
   return fetch("/health").then((r) => r.json());
 }
 
