@@ -805,6 +805,9 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 
 @media (max-width: 720px) {
   .topbar { gap: 8px; padding: 8px 10px; }
+  /* The version chip is laptop furniture; on a phone its space belongs to
+     the controls it was pushing off the edge (seen clipped on a real phone). */
+  .version-chip { display: none; }
   /* The raccoon carries the identity; the wordmark's space goes to the tabs. */
   .topbar h1 { display: none; }
   .tab { padding: 6px 9px; font-size: 13px; }

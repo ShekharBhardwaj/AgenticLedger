@@ -14,6 +14,12 @@ function headers(): Record<string, string> {
   return apiKey ? { "x-agenticledger-api-key": apiKey } : {};
 }
 
+/** "1 iteration", "8 iterations" — a flight recorder should not ship "1 iterations". */
+export function plural(n: number | null | undefined, word: string): string {
+  if (n === null || n === undefined) return `? ${word}s`;
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
 export interface WhoAmI {
   auth: boolean;          // false = server has no key configured, all open
   role: string;

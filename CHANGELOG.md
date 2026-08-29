@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command named after itself, so the uvx one-liner needs no --from.
 
 ### Fixed
+- **Phone polish from user zero's screenshot.** A named run no longer
+  prints its name twice (the id line earns its row only when it differs
+  from the shown name), "1 iterations" became "1 iteration" everywhere
+  counts are written, the version chip yields its topbar space on
+  phones (it lives on in Settings), and nothing clips off the right
+  edge anymore.
 - **One name for the credential: the pairing key.** The feature spoke
   three dialects (`share` the verb, "pairing link" the artifact,
   "remote key" the credential); now you share the dashboard via a

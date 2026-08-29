@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
+import { plural,
   del as apiDel,
   FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
   Iteration, LiveCall, liveUpdates, post, Run, runStatusInfo,
@@ -218,7 +218,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
               <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
               <RunMascot status={r.status} small />
             </div>
-            {r.label && <div className="card-id mono">{r.run_id}</div>}
+            {r.label && r.label !== r.run_id && <div className="card-id mono">{r.run_id}</div>}
             {editing === r.run_id && (
               <LabelEditor scope="run" refId={r.run_id}
                            label={r.label} project={r.project} projects={projects}
@@ -226,8 +226,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
             )}
             <div className="card-sub">
               <span>{fmtAgo(r.last_call_at)}</span>
-              <span>{r.iterations ?? "?"} iterations</span>
-              <span>{r.call_count} calls</span>
+              <span>{plural(r.iterations, "iteration")}</span>
+              <span>{plural(r.call_count, "call")}</span>
               <span>{fmtUsd(r.total_cost_usd)}</span>
               {r.models && (
                 <span className="mono model-cell" title={r.models.split(",").join("\n")}>
@@ -555,7 +555,7 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                           {it.session_count > 1 ? (
                             <span className="muted"
                                   title="This iteration number holds calls from several sessions (a reused run id, or merged identical loops). Find them all in the Sessions tab.">
-                              {it.session_count} sessions
+                              {plural(it.session_count, "session")}
                             </span>
                           ) : it.session_id
                             ? (it.session_id.length > 14 ? it.session_id.slice(0, 13) + "…" : it.session_id) + " →"

@@ -1,4 +1,4 @@
-import { Call, fmtUsd } from "../api";
+import { plural, Call, fmtUsd } from "../api";
 import { agentColor } from "./TraceView";
 
 interface Node {
@@ -188,7 +188,7 @@ export default function FlowView({ calls }: { calls: Call[] }) {
               {n.name.length > 15 ? n.name.slice(0, 14) + "…" : n.name}
             </text>
             <text x={px(n) + 14} y={py(n) + 40} fill="var(--text-dim)" fontSize="10" fontFamily="var(--mono)">
-              {n.calls} calls · {fmtUsd(n.cost)}
+              {plural(n.calls, "call")} · {fmtUsd(n.cost)}
             </text>
             <text x={px(n) + 14} y={py(n) + 52} fill="var(--text-dim)" fontSize="10" fontFamily="var(--mono)">
               avg {n.calls ? Math.round(n.latency / n.calls) : 0}ms
