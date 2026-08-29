@@ -24,6 +24,13 @@ import httpx
 
 from .config import apply_config, find_config
 
+# Captured BEFORE any apply_config() runs: whether the USER's own shell
+# set a DSN. apply_config writes the config file's values into os.environ,
+# and _port() runs it early in start() — so reading the environment later
+# cannot tell a deliberate export from the config file's db. That confusion
+# pointed a scratch instance at the real database twice.
+_EXPLICIT_DSN = os.environ.get("AGENTICLEDGER_DSN")
+
 STATE_DIR = Path.home() / ".agenticledger"
 PID_FILE = STATE_DIR / "proxy.pid"
 LOG_FILE = STATE_DIR / "proxy.log"
@@ -91,14 +98,13 @@ def _child_env() -> dict:
     place every time. Explicit AGENTICLEDGER_DSN and `serve` keep their
     old behavior.
     """
-    explicit_dsn = os.environ.get("AGENTICLEDGER_DSN")  # before the config file speaks
     apply_config()  # the config file's db value, if any, is in os.environ now
     env = dict(os.environ)
     if INSTANCE:
         # The proxy wears its name: /health reports it and the dashboard
         # shows it, so a scratch ledger can never impersonate the real one.
         env["AGENTICLEDGER_INSTANCE"] = INSTANCE
-    if INSTANCE and not explicit_dsn:
+    if INSTANCE and not _EXPLICIT_DSN:
         # The config file describes THE everyday ledger; a named instance
         # inheriting its db would share one SQLite file between two writers.
         # Found live: user zero's scratch instance opened the real database.

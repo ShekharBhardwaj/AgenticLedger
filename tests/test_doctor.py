@@ -149,6 +149,9 @@ def test_named_instance_ignores_the_config_files_db(tmp_path, monkeypatch):
     dsn = service._child_env()["AGENTICLEDGER_DSN"]
     assert "instances/demo/agenticledger.db" in dsn
     assert "real/main.db" not in dsn
-    # An explicit env DSN on the start command is deliberate and wins.
+    # An explicit env DSN on the start command is deliberate and wins —
+    # "explicit" means present BEFORE any config load, which the module
+    # snapshots at import (_EXPLICIT_DSN).
     monkeypatch.setenv("AGENTICLEDGER_DSN", "sqlite:///deliberate.db")
+    monkeypatch.setattr(service, "_EXPLICIT_DSN", "sqlite:///deliberate.db")
     assert service._child_env()["AGENTICLEDGER_DSN"] == "sqlite:///deliberate.db"
