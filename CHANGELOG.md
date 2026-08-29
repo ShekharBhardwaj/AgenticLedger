@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every paired device un-pairs at once), `--stop` closes the door and
   the old link dies. No relay of ours: traffic flows only through your
   machine and the tunnel provider you chose.
+- **`run --name`: aim a wrapped loop at a named ledger.** The one verb
+  that didn't speak --name now does — `agenticledger run my-test
+  --name scratch -- <cmd>` resolves the instance's recorded port and
+  points the child's base URLs there.
+- **`start` verifies the voice on the port is its own child.** When
+  the port was already taken, the new proxy died while start polled
+  /health, got an answer from the squatter, and declared success with
+  a dead pid. It now refuses with the fix named.
+- **A refused signal is not a dead process.** `_alive` treated
+  permission-denied (EPERM) as "not running", making status and doctor
+  lie inside sandboxes and containers. You cannot be refused
+  permission by a process that does not exist.
 - **A named instance can never borrow the real database.** Found in
   user zero's hands: a config file with `[proxy] db` pointed the
   scratch instance at the everyday ledger's database — two writers,

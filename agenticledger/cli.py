@@ -176,6 +176,11 @@ def _print_summary(run_id: str, iterations: int, status: Optional[dict], reason:
 
 
 def run_command(args: argparse.Namespace) -> int:
+    if getattr(args, "instance", None):
+        # Record through a named ledger: resolve the port IT answers on.
+        from agenticledger import service
+        service.use_instance(args.instance)
+        args.proxy = f"http://localhost:{service.effective_port()}"
     if not args.command:
         print("error: no command given — usage: agenticledger run [options] -- <command...>",
               file=sys.stderr)
@@ -366,6 +371,9 @@ def main(argv: Optional[list] = None) -> int:
     run_p.add_argument("--budget", type=float, default=None,
                        help="Stop when the run's total cost (USD) reaches this")
     run_p.add_argument("--proxy", default=os.environ.get("AGENTICLEDGER_URL", "http://localhost:8000"))
+    run_p.add_argument("--name", dest="instance", default=None,
+                       help="Record through a NAMED ledger instance instead of "
+                            "the everyday one (resolves its port; overrides --proxy).")
     run_p.add_argument("--stop-on-error", action="store_true",
                        help="Stop the loop when the command exits non-zero")
     run_p.add_argument("command", nargs=argparse.REMAINDER,

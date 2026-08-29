@@ -176,6 +176,12 @@ def _alive(pid: Optional[int]) -> bool:
     try:
         os.kill(pid, 0)
         return True
+    except PermissionError:
+        # Not allowed to signal it — but you cannot be refused permission
+        # by a process that does not exist. Sandboxed and containerized
+        # shells hit this constantly; treating it as "dead" made status
+        # and doctor lie there.
+        return True
     except OSError:
         return False
 
@@ -223,6 +229,16 @@ def start() -> int:
     for _ in range(40):
         time.sleep(0.25)
         health = _health(port)
+        if health and proc.poll() is not None:
+            # Someone is answering on this port, but it is not our child —
+            # our child is dead (usually: the port was already taken). Found
+            # live: start blessed a squatter's health and wrote a dead pid.
+            print(f"Port {port} is already serving something else, and the "
+                  f"new proxy exited. Pick another port, or stop what is "
+                  f"holding {port}.", file=sys.stderr)
+            _print_log_tail(15, file=sys.stderr)
+            PID_FILE.unlink(missing_ok=True)
+            return 1
         if health:
             print(f"Agentic Ledger v{health.get('version', '?')} running in the background "
                   f"(pid {proc.pid})")
