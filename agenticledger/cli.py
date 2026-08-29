@@ -172,7 +172,17 @@ def _print_summary(run_id: str, iterations: int, status: Optional[dict], reason:
         print(f"  calls:      {status.get('call_count') or 0} "
               f"({status.get('flagged_calls') or 0} flagged)", file=sys.stderr)
         print(f"  status:     {status.get('status')}", file=sys.stderr)
-    print(f"  dashboard:  open the proxy URL and filter run {run_id}", file=sys.stderr)
+    calls = (status or {}).get("call_count") or 0
+    if not calls:
+        # The worst kind of nothing: the loop "completed" but no call ever
+        # reached the ledger. Say it plainly — the user was sent to stare
+        # at an empty dashboard twice before this line existed.
+        print("  ⚠ no calls reached the ledger. The command likely failed "
+              "before calling any model — its own output above has the "
+              "reason. (Common: broken cloud credentials in this shell; "
+              "try running the command bare first.)", file=sys.stderr)
+    else:
+        print(f"  dashboard:  open the proxy URL and filter run {run_id}", file=sys.stderr)
 
 
 def run_command(args: argparse.Namespace) -> int:

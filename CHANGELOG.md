@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (every paired device un-pairs at once), `--stop` closes the door and
   the old link dies. No relay of ours: traffic flows only through your
   machine and the tunnel provider you chose.
+- **The run wrapper says when nothing reached the ledger.** A loop
+  whose command failed before calling any model used to end with "open
+  the dashboard" — an empty dashboard. It now says plainly that zero
+  calls arrived, that the command's own output has the reason, and
+  what to try.
 - **`run --name`: aim a wrapped loop at a named ledger.** The one verb
   that didn't speak --name now does — `agenticledger run my-test
   --name scratch -- <cmd>` resolves the instance's recorded port and
