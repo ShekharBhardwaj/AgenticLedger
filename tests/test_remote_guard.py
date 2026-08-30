@@ -4,7 +4,7 @@ Born in #110 — the default bind is 0.0.0.0, so before this the default
 install was an open book to the whole network."""
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 from agenticledger.proxy.auth import client_is_local, load_or_create_pairing_key
 

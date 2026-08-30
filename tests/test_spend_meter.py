@@ -2,7 +2,7 @@
 refuses calls at the proxy the moment the run's spend reaches it, survives
 restarts on the label row, covers inferred runs, and clears cleanly."""
 
-import httpx
+import httpx2 as httpx
 
 from .conftest import openai_response
 

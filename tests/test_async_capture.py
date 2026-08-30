@@ -8,7 +8,7 @@ so the agent's call is never blocked.
 import asyncio
 import time as _time
 
-import httpx
+import httpx2 as httpx
 
 from .conftest import openai_response
 

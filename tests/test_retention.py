@@ -2,7 +2,7 @@
 
 import time
 
-import httpx
+import httpx2 as httpx
 
 from agenticledger.proxy.normalize import CanonicalRequest, CanonicalResponse
 

@@ -4,7 +4,7 @@ Capture must be fail-open (a storage failure never breaks the agent's call), but
 the failure must be *visible* — counted and surfaced via /readyz — not silent.
 """
 
-import httpx
+import httpx2 as httpx
 
 from .conftest import openai_response
 

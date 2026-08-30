@@ -5,7 +5,7 @@ path for attribution backfills — never a hand-run UPDATE."""
 import asyncio
 import time
 
-import httpx
+import httpx2 as httpx
 
 from agenticledger.proxy.normalize import CanonicalRequest, CanonicalResponse
 from agenticledger.proxy.store import Store

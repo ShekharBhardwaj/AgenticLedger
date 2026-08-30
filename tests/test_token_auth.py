@@ -6,7 +6,7 @@ and bootstraps token creation; tokens grant their own role (viewer < editor < ad
 
 import time
 
-import httpx
+import httpx2 as httpx
 import pytest
 from starlette.websockets import WebSocketDisconnect
 

@@ -256,7 +256,7 @@ def test_reports_csv_endpoint(proxy):
 # ── #107: project-scoped reports ─────────────────────────────────────────────
 
 def _chat(client, session, run=None, content="hi"):
-    import httpx as _hx  # noqa: F401
+    import httpx2 as _hx  # noqa: F401
     headers = {"x-agenticledger-session-id": session}
     if run:
         headers["x-agenticledger-run-id"] = run
@@ -269,7 +269,7 @@ def _chat(client, session, run=None, content="hi"):
 def test_report_scopes_to_a_project(proxy):
     """?project= narrows every aggregate to sessions resolved into that
     project — hand labels, app bindings, and run inheritance all count."""
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import openai_response
 
@@ -296,7 +296,7 @@ def test_report_scopes_to_a_project(proxy):
 
 
 def test_report_csv_scopes_too(proxy):
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import openai_response
 

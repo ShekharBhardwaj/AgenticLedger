@@ -5,6 +5,17 @@ All notable changes to Agentic Ledger are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **The HTTP client layer moved from httpx to httpx2 (#93).** Same
+  public API, the ecosystem's successor package (the Anthropic SDK and
+  Starlette's test client already made the jump). This retires the old
+  `<1.0` version cap, which was one popular-framework bump away from
+  colliding with users' environments at install time. Verified three
+  ways: the full suite, the wire-truth parity goldens byte for byte,
+  and a live proxied run end to end.
+
 ## [0.12.0] - 2026-08-30
 
 ### Added

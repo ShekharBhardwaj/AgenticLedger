@@ -1,7 +1,7 @@
 """Team cards: ingest-role tokens that open the relay, attribute the team,
 and enforce per-team daily budgets — the allowance-card model."""
 
-import httpx
+import httpx2 as httpx
 
 from tests.conftest import openai_response
 

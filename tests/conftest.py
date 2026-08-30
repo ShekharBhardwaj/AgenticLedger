@@ -24,7 +24,7 @@ import json
 import os
 from typing import Any, Callable, Optional
 
-import httpx
+import httpx2 as httpx
 import pytest
 import pytest_asyncio
 from starlette.testclient import TestClient

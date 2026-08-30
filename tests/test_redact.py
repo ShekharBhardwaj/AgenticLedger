@@ -4,7 +4,7 @@ Governance transforms only the stored/traced/broadcast copy — the agent always
 receives the real upstream response.
 """
 
-import httpx
+import httpx2 as httpx
 
 from agenticledger.proxy.redact import (
     BUILTIN_CATEGORIES,

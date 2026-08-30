@@ -36,7 +36,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-import httpx
+import httpx2 as httpx
 
 
 def _file_under_project(proxy: str, run_id: str, project: str,

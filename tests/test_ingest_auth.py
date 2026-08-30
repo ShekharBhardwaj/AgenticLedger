@@ -5,7 +5,7 @@ requests carrying a matching x-agenticledger-ingest-key are forwarded — closin
 open relay. The key itself is never forwarded upstream.
 """
 
-import httpx
+import httpx2 as httpx
 
 from .conftest import openai_response
 

@@ -4,7 +4,7 @@ Sensitive actions (view/search/export/delete, token management, erasure) are
 recorded with the acting principal. Erasure deletes all of a user's captured calls.
 """
 
-import httpx
+import httpx2 as httpx
 
 from agenticledger.proxy.auth import ROLE_VIEWER
 

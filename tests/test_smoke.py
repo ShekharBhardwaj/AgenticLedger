@@ -4,7 +4,7 @@ If these fail, the fixtures in conftest are broken and every other test module
 built on them is unreliable — so keep this file minimal and self-contained.
 """
 
-import httpx
+import httpx2 as httpx
 
 from .conftest import openai_response, openai_sse, stream_response
 

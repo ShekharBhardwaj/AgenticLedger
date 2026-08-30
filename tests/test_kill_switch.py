@@ -3,7 +3,7 @@ calls are refused at the wall — captured amber ("blocked:"), never counted
 as agent errors, never forwarded upstream. Resume lifts it; a restart does
 not (the marker persists)."""
 
-import httpx
+import httpx2 as httpx
 
 from .conftest import openai_response
 
@@ -101,7 +101,7 @@ def _fresh_context_call(client, session_id, system="You are loop worker v1."):
 
 
 def test_stopping_an_inferred_run_walls_its_next_iterations(proxy):
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import openai_response
 
@@ -178,7 +178,7 @@ def _the_auto_run(client):
 
 
 def _anthropic_ok():
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import anthropic_response
     return lambda r: _hx.Response(200, json=anthropic_response())
@@ -292,7 +292,7 @@ def test_simultaneous_loops_block_and_resume_independently(proxy):
 # Signatures now write through to the store and reload at boot.
 
 def test_inferred_run_identity_survives_a_restart(proxy, tmp_path):
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import openai_response
 
@@ -317,7 +317,7 @@ def test_inferred_run_identity_survives_a_restart(proxy, tmp_path):
 
 
 def test_wall_on_inferred_run_survives_a_restart(proxy, tmp_path):
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import openai_response
 
@@ -342,7 +342,7 @@ def test_blocked_knock_files_as_the_next_iteration(proxy):
     """The amber tower stands where the loop was stopped: a refused
     fresh-context knock numbers itself as the iteration it was attempting
     (here: 3, after two real ones), never a "?" bucket."""
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import openai_response
 

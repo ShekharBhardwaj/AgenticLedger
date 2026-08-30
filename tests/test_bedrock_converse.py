@@ -3,7 +3,7 @@ boto3 agents speak. Converse shapes convert to Anthropic shapes at the
 boundary, so loop stitching, tool pairing, and pricing reuse the proven
 machinery. Signing is shared with the InvokeModel wire."""
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from agenticledger.proxy import providers

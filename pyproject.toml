@@ -31,10 +31,10 @@ dependencies = [
     "qrcode>=7",   # terminal QR for `agenticledger share` pairing
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
-    # <1.0.dev0 (not <1.0) so `pip install --pre` can't resolve httpx's 1.0
-    # dev builds, which drop AsyncClient. PEP 440 orders 1.0.devN before 1.0,
-    # so a plain <1.0 cap would still admit them under --pre.
-    "httpx>=0.27,<1.0.dev0",
+    # The ecosystem's successor to httpx (same public API, new package name).
+    # Migrating ended the old <1.0 cap that was one popular-framework bump
+    # away from colliding with users' environments (#93).
+    "httpx2>=2.10",
     "aiosqlite>=0.19",
     # tomllib is stdlib from 3.11; 3.10 needs the reference implementation
     "tomli>=2.0; python_version < '3.11'",

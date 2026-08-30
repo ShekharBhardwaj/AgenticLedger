@@ -2,7 +2,7 @@
 wire, model in the path, Anthropic-shaped bodies, binary event streams.
 Signing is the upstream layer's job and is tested there."""
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from agenticledger.proxy import providers

@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import httpx
+import httpx2 as httpx
 
 from .config import apply_config, find_config
 

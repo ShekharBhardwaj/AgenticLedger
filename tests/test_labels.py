@@ -1,6 +1,6 @@
 """#47 — names, pins, projects: human labels over stable ids."""
 
-import httpx
+import httpx2 as httpx
 
 from tests.conftest import openai_response
 
@@ -244,7 +244,7 @@ def test_purge_reaches_run_inherited_sessions(proxy):
     """Purging a project must delete the sessions filed under it via RUN
     inheritance too — the user purged a project and watched the loop and
     its sessions survive."""
-    import httpx as _hx
+    import httpx2 as _hx
 
     from .conftest import openai_response
 

@@ -3,7 +3,7 @@ first provider added THROUGH the new architecture rather than into the
 old dispatch soup. Azure speaks OpenAI's wire under a deployment path,
 usually sends no model, and names the real model only in the response."""
 
-import httpx
+import httpx2 as httpx
 
 from agenticledger.proxy import providers
 from agenticledger.proxy.normalize import normalize_request, normalize_response

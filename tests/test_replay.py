@@ -1,6 +1,6 @@
 """Replay: re-executing captured calls against a live (mock) model."""
 
-import httpx
+import httpx2 as httpx
 
 from tests.conftest import anthropic_response, openai_response
 

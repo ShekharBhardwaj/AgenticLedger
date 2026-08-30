@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 from urllib.parse import urlparse
 
-import httpx
+import httpx2 as httpx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 

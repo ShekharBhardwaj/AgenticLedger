@@ -8,7 +8,7 @@ enforcement (block + warn), and API-key auth.
 Each test builds a fresh proxy + mock upstream so cases stay isolated.
 """
 
-import httpx
+import httpx2 as httpx
 
 from agenticledger.proxy.ratelimit import RateLimitConfig
 

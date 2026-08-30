@@ -13,7 +13,7 @@ JSON-RPC ``error`` with the spec-defined code:
 
 import json
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from .conftest import openai_response
@@ -337,7 +337,7 @@ def test_search_clamps_limit(proxy, requested, expected):
 
 def test_mcp_run_tools(proxy):
     """list_runs and get_run_status expose loop runs with derived status."""
-    import httpx as _httpx
+    import httpx2 as _httpx
 
     from .conftest import openai_response as _openai_response
 
@@ -427,7 +427,7 @@ def test_mcp_status_agrees_with_the_api_on_a_revived_run(proxy):
     keeping the permanent-end-marker bug alive there. Both surfaces now
     share one derivation: a run that speaks after its end marker reads
     running on BOTH."""
-    import httpx as _httpx
+    import httpx2 as _httpx
 
     from .conftest import openai_response as _openai_response
 

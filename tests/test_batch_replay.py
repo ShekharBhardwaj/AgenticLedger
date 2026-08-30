@@ -2,7 +2,7 @@
 
 import time
 
-import httpx
+import httpx2 as httpx
 
 from tests.conftest import anthropic_response, openai_response
 
