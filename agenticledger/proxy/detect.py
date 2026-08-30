@@ -87,6 +87,8 @@ def detect_agent(headers, body: Optional[dict]) -> dict:
     ua = (headers.get("user-agent") or "").lower()
     if ua.startswith("claude-cli/"):
         framework = "claude-code"
+    elif ua.startswith("geminicli"):
+        framework = "gemini-cli"
     elif ua.startswith("litellm"):
         framework = "litellm"
 
@@ -142,6 +144,8 @@ def detect_agent(headers, body: Optional[dict]) -> dict:
         # litellm is a client library, not an agent — only real agent
         # frameworks earn an agent identity from detection.
         agent_name = "claude-code"
+    elif agent_name is None and framework == "gemini-cli":
+        agent_name = "gemini-cli"
 
     return {
         "framework": framework,
