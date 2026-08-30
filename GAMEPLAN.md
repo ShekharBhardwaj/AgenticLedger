@@ -246,7 +246,31 @@ report card, settings editing from the UI.
 Build order A → B → C → D, user-zero hands on every seam, tag on the
 word — the 0.9.2 retest discipline is the permanent process now.
 
-## Where the plan stands (2026-08-24)
+## Where the plan stands (2026-08-30)
+
+**0.12.0 "In your pocket" shipped 2026-08-30.** The pillar landed
+whole: the remote guard (pairing key, forwarded-client aware),
+`agenticledger share` (https tunnel, QR pairing from terminal or the
+dashboard's ⚿ panel, --wifi/--rotate/--stop), the phone-fit dashboard
+with run/session flipping, Bedrock Converse capture, named instances
+with the amber chip, `run --name`, and `doctor --fix`. Every headline
+passed under user zero's hands first; the hand-testing caught six
+real bugs (config-db leakage and its call-order defeat, the health
+squatter, the EPERM lie, silent zero-call loops, the shadow-install
+resurrection) and every one became product before the tag.
+
+Deliberately deferred under the freeze-and-ship call: direct-LAN
+https (#118), migration page (#112), httpx (#93), refusal capture
+(#115), the blessed install path (#117), and the small companions —
+all in milestone 0.13 alongside the waste lens (#113) and the
+Headroom recipe (#114).
+
+**The next move is not code.** The campaign (video + drafted posts)
+has never fired; the repo has 5 stars. 0.13's first work item is
+distribution: publish, list, measure, and let stranger-issues reorder
+the slate.
+
+## Where the plan stood (2026-08-24)
 
 The section above is history now. The ledger of it:
 
