@@ -2426,26 +2426,37 @@ def create_app(
                 status_code=budget_status,
             )
 
+        async def _refuse_configured(message: str) -> JSONResponse:
+            """A pre-forward refusal leaves a record (#115). Three refused
+            calls once produced an EMPTY dashboard — the worst kind of
+            nothing. Same rail as upstream_unreachable (#106): normalized
+            request, 502 with the reason, zero cost; attribution and the
+            live feed come with the standard capture pipeline, so a run of
+            pure refusals still shows its tile."""
+            with suppress(Exception):
+                canonical_req = normalize_request(body_json, path)
+                await _capture(_CaptureJob(
+                    action_id, canonical_req, _empty_response(0),
+                    502, f"upstream_not_configured: {message}"[:300], meta, None,
+                ))
+            return JSONResponse(
+                {"error": {"type": "upstream_not_configured", "message": message}},
+                status_code=502,
+            )
+
         # Azure OpenAI has no default host: its upstream is the user's own
         # resource. Under zero-config routing we would forward to
         # api.openai.com and hand back a baffling 404, so refuse with the fix.
         if is_llm_path and _is_bedrock(path) and getattr(request.app.state, "bedrock_signer", None) is None:
             _retry_bedrock_signer(request.app)
         if is_llm_path and _is_bedrock(path) and getattr(request.app.state, "bedrock_signer", None) is None:
-            return JSONResponse(
-                {"error": {"type": "upstream_not_configured",
-                           "message": BedrockSigner.why_unavailable()}},
-                status_code=502,
-            )
+            return await _refuse_configured(BedrockSigner.why_unavailable())
         if is_llm_path and upstream_auto and providers.for_path(path).name == "azure-openai":
-            return JSONResponse(
-                {"error": {"type": "upstream_not_configured",
-                           "message": ("Azure OpenAI calls need an explicit upstream: set "
-                                       "proxy.upstream_url to your resource, e.g. "
-                                       "https://<resource>.openai.azure.com, then restart "
-                                       "the ledger.")}},
-                status_code=502,
-            )
+            return await _refuse_configured(
+                "Azure OpenAI calls need an explicit upstream: set "
+                "proxy.upstream_url to your resource, e.g. "
+                "https://<resource>.openai.azure.com, then restart "
+                "the ledger.")
 
         # ── Budget check ─────────────────────────────────────────────────────
         # Fail open: if the store is unavailable the agent must not be blocked.

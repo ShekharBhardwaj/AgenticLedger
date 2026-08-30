@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Pre-forward refusals leave a record (#115).** A credential-less
+  Bedrock call or an unconfigured Azure upstream was refused with no
+  trace: three refused calls once produced an entirely empty
+  dashboard. Refusals now ride the standard capture rail (normalized
+  request, 502 with the reason, zero cost, attribution intact), so a
+  run of pure refusals still shows its tile with the reason one click
+  away.
+
 ### Changed
 - **The HTTP client layer moved from httpx to httpx2 (#93).** Same
   public API, the ecosystem's successor package (the Anthropic SDK and

@@ -211,3 +211,25 @@ def test_a_late_aws_login_heals_a_running_ledger(proxy, monkeypatch):
     resp = client.post(f"/{CONVERSE}", json=BODY)
     assert resp.status_code == 200
     assert resp.json()["output"]["message"]["content"][0]["text"] == "pong"
+
+
+def test_credential_refusals_leave_a_record(proxy, monkeypatch):
+    """#115: a run of pure refusals must still show its tile. Three
+    refused calls once produced an empty dashboard."""
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE",
+                "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION"):
+        monkeypatch.delenv(var, raising=False)
+    client = proxy(handler=lambda r: httpx.Response(200, json=_converse_json()))
+    for i in (1, 2):
+        resp = client.post(f"/r/refused-loop/{i}/{CONVERSE}", json=BODY,
+                           headers={"x-agenticledger-session-id": "ref-s"})
+        assert resp.status_code == 502
+    runs = {r["run_id"]: r for r in client.get("/api/runs").json()}
+    assert "refused-loop" in runs, "a run of pure refusals must still show its tile"
+    assert runs["refused-loop"]["call_count"] == 2
+    rows = client.get("/session/ref-s").json()
+    assert len(rows) == 2
+    assert rows[-1]["status_code"] == 502
+    assert "credential" in (rows[-1]["error_detail"] or "").lower() or \
+           "aws" in (rows[-1]["error_detail"] or "").lower()
+    assert not rows[-1]["cost_usd"]
