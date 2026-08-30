@@ -56,6 +56,7 @@ def test_redetect_fills_gaps_and_only_gaps(proxy, tmp_path):
     result = client.post("/api/redetect").json()
     assert result["updated"] == 2  # only the detectable, unattributed rows
     assert result["by_framework"] == {"openclaw": 1, "bmad": 1}
+    assert sum(result["by_framework"].values()) == result["updated"]
 
     rows = {r["action_id"]: r for r in client.get("/session/legacy").json()}
     assert rows["legacy-openclaw"]["framework"] == "openclaw"
