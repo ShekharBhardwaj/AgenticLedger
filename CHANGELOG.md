@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run of pure refusals still shows its tile with the reason one click
   away.
 
+### Added
+- **Per-framework redetect results (#70).** The Settings maintenance action
+  now reports how many newly attributed calls belong to each detected
+  framework, and `POST /api/redetect` exposes the same breakdown for API
+  clients.
+
 ### Changed
 - **The HTTP client layer moved from httpx to httpx2 (#93).** Same
   public API, the ecosystem's successor package (the Anthropic SDK and

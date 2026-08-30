@@ -87,11 +87,22 @@ function Maintenance() {
         <button className="link-btn" disabled={busy}
                 onClick={() => {
                   setBusy(true); setResult(null);
-                  post<{ examined: number; updated: number }>("/api/redetect", {})
-                    .then((r) => setResult(
-                      r.updated
-                        ? `${r.updated} of ${r.examined} unattributed calls newly named.`
-                        : `Nothing to do: ${r.examined} unattributed calls, none newly recognizable.`))
+                  post<{
+                    examined: number;
+                    updated: number;
+                    by_framework: Record<string, number>;
+                  }>("/api/redetect", {})
+                    .then((r) => {
+                      const breakdown = Object.entries(r.by_framework)
+                        .map(([framework, count]) => `${framework}: ${count}`)
+                        .join(", ");
+                      setResult(
+                        r.updated
+                          ? `${r.updated} of ${r.examined} unattributed calls newly named` +
+                            `${breakdown ? ` (${breakdown})` : ""}.`
+                          : `Nothing to do: ${r.examined} unattributed calls, none newly recognizable.`,
+                      );
+                    })
                     .catch((e) => setResult(`Failed: ${e.message}`))
                     .finally(() => setBusy(false));
                 }}>
