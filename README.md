@@ -503,6 +503,7 @@ Every LLM call is stored with:
 | `PUT` | `/api/labels/{scope}/{ref_id}` | Name, pin, or file a session/run under a project |
 | `GET` | `/api/projects` | Project names in use |
 | `GET` | `/api/settings` | What the proxy is running with (admin; secrets masked) |
+| `POST` | `/api/redetect` | Re-run framework detection over unattributed history; returns examined, updated, and per-framework counts |
 | `POST` | `/api/replay` | Re-execute a captured call — same provider or translated to the other one (`model` + optional `provider`); result stored linked to the original |
 | `GET` | `/api/search?q=...` | Full-text search across all captured calls |
 | `GET` | `/session/{session_id}` | All calls in a session, ordered by time |

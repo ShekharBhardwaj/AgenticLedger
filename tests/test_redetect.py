@@ -14,6 +14,7 @@ from .conftest import openai_response
 
 OPENCLAW_SYSTEM = ("You are a personal assistant running inside OpenClaw.\n"
                    "## Tooling\n- exec: Run shell commands")
+BMAD_SYSTEM = "BMAD-METHOD agent bundle. You are the Developer."
 
 
 def _seed_legacy_db(dsn: str) -> None:
@@ -37,6 +38,7 @@ def _seed_legacy_db(dsn: str) -> None:
                     session_id="legacy", framework=framework, agent_name=agent,
                 )
             await save("legacy-openclaw", system=OPENCLAW_SYSTEM)
+            await save("legacy-bmad", system=BMAD_SYSTEM)
             await save("legacy-plain")  # nothing detectable: must stay bare
             await save("hand-named", system=OPENCLAW_SYSTEM,
                        framework="custom", agent="my-agent")
@@ -52,11 +54,15 @@ def test_redetect_fills_gaps_and_only_gaps(proxy, tmp_path):
                    dsn=dsn)
 
     result = client.post("/api/redetect").json()
-    assert result["updated"] == 1  # only the detectable, unattributed row
+    assert result["updated"] == 2  # only the detectable, unattributed rows
+    assert result["by_framework"] == {"openclaw": 1, "bmad": 1}
+    assert sum(result["by_framework"].values()) == result["updated"]
 
     rows = {r["action_id"]: r for r in client.get("/session/legacy").json()}
     assert rows["legacy-openclaw"]["framework"] == "openclaw"
     assert rows["legacy-openclaw"]["agent_name"] == "openclaw"
+    assert rows["legacy-bmad"]["framework"] == "bmad"
+    assert rows["legacy-bmad"]["agent_name"] == "bmad:dev"
     # Capture-time attribution is sacred.
     assert rows["hand-named"]["framework"] == "custom"
     assert rows["hand-named"]["agent_name"] == "my-agent"
@@ -64,7 +70,9 @@ def test_redetect_fills_gaps_and_only_gaps(proxy, tmp_path):
     assert rows["legacy-plain"]["framework"] is None
 
     # Idempotent: a second pass finds nothing left to name.
-    assert client.post("/api/redetect").json()["updated"] == 0
+    second = client.post("/api/redetect").json()
+    assert second["updated"] == 0
+    assert second["by_framework"] == {}
 
     actions = [row["action"] for row in client.get("/api/audit").json()]
     assert "redetect" in actions

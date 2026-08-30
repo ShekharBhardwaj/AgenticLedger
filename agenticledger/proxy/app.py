@@ -965,6 +965,7 @@ def create_app(
         principal = await _require(request, ROLE_EDITOR)
         store = request.app.state.store
         examined = updated = 0
+        by_framework: dict[str, int] = {}
         cursor = None
         while True:
             # Cursor sweep, not first-page-forever: thousands of
@@ -983,10 +984,15 @@ def create_app(
                     await store.update_attribution(
                         row["action_id"], found["framework"], found["agent_name"])
                     updated += 1
+                    if found["framework"]:
+                        by_framework[found["framework"]] = (
+                            by_framework.get(found["framework"], 0) + 1
+                        )
             cursor = (batch[-1]["timestamp"], batch[-1]["action_id"])
         await _audit(principal, request, "redetect", "-",
                      f"re-ran detection: {updated} of {examined} calls newly attributed")
-        return JSONResponse({"examined": examined, "updated": updated})
+        return JSONResponse({"examined": examined, "updated": updated,
+                             "by_framework": by_framework})
 
     @app.put("/api/labels/{scope}/{ref_id}")
     async def api_set_label(scope: str, ref_id: str, request: Request) -> JSONResponse:
