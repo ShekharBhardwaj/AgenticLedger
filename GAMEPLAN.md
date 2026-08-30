@@ -265,10 +265,40 @@ https (#118), migration page (#112), httpx (#93), refusal capture
 all in milestone 0.13 alongside the waste lens (#113) and the
 Headroom recipe (#114).
 
-**The next move is not code.** The campaign (video + drafted posts)
-has never fired; the repo has 5 stars. 0.13's first work item is
-distribution: publish, list, measure, and let stranger-issues reorder
-the slate.
+**0.13 "Nothing wasted" is the signed-off slate (2026-08-30),
+milestone 3.** The demo and campaign fire WITH this release, so it
+carries both the new headline and the first-impression work:
+
+- **Headline: the cache audit (#113).** Sharpened from "waste lens"
+  after user zero pushed on provability: repeating text is not waste
+  (stateless models require it); paying full price for it when
+  providers sell a 90% repeat-discount is. The run detail gains a
+  section: eligible $X, received $Y, the one recorded reason the rest
+  was missed, the one-line fix, and "you're fine" when nothing was.
+  Shipping rules: no number without a why and a do-this; provable
+  arithmetic only; the fuzzy "never-referenced content" idea is out
+  of v1 for failing that bar.
+- **First five minutes** (campaign traffic lands here): blessed
+  install path (#117), httpx 1.x (#93), refusal capture (#115),
+  Helicone/LangSmith migration page (#112).
+- **Companions:** Gemini fingerprint (#67), re-detect breakdown
+  (#70), session run chips (#91), direct-LAN https (#118), pricing
+  packs (#65, in flight from an outside contributor - PR #109 under
+  review).
+- **After the audit ships:** the Headroom chaining recipe (#114) and
+  the outreach drafts; the audit measures, outside tools fix, the
+  ledger verifies.
+- **The demo re-records at the end of the cycle** with the complete
+  money story: the meter (what you spent), the ceiling (what you
+  refused), the audit (what you never had to spend). Campaign posts
+  are drafted and refresh with the release.
+
+Build order: foundation first while calm (httpx, refusal capture),
+the audit as the centerpiece, companions as they fit. User-zero hands
+on every seam, tag on the word - unchanged and permanent.
+
+Held for pull, unchanged: enterprise posture (#100), Redis (#15),
+settings UI (#60), new framework fingerprints, any hosted relay.
 
 ## Where the plan stood (2026-08-24)
 
