@@ -1,0 +1,13 @@
+{
+  "provider": "deepseek",
+  "checked": "2026-08-24",
+  "pricing_page": "https://api-docs.deepseek.com/quick_start/pricing",
+  "notes": [
+    "Prices are USD per million tokens: {\"input\": cache-miss input, \"output\": output}.",
+    "DeepSeek bills cached input at a separate per-token rate, recorded as cache_read."
+  ],
+  "models": {
+    "deepseek-v4-flash": {"input": 0.140, "output": 0.28, "cache_read": 0.002800},
+    "deepseek-v4-pro":   {"input": 0.435, "output": 0.87, "cache_read": 0.003625}
+  }
+}

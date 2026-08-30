@@ -62,6 +62,8 @@ GOLDENS = [
     # OpenAI cache: cached tokens are a SUBSET of tokens_in at 0.5x.
     ("gpt-4o", 1_000_000, 0, 500_000, 0, "openai", 1.875),
     ("gemini-2.5-flash", 1_000_000, 1_000_000, None, None, "", 2.80),
+    ("deepseek-v4-flash", 1_000_000, 1_000_000, 500_000, None, "deepseek", 0.3514),
+    ("mistral-small-latest", 1_000_000, 1_000_000, 500_000, None, "mistral", 0.6825),
 ]
 
 

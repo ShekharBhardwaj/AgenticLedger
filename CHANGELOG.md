@@ -91,6 +91,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`uvx agentic-ledger` just works** — the package now also installs a
   command named after itself, so the uvx one-liner needs no --from.
 
+### Added
+- **DeepSeek and Mistral pricing packs.** Agent calls using current DeepSeek
+  and Mistral text models now receive built-in input, output, and cached-input
+  cost estimates without requiring a runtime pricing override.
+
 ### Fixed
 - **Phone polish from user zero's screenshot.** A named run no longer
   prints its name twice (the id line earns its row only when it differs
