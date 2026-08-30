@@ -101,6 +101,15 @@ def test_litellm_client_tagged_without_agent_identity():
     assert meta["agent_name"] is None
 
 
+def test_gemini_cli_user_agent_detected():
+    meta = detect_agent(
+        {"user-agent": "GeminiCLI/0.34.0/gemini-pro (linux; x64; terminal)"},
+        None,
+    )
+    assert meta["framework"] == "gemini-cli"
+    assert meta["agent_name"] == "gemini-cli"
+
+
 def test_unknown_traffic_detects_nothing():
     meta = detect_agent(
         {"user-agent": "python-httpx/0.27"},
@@ -251,6 +260,15 @@ def test_talking_about_openclaw_is_not_running_openclaw():
     assert got["agent_name"] is None
 
 
+def test_talking_about_gemini_cli_is_not_running_gemini_cli():
+    got = detect_agent({}, {
+        "system": "GeminiCLI is an AI coding assistant.",
+        "messages": [{"role": "user", "content": "Should I install Gemini CLI?"}],
+    })
+    assert got["framework"] is None
+    assert got["agent_name"] is None
+
+
 def test_bmad_riding_on_openclaw_upgrades_to_bmad():
     """A BMAD persona hosted by OpenClaw is BMAD work, same as on claude-code."""
     got = detect_agent({}, {
@@ -260,3 +278,15 @@ def test_bmad_riding_on_openclaw_upgrades_to_bmad():
     })
     assert got["framework"] == "bmad"
     assert got["agent_name"] == "bmad:dev"
+
+
+def test_bmad_riding_on_gemini_cli_upgrades_to_bmad():
+    got = detect_agent(
+        {"user-agent": "GeminiCLI-a2a-server/0.34.0/gemini-pro (linux; x64; vscode)"},
+        {
+            "system": "Gemini CLI host. bmad-core activation: you are the Scrum Master persona.",
+            "messages": [{"role": "user", "content": "draft the next story"}],
+        },
+    )
+    assert got["framework"] == "bmad"
+    assert got["agent_name"] == "bmad:sm"

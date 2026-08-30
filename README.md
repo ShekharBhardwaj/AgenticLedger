@@ -472,7 +472,7 @@ Every LLM call is stored with:
 | `status_code` | HTTP status from upstream — errors are captured too |
 | `error_detail` | Upstream error message for non-200 responses |
 | `agent_name` | From `x-agenticledger-agent-name` header, or auto-detected (e.g. `claude-code`) |
-| `framework` | From `x-agenticledger-framework` header, or fingerprint-detected (e.g. `claude-code`, `litellm`) |
+| `framework` | From `x-agenticledger-framework` header, or fingerprint-detected (e.g. `claude-code`, `gemini-cli`, `litellm`) |
 | `user_id` | From `x-agenticledger-user-id` header |
 | `app_id` | From `x-agenticledger-app-id` header |
 | `environment` | From `x-agenticledger-environment` header |
@@ -767,7 +767,7 @@ Pass these from your agent on each LLM call. All optional. They enrich captured 
 | `x-agenticledger-environment` | `development` | `production`, `staging`, or `development`. Shown in the dashboard. |
 | `x-agenticledger-handoff-from` | _(none)_ | Agent handing off control (e.g. `"orchestrator"`). Renders as a directed edge in the Flow DAG. |
 | `x-agenticledger-handoff-to` | _(none)_ | Agent receiving control (e.g. `"researcher"`). Renders as a directed edge in the Flow DAG. |
-| `x-agenticledger-framework` | _(auto-detected)_ | Framework/tool making the call (e.g. `"langgraph"`, `"bmad"`). When absent, well-known clients are fingerprinted automatically (Claude Code, LiteLLM). |
+| `x-agenticledger-framework` | _(auto-detected)_ | Framework/tool making the call (e.g. `"langgraph"`, `"bmad"`). When absent, well-known clients are fingerprinted automatically (Claude Code, Gemini CLI, LiteLLM). |
 | `x-agenticledger-run-id` | _(auto-inferred)_ | Groups sessions into a loop run (e.g. a Ralph overnight run). When absent, fresh-context sessions sharing a system prompt within `AGENTICLEDGER_LOOP_RUN_GAP_SECONDS` are grouped automatically. |
 | `x-agenticledger-iteration` | _(auto-inferred)_ | Iteration number within the run. |
 

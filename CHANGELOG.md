@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and runs the managing tool's own upgrade command instead of handing
   the user homework (dev `--from <repo>` included), and doctor's
   multi-install verdict recommends migrating to the immune setup.
+- **Gemini CLI auto-detection (#67).** Proxy requests carrying Gemini CLI's
+  documented `GeminiCLI` User-Agent prefix are now attributed as `gemini-cli`,
+  including integrated variants; BMAD riders still take precedence.
 
 ### Fixed
 - **Pre-forward refusals leave a record (#115).** A credential-less
