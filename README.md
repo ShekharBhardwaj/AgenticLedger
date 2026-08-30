@@ -150,7 +150,7 @@ client = anthropic.Anthropic(
 
 **Azure OpenAI:** point `AzureOpenAI(azure_endpoint="http://localhost:8000")` at the ledger with your resource set as the upstream; deployments are priced from the model the response names. See the [Azure guide](docs/integrations/azure-openai.md).
 
-**AWS Bedrock:** install `agentic-ledger[bedrock]`, give the ledger AWS credentials through the standard chain, and point `boto3` (`endpoint_url`) or Claude Code (`ANTHROPIC_BEDROCK_BASE_URL`) at it; the ledger re-signs each call itself. See the [Bedrock guide](docs/integrations/bedrock.md).
+**AWS Bedrock:** install `agentic-ledger[bedrock]`, give the ledger AWS credentials through the standard chain, and point `boto3` (`endpoint_url`) or Claude Code (`ANTHROPIC_BEDROCK_BASE_URL`) at it; the ledger re-signs each call itself. Both wires are covered: InvokeModel and the modern Converse/ConverseStream APIs. See the [Bedrock guide](docs/integrations/bedrock.md).
 
 **LiteLLM / OpenRouter / any gateway:**
 ```bash
@@ -174,6 +174,8 @@ The web app updates live via WebSocket as calls come in. No refresh needed.
 - **Loop Lens** — every loop run with status (`running` / `flagged` / `complete` / `ended` / `stopped`), a cost-per-iteration chart, a **block-calls button** that refuses a running loop's further calls at the wall (and an allow-calls-again to lift it; the agent being blocked cannot), per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side — cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
 - **Sessions** — every session with three views: expandable call cards (response, thinking, tool calls, cache tokens, interaction badges), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Session cards say whose they are and how they're doing at a glance: team badge, red "N failed" for real errors, amber "N blocked" for budget walls, purple tiles for replays. Hover a card for one-click delete.
 - **Replay the whole run** — the question that decides a model switch isn't "how did it handle one call?" but "would my loop have survived?" Pick a run or session, pick a destination (a local model is free), and every step re-runs with its original inputs. You get a report card, not homework: **"34 / 40 moments matched"**, the fumbles named ("dropped the tools"), and the cost both ways. Each step is a real captured moment replayed honestly — after step one a different model would have steered a different conversation, so the ledger compares moments, not fairy tales.
+- **In your pocket** — `agenticledger share` opens an https tunnel you own (via cloudflared, no account), prints the pairing link, and draws a QR in the terminal: point your phone's camera and the dashboard is in your hand, kill switch and ceilings included. `--wifi` for a same-network link, `--rotate` to un-pair every device, or press **Pair a device** in the dashboard's ⚿ panel. Local machines never need a key; everyone else meets the auto-generated pairing key. The dashboard fits a phone: one pane at a time, a back button, prev/next arrows to flip between runs.
+- **Named instances** — `agenticledger start --name demo --port 8003` runs a second ledger beside your everyday one: own state, own database, its dashboard wears an amber name chip so it can never pass for the real thing. `stop`, `status`, `logs`, `share`, and `run` all take `--name`.
 - **The spend meter** — a run's detail reads its money live: spent so far, burning $/h, "at this pace $Y by 8:00 AM". Give any run a **cost ceiling** and the proxy refuses further calls the moment spend reaches it (amber, costing nothing) until you raise or clear it; the ceiling survives restarts and guards auto-detected loops too. A webhook alert fires at 80%.
 - **Names, pins, projects** — call it "the overnight auth fix" instead of `cc-73a26366`, ★ pin what matters to the top, file work under a project and the Sessions view reads as sections: a heading per project, its sessions beneath, the unfiled pile last. A run filed under a project files its sessions with it.
 - **Settings** — the ⚙ shows what the proxy is actually running with: config file in effect, upstream, budgets, replay targets, each row labeled file / env / default. Read-only, secrets hidden.
@@ -1024,7 +1026,7 @@ This runs three jobs:
 
 ## Troubleshooting
 
-**Start here: `agenticledger doctor`.** One command prints the whole truth
+**Start here: `agenticledger doctor`.** One command prints the whole truth Add `--fix` and it applies the fixes it names: shadow installs evicted with their own interpreter's pip, the PATH prepend offered for cleanup, then a second diagnostic pass.
 of your machine: every install on PATH and who shadows whom, which Python
 owns each one and whether it can actually run (wrong-architecture wheels
 and missing dependencies caught by a real import probe), what the
