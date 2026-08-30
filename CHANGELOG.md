@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The blessed install path (#117).** The README leads with
+  `uv tool install agentic-ledger` (pipx equally): one isolated shim on
+  PATH, shadow installs structurally impossible. `agenticledger
+  upgrade` now recognizes pipx-, uv-, and Homebrew-managed installs
+  and runs the managing tool's own upgrade command instead of handing
+  the user homework (dev `--from <repo>` included), and doctor's
+  multi-install verdict recommends migrating to the immune setup.
+
 ### Fixed
 - **Pre-forward refusals leave a record (#115).** A credential-less
   Bedrock call or an unconfigured Azure upstream was refused with no

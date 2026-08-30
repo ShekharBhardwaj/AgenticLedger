@@ -219,7 +219,14 @@ def diagnose(installs: list[Install], service_state: dict) -> list[str]:
                     f"two working installs disagree: your shell runs "
                     f"{winner.script} (v{winner.version}); {other.script} "
                     f"has v{other.version}. Keep one; remove the other with "
-                    f"its own interpreter's pip.")
+                    f"its own interpreter's pip (or run doctor --fix).")
+        if any(not i.broken for i in installs):
+            verdicts.append(
+                "this machine has the multi-install disease. The immune "
+                "setup is a tool-managed install — one isolated shim, "
+                "shadows structurally impossible: "
+                "uv tool install agentic-ledger (or pipx install "
+                "agentic-ledger), after doctor --fix clears the rest.")
 
     if winner and not winner.broken:
         running = service_state.get("running")

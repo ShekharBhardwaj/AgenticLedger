@@ -44,9 +44,15 @@ Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any L
 Two commands, zero config, no terminal held hostage:
 
 ```bash
-pip install -U agentic-ledger
+uv tool install agentic-ledger    # or: pipx install agentic-ledger, or pip install -U agentic-ledger
 agenticledger start     # runs in the background; terminal freed
 ```
+
+A tool-managed install (`uv tool` / `pipx`) gets its own isolated
+environment and one unambiguous shim on PATH, so it can never be
+shadowed by another Python's copy and `agenticledger upgrade` always
+means exactly one thing. Plain pip works too; if a machine ever grows
+competing installs, `agenticledger doctor --fix` untangles them.
 
 `agenticledger start` prints the dashboard URL and gives your terminal
 back — closing the window doesn't stop it. `agenticledger status` tells

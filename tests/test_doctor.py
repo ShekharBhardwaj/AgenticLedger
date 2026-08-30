@@ -180,3 +180,32 @@ def test_skew_verdict_never_advises_a_downgrade():
     verdicts = diagnose([shadow], {"running": True, "version": "0.11.1.dev27"})
     assert any("DOWNGRADE" in v for v in verdicts)
     assert not any("a restart applies it" in v for v in verdicts)
+
+
+def test_managed_upgrade_command_per_owner():
+    """#117: upgrade runs the managing tool itself instead of handing the
+    user homework, and never lets pip fight pipx/uv/brew."""
+    from agenticledger.cli import _managed_upgrade_command as cmd
+    assert cmd("/Users/x/.local/pipx/venvs/agentic-ledger/bin/python", None) == \
+        ["pipx", "upgrade", "agentic-ledger"]
+    assert cmd("/Users/x/.local/share/uv/tools/agentic-ledger/bin/python", None) == \
+        ["uv", "tool", "upgrade", "agentic-ledger"]
+    assert cmd("/Users/x/.local/share/uv/tools/agentic-ledger/bin/python", "/repo") == \
+        ["uv", "tool", "install", "--force", "--from", "/repo", "agentic-ledger"]
+    assert cmd("/opt/homebrew/Cellar/agentic-ledger/1.0/bin/python", None) == \
+        ["brew", "upgrade", "agentic-ledger"]
+    assert cmd("/usr/local/bin/python3", None) is None      # plain pip env
+    assert cmd("/Users/x/custom/al-fresh/bin/python", None) is None
+
+
+def test_multi_install_verdict_recommends_the_immune_path():
+    from pathlib import Path as P
+
+    from agenticledger.doctor import Install, diagnose
+    a = Install(script=P("/a/agenticledger"), interpreter=P("/a/py"), version="1.0", wins=True)
+    b = Install(script=P("/b/agenticledger"), interpreter=P("/b/py"), version="2.0")
+    verdicts = diagnose([a, b], {"running": False})
+    assert any("uv tool install" in v for v in verdicts)
+    # One healthy install: no disease, no lecture.
+    healthy = diagnose([a], {"running": True, "version": "1.0"})
+    assert not any("uv tool install" in v for v in healthy)

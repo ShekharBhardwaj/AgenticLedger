@@ -284,16 +284,20 @@ def run_command(args: argparse.Namespace) -> int:
     return last_exit
 
 
-def _managed_install_hint() -> Optional[str]:
-    """When the install is owned by a tool pip must not fight, name the
-    right one-liner instead of upgrading behind its back."""
-    exe = sys.executable
+def _managed_upgrade_command(exe: str, source: Optional[str]) -> Optional[list[str]]:
+    """When the install is owned by a tool pip must not fight, the command
+    THAT tool uses to upgrade it — run for the user (#117), not handed to
+    them as homework. None means an ordinary pip-owned environment."""
     if "/pipx/" in exe:
-        return "this install is managed by pipx. Run: pipx upgrade agentic-ledger"
+        if source:
+            return ["pipx", "install", "--force", source]
+        return ["pipx", "upgrade", "agentic-ledger"]
     if "/uv/tools/" in exe:
-        return "this install is managed by uv. Run: uv tool upgrade agentic-ledger"
+        if source:
+            return ["uv", "tool", "install", "--force", "--from", source, "agentic-ledger"]
+        return ["uv", "tool", "upgrade", "agentic-ledger"]
     if exe.startswith(("/opt/homebrew/", "/usr/local/Cellar/")):
-        return "this install is managed by Homebrew. Run: brew upgrade agentic-ledger"
+        return ["brew", "upgrade", "agentic-ledger"]
     return None
 
 
@@ -304,23 +308,31 @@ def upgrade_command(args: argparse.Namespace) -> int:
     touched only when the user runs this."""
     from importlib.metadata import PackageNotFoundError, version
 
-    hint = _managed_install_hint()
-    if hint:
-        print(f"agenticledger: {hint}", file=sys.stderr)
-        return 1
-
     try:
         old = version("agentic-ledger")
     except PackageNotFoundError:
         old = None
 
+    src_path: Optional[str] = None
     target = "agentic-ledger"
     if args.source:
         src = Path(args.source).expanduser().resolve()
         if not src.exists():
             print(f"error: --from path does not exist: {src}", file=sys.stderr)
             return 2
+        src_path = str(src)
         target = f"agentic-ledger @ {src.as_uri()}"
+
+    managed = _managed_upgrade_command(sys.executable, src_path)
+    if managed:
+        import shutil as _shutil
+        if not _shutil.which(managed[0]):
+            print(f"agenticledger: this install is managed by {managed[0]}, "
+                  f"which is not on PATH. Run: {' '.join(managed)}", file=sys.stderr)
+            return 1
+        print(f"agenticledger: upgrading via {' '.join(managed)}", file=sys.stderr)
+        result = subprocess.run(managed)  # noqa: S603 — the managing tool's own upgrade
+        return result.returncode
 
     print(f"agenticledger: upgrading with {sys.executable}", file=sys.stderr)
     result = subprocess.run(  # noqa: S603 — the owning interpreter's own pip
