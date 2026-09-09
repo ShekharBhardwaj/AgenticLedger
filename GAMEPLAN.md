@@ -246,7 +246,30 @@ report card, settings editing from the UI.
 Build order A → B → C → D, user-zero hands on every seam, tag on the
 word — the 0.9.2 retest discipline is the permanent process now.
 
-## Where the plan stands (2026-08-30)
+## Where the plan stands (2026-09-09)
+
+**0.13 "Nothing wasted" is nearly complete.** Shipped since the slate
+was signed: httpx2 migration (#93), refusal capture (#115), the
+blessed install path (#117), per-framework redetect (#70, outside
+contributor), Gemini CLI detection (#67, same contributor), the cache
+audit headline (#113, built and live-verified, open only for the
+user-zero hand test), session run chips (#91), and the migration page
+(#112). Remaining: direct-LAN https (#118), the Headroom recipe
+(#114) with its outreach after, and the pricing packs PR (#65,
+awaiting the contributor's DeepSeek corrections; offer to finish it
+for them stands). Then the release-docs pass (README led with uv tool
+already; the site's Base44 prompt gets the audit and the immune
+install), the demo re-record with the full money story (meter,
+ceiling, audit), and the campaign fires with the tag.
+
+**0.14 is deliberately unshaped (milestone 4).** The campaign is the
+experiment; stranger-issues get first claim. The bench while we wait:
+audit follow-ons (weekly waste rollup in Reports, auditing plain
+sessions), the framework-detection wave (CrewAI/LangGraph) if launch
+brings those users, the semantic report card, settings editing (#60),
+and the first enterprise item (#100) a real team pulls.
+
+## Where the plan stood (2026-08-30)
 
 **0.12.0 "In your pocket" shipped 2026-08-30.** The pillar landed
 whole: the remote guard (pairing key, forwarded-client aware),
