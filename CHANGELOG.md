@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Session cards show their run (#91).** A session that belongs to a
   run wears a small chip with the run's name; clicking it jumps to
   that run in the Loop Lens.
+- **The audit tells partial coverage from full (review catch).** One
+  cached call among fifty no longer earns "nothing missed": coverage
+  is compared against the repeats, and a partially_cached verdict
+  carries the remaining eligibility and the fix.
 - **The cache audit (#113), the 0.13 headline.** A run's detail gains
   one line under the spend meter: the repeat-discount the run was
   eligible for and did not receive. RECEIVED dollars are exact (the

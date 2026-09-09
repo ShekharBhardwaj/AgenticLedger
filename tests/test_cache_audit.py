@@ -85,3 +85,21 @@ def test_endpoint_audits_a_real_run(proxy):
     assert audit["eligible"]["occurrences"] == 2
     assert audit["eligible"]["estimated_usd"] > 0
     assert client.get("/api/runs/nope/cache-audit").status_code == 404
+
+
+def test_one_cached_call_is_not_nothing_missed():
+    """Review catch: reads > 0 blanket-declared well_cached, so one cached
+    call among many earned "nothing missed". Coverage decides now."""
+    calls = [_call(writes=len(BIG) // 4)] + [_call() for _ in range(8)]
+    calls[1] = _call(reads=len(BIG) // 4)   # exactly one repeat hit the cache
+    result = audit_run(calls)
+    assert result["verdict"] == "partially_cached"
+    assert "%" in result["reason"]
+    assert result["eligible"]["estimated_usd"] > 0
+    assert result["fix"] is not None
+
+
+def test_full_coverage_stays_well_cached():
+    est = len(BIG) // 4
+    calls = [_call(writes=est)] + [_call(reads=est) for _ in range(4)]
+    assert audit_run(calls)["verdict"] == "well_cached"

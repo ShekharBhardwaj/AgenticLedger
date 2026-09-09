@@ -19,6 +19,7 @@ Two sides, two certainty classes, both printed as what they are:
 Verdicts, each with its reason and its one-line fix:
 
     well_cached      the discount is being received; nothing missed
+    partially_cached some calls hit the cache, most repeats did not
     never_requested  identical prompt repeated, zero cache traffic ever
     unstable_opening the prompt CHANGES between calls, voiding the match
     too_short        repeated text is below the provider's cache minimum
@@ -102,10 +103,34 @@ def audit_run(calls: list[dict[str, Any]]) -> dict[str, Any]:
     repeated_text, occurrences = repeated
 
     if reads > 0:
-        return {"verdict": "well_cached",
-                "reason": f"cache reads on record ({reads:,} tokens); the "
-                          "repeat-discount is being received",
-                "fix": None, "received_usd": received_usd, "eligible": None}
+        # Some cache traffic exists, but "some" must not read as "enough":
+        # one cached call in a fifty-call run is not "nothing missed"
+        # (caught in review before release). Compare actual reads against
+        # what full coverage of the repeats would have read.
+        expected = (occurrences - 1) * _estimate_tokens(repeated_text) if occurrences >= 2 else 0
+        if expected == 0 or reads >= 0.8 * expected:
+            return {"verdict": "well_cached",
+                    "reason": f"cache reads on record ({reads:,} tokens); the "
+                              "repeat-discount is being received",
+                    "fix": None, "received_usd": received_usd, "eligible": None}
+        missing = expected - reads
+        eligible = None
+        if rates is not None:
+            eligible = {
+                "estimated_usd": round(missing * (rates["input"] - rates["cache_read"]) / 1_000_000, 4),
+                "estimated_tokens": missing,
+                "occurrences": occurrences,
+                "prompt_chars": len(repeated_text),
+                "method": f"expected repeat-tokens estimated at text length / "
+                          f"{_CHARS_PER_TOKEN} chars per token, minus exact reads; "
+                          "exact once coverage is full",
+            }
+        return {"verdict": "partially_cached",
+                "reason": (f"cache reads cover ~{100 * reads // max(expected, 1)}% of the "
+                           f"repeats ({reads:,} of ~{expected:,} expected repeat-tokens); "
+                           "part of the traffic misses the discount"),
+                "fix": _fix_for(provider),
+                "received_usd": received_usd, "eligible": eligible}
 
     if occurrences < 2:
         # No identical prompts, and no cache traffic: the openings differ.

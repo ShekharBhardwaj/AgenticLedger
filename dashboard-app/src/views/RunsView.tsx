@@ -447,10 +447,11 @@ export default function RunsView({ onOpenSession, focusRun }: {
 
             {audit && audit.verdict !== "not_auditable" && (
               <div className={`cache-audit ${audit.verdict}`}>
-                {audit.verdict === "never_requested" && audit.eligible ? (
+                {(audit.verdict === "never_requested" || audit.verdict === "partially_cached") && audit.eligible ? (
                   <span>
                     <span className="audit-headline">
-                      ~{fmtUsd(audit.eligible.estimated_usd)} of repeat-discount missed
+                      ~{fmtUsd(audit.eligible.estimated_usd)} of repeat-discount
+                      {audit.verdict === "partially_cached" ? " still missed" : " missed"}
                     </span>
                     <span className="muted" title={audit.eligible.method}> (estimate)</span>
                     {" · "}{audit.reason}. <span className="audit-fix">Fix: {audit.fix}.</span>
