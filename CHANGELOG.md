@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The cache audit (#113), the 0.13 headline.** A run's detail gains
+  one line under the spend meter: the repeat-discount the run was
+  eligible for and did not receive. RECEIVED dollars are exact (the
+  provider reported the cache traffic; the packs know the rates).
+  ELIGIBLE is a stated-method estimate (text length / 4 chars per
+  token) that the exact figure replaces once caching is on. Every
+  verdict carries its reason and its one-line fix: caching never
+  requested (with the provider-specific request change), unstable
+  opening (with the exact first divergent character), too short
+  ("you're fine"), well cached ("nothing missed"), or not auditable
+  (capture level strips prompts). GET /api/runs/{id}/cache-audit for
+  API clients. The audit reads the record and does arithmetic; it
+  never touches traffic.
+
+
+### Added
 - **The blessed install path (#117).** The README leads with
   `uv tool install agentic-ledger` (pipx equally): one isolated shim on
   PATH, shadow installs structurally impossible. `agenticledger

@@ -1897,6 +1897,19 @@ def create_app(
         iterations = await request.app.state.store.get_run_iterations(run_id)
         return JSONResponse(iterations)
 
+    @app.get("/api/runs/{run_id}/cache-audit")
+    async def api_run_cache_audit(run_id: str, request: Request) -> JSONResponse:
+        """The cache audit (#113): the repeat-discount this run was eligible
+        for and did not receive — exact where the provider reported cache
+        traffic, a stated-method estimate where it never did, and always a
+        reason with a one-line fix."""
+        await _require(request, ROLE_VIEWER)
+        calls = await request.app.state.store.get_run_calls(run_id)
+        if not calls:
+            raise HTTPException(status_code=404, detail="run_id not found")
+        from .cache_audit import audit_run
+        return JSONResponse({"run_id": run_id, **audit_run(calls)})
+
     @app.get("/api/runs/{run_id}/flags")
     async def api_run_flags(run_id: str, request: Request) -> JSONResponse:
         """The calls behind a run's flagged count, with enough context to

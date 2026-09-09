@@ -864,3 +864,18 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
   font-size: 12px; font-weight: 650; letter-spacing: 0.02em;
   font-family: var(--mono, monospace);
 }
+
+/* ── Cache audit (#113): the discount you were eligible for and did not
+   receive. One line under the spend meter, amber when money was missed,
+   quiet when nothing was. */
+.cache-audit {
+  margin: 8px 0 14px; padding: 8px 12px;
+  border-radius: 8px; font-size: 12.5px; line-height: 1.5;
+  background: var(--bg-panel); border: 1px solid var(--border);
+}
+.cache-audit.never_requested, .cache-audit.unstable_opening {
+  border-color: rgba(255, 179, 71, 0.4);
+  background: rgba(255, 179, 71, 0.07);
+}
+.audit-headline { color: var(--amber, #ffb347); font-weight: 650; }
+.audit-fix { color: var(--text); }

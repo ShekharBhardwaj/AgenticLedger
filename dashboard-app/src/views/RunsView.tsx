@@ -127,6 +127,13 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   useEffect(() => { selectedRef.current = selected; setFeed([]); }, [selected]);
 
   useEffect(() => { setConfirmStop(false); setCopied(false); }, [selected]);
+  interface CacheAudit {
+    verdict: string; reason: string; fix: string | null;
+    received_usd: number;
+    eligible: { estimated_usd: number; estimated_tokens: number;
+                occurrences: number; prompt_chars: number; method: string } | null;
+  }
+  const [audit, setAudit] = useState<CacheAudit | null>(null);
 
   // #75 — stop/resume must flip the sidebar tile and the detail badge in
   // the same render: update both local copies first, then re-fetch.
@@ -155,6 +162,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
     get<Iteration[]>(`/api/runs/${encodeURIComponent(selected)}/iterations`)
       .then(setIterations)
       .catch(() => setIterations([]));
+    get<CacheAudit>(`/api/runs/${encodeURIComponent(selected)}/cache-audit`)
+      .then(setAudit).catch(() => setAudit(null));
     get<FlaggedCall[]>(`/api/runs/${encodeURIComponent(selected)}/flags`)
       .then(setFlags)
       .catch(() => setFlags([]));
@@ -430,6 +439,33 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
                 </div>
               );
             })()}
+
+            {audit && audit.verdict !== "not_auditable" && (
+              <div className={`cache-audit ${audit.verdict}`}>
+                {audit.verdict === "never_requested" && audit.eligible ? (
+                  <span>
+                    <span className="audit-headline">
+                      ~{fmtUsd(audit.eligible.estimated_usd)} of repeat-discount missed
+                    </span>
+                    <span className="muted" title={audit.eligible.method}> (estimate)</span>
+                    {" · "}{audit.reason}. <span className="audit-fix">Fix: {audit.fix}.</span>
+                  </span>
+                ) : audit.verdict === "unstable_opening" ? (
+                  <span>
+                    <span className="audit-headline">cache discount missed</span>
+                    {" · "}{audit.reason}. <span className="audit-fix">Fix: {audit.fix}.</span>
+                  </span>
+                ) : audit.verdict === "well_cached" ? (
+                  <span className="muted">
+                    Cache audit: {audit.received_usd > 0
+                      ? `${fmtUsd(audit.received_usd)} saved by caching; `
+                      : ""}nothing missed.
+                  </span>
+                ) : (
+                  <span className="muted">Cache audit: {audit.reason}; nothing to fix.</span>
+                )}
+              </div>
+            )}
 
             {(
               <>

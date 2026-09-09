@@ -138,6 +138,33 @@ _load_overrides()
 _unpriced_warned: set[str] = set()
 
 
+def lookup_rates(model_id: str, provider: str = "") -> Optional[dict]:
+    """The per-million-token rates for a model: input, output, cache_read,
+    cache_write. Same longest-substring matching as compute_cost, factored
+    out for the cache audit (#113), which prices hypotheticals — what a
+    repeated prefix WOULD cost cached — and must use the exact same table.
+    None when the model is not priced."""
+    model_lower = model_id.lower().replace(".", "-")
+    best_pattern: Optional[str] = None
+    best_len = -1
+    for pattern in _PRICES:
+        if pattern.replace(".", "-") in model_lower and len(pattern) > best_len:
+            best_pattern = pattern
+            best_len = len(pattern)
+    if best_pattern is None:
+        return None
+    in_price, out_price = _PRICES[best_pattern]
+    explicit = _CACHE_PRICES.get(best_pattern)
+    if explicit is not None:
+        read_price, write_price = explicit
+    else:
+        conv = provider if provider in _CACHE_READ_MULT else "openai"
+        read_price = in_price * _CACHE_READ_MULT[conv]
+        write_price = in_price * _CACHE_WRITE_MULT[conv]
+    return {"input": in_price, "output": out_price,
+            "cache_read": read_price, "cache_write": write_price}
+
+
 def compute_cost(
     model_id: str,
     tokens_in: Optional[int],
