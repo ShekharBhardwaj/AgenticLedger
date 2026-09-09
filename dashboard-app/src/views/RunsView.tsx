@@ -101,7 +101,10 @@ function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (
   );
 }
 
-export default function RunsView({ onOpenSession }: { onOpenSession: (s: string) => void }) {
+export default function RunsView({ onOpenSession, focusRun }: {
+  onOpenSession: (s: string) => void;
+  focusRun?: string | null;
+}) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [compare, setCompare] = useState<string[]>([]);
@@ -127,6 +130,8 @@ export default function RunsView({ onOpenSession }: { onOpenSession: (s: string)
   useEffect(() => { selectedRef.current = selected; setFeed([]); }, [selected]);
 
   useEffect(() => { setConfirmStop(false); setCopied(false); }, [selected]);
+  // A session card's run chip jumps here (#91): land on that run's detail.
+  useEffect(() => { if (focusRun) setSelected(focusRun); }, [focusRun]);
   interface CacheAudit {
     verdict: string; reason: string; fix: string | null;
     received_usd: number;

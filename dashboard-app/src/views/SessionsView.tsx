@@ -391,7 +391,10 @@ function CallCard({ call, num, onOpenSession }: {
   );
 }
 
-export default function SessionsView({ focusSession }: { focusSession?: string | null }) {
+export default function SessionsView({ focusSession, onOpenRun }: {
+  focusSession?: string | null;
+  onOpenRun?: (runId: string) => void;
+}) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selected, setSelected] = useState<string | null>(focusSession ?? null);
 
@@ -556,6 +559,13 @@ export default function SessionsView({ focusSession }: { focusSession?: string |
             )}
             <div className="card-title" title={s.session_id}>
               {s.label ?? s.session_id}
+              {s.run_id && (
+                <span className="run-chip"
+                      title={`this session belongs to run "${s.run_id}" — click to open it in the Loop Lens`}
+                      onClick={(e) => { e.stopPropagation(); onOpenRun?.(s.run_id!); }}>
+                  ↻ {s.run_id}
+                </span>
+              )}
             </div>
             {editing === s.session_id && (
               <LabelEditor scope="session" refId={s.session_id}

@@ -879,3 +879,14 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 }
 .audit-headline { color: var(--amber, #ffb347); font-weight: 650; }
 .audit-fix { color: var(--text); }
+
+/* ── Run chip on session cards (#91): which run does this session belong
+   to. Click jumps to the run in the Loop Lens. */
+.run-chip {
+  margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 500; cursor: pointer;
+  font-family: var(--mono, monospace);
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.run-chip:hover { border-color: var(--accent); }

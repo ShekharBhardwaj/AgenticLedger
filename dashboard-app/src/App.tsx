@@ -193,6 +193,11 @@ export default function App() {
     setFocusSession(sessionId);
     setTab("sessions");
   };
+  const [focusRun, setFocusRun] = useState<string | null>(null);
+  const openRun = (runId: string) => {
+    setFocusRun(runId);
+    setTab("runs");
+  };
 
   return (
     <>
@@ -246,13 +251,13 @@ export default function App() {
         />
       </div>
       {tab === "runs" ? (
-        <RunsView onOpenSession={openSession} />
+        <RunsView onOpenSession={openSession} focusRun={focusRun} />
       ) : tab === "reports" ? (
         <ReportsView />
       ) : tab === "settings" ? (
         <SettingsView />
       ) : (
-        <SessionsView focusSession={focusSession} />
+        <SessionsView focusSession={focusSession} onOpenRun={openRun} />
       )}
       <footer className="console-footer">
         <span>Agentic Ledger, the flight recorder for AI agents. Local-first: everything on this page stays on this machine.</span>
