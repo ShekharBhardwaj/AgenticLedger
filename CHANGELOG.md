@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The migration page (#112).** docs/migrating.md translates Helicone
+  and LangSmith concepts, gives the two-line switch for each, and says
+  honestly what you gain (local-first, refusal, loops, the audit) and
+  what you lose (evals, hosted team dashboards, gateway extras).
 - **Session cards show their run (#91).** A session that belongs to a
   run wears a small chip with the run's name; clicking it jumps to
   that run in the Loop Lens.

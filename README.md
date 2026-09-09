@@ -41,6 +41,8 @@ Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any L
 
 **Step 1 — Start the proxy**
 
+Coming from Helicone or LangSmith? The [migration page](docs/migrating.md) does the translation in two lines.
+
 Two commands, zero config, no terminal held hostage:
 
 ```bash
