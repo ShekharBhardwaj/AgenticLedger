@@ -191,7 +191,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   }, [refresh]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) { setDetail(null); return; }   // home / deselect clears the detail
     get<Run>(`/api/runs/${encodeURIComponent(selected)}`).then(setDetail).catch(() => setDetail(null));
     get<Iteration[]>(`/api/runs/${encodeURIComponent(selected)}/iterations`)
       .then(setIterations)

@@ -271,7 +271,10 @@ export default function App() {
     sessionId: t === "sessions" ? lastSession.current ?? undefined : undefined,
   });
   const openSession = (sessionId: string) => navigate({ tab: "sessions", sessionId });
-  const openRun = (runId: string) => navigate({ tab: "runs", runId });
+  const openRun = (runId: string) => {
+    lastRun.current = runId || null;
+    navigate({ tab: "runs", runId: runId || undefined });
+  };
 
   // Back/Forward restore the route; selection state follows the URL.
   useEffect(() => {
@@ -298,10 +301,13 @@ export default function App() {
   return (
     <>
       <div className="topbar">
-        <Logo />
-        <h1>
-          Agentic <span>Ledger</span>
-        </h1>
+        <button className="brand" title="Home: the Loop Lens overview"
+                onClick={() => openRun("")}>
+          <Logo />
+          <h1>
+            Agentic <span>Ledger</span>
+          </h1>
+        </button>
         {instance && (
           <span className="instance-chip"
                 title={`This is the "${instance}" instance — a separate ledger with its own database, not your everyday one.`}>

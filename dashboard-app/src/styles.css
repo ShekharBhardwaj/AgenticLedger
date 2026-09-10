@@ -1152,3 +1152,11 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
   .landing-table th:last-child { display: none; }
   .landing-table td.lt-when { display: none; }
 }
+
+/* Brand mark is home: the logo + wordmark navigate to the Loop Lens overview. */
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: inherit; font: inherit;
+}
+.brand:hover h1 { opacity: 0.85; }

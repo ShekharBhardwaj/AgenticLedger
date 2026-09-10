@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The brand mark is home.** Clicking the logo or wordmark now
+  returns to the Loop Lens overview and clears the open run, the way
+  a product's name is expected to behave. (A deselect also correctly
+  clears the stale detail, which it silently kept before.)
 - **Returning to a tab keeps your place.** Going to Settings and back
   to a run (or between tabs) dropped the selection to the empty list;
   a mount-order race echoed an initial null selection into the URL,
