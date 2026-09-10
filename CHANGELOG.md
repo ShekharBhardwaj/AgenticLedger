@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A failed ceiling save is unmissable.** Saving a run's cost ceiling
+  showed nothing on failure, leaving the user trusting a wall that did
+  not exist. The editor now shows saving, then the confirmed value or
+  a red inline error stating the wall is unchanged.
 - **doctor --fix checks the shadow's resurrection vector even when
   healthy.** The python.org PATH prepend survived four evictions
   because fix mode returned early on a clean verdict and never offered

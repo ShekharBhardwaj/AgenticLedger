@@ -126,6 +126,10 @@ export default function RunsView({ onOpenSession, focusRun }: {
   // scoped to the open run. Cleared on every run switch.
   const [feed, setFeed] = useState<(LiveCall & { at: number })[]>([]);
   const [ceilingEdit, setCeilingEdit] = useState<string | null>(null);
+  // The wall's UI must be as honest as the wall: a save is "saving", then
+  // the confirmed value or a visible error - never a silent failure that
+  // leaves the user believing in a ceiling that does not exist.
+  const [ceilingState, setCeilingState] = useState<"saving" | string | null>(null);
   const selectedRef = useRef<string | null>(null);
   useEffect(() => { selectedRef.current = selected; setFeed([]); }, [selected]);
 
@@ -392,9 +396,12 @@ export default function RunsView({ onOpenSession, focusRun }: {
               const projected = spent + burn * hoursToMorning;
               const frac = ceiling ? Math.min(spent / ceiling, 1) : 0;
               const saveCeiling = (v: number) => {
-                setLabel("run", detail.run_id, { budget_usd: v })
-                  .then(refresh).catch(() => {});
+                setCeilingState("saving");
                 setCeilingEdit(null);
+                setLabel("run", detail.run_id, { budget_usd: v })
+                  .then(() => { setCeilingState(null); refresh(); })
+                  .catch((e) => setCeilingState(
+                    `ceiling NOT saved: ${e?.message || "request failed"} - the wall is unchanged`));
               };
               return (
                 <div className="spend-meter">
@@ -422,6 +429,10 @@ export default function RunsView({ onOpenSession, focusRun }: {
                             title="refuse this run's calls at the proxy once its spend reaches a dollar amount; survives restarts"
                             onClick={() => setCeilingEdit("")}>+ cost ceiling</button>
                   ) : null}
+                  {ceilingState === "saving" && <span className="muted">saving…</span>}
+                  {ceilingState && ceilingState !== "saving" && (
+                    <span className="ceiling-error">{ceilingState}</span>
+                  )}
                   {ceilingEdit !== null && (
                     <span className="key-actions">
                       <input autoFocus className="ceiling-input" placeholder="$"

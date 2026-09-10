@@ -890,3 +890,7 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
   border: 1px solid transparent; white-space: nowrap;
 }
 .run-chip:hover { border-color: var(--accent); }
+
+/* A failed ceiling save must be unmissable: the user was about to trust a
+   wall that does not exist. */
+.ceiling-error { color: var(--red, #ff6b6b); font-weight: 600; font-size: 12.5px; }
