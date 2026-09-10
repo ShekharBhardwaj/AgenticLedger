@@ -251,6 +251,8 @@ function CallCard({ call, num, onOpenSession }: {
 }) {
   const [open, setOpen] = useState(false);
   const [replaying, setReplaying] = useState(false);
+  // Inspector opens on the response (or the relevant error, shown first).
+  const [itab, setItab] = useState<"response" | "tools" | "prompt" | "raw">("response");
   const blocked = call.error_detail?.startsWith("blocked:") ?? false;
   const transient = call.error_detail?.startsWith("transient:") ?? false;
   const probe = call.error_detail?.startsWith("probe:") ?? false;
@@ -263,128 +265,149 @@ function CallCard({ call, num, onOpenSession }: {
       .then((orig) => { if (orig.session_id) onOpenSession(orig.session_id); })
       .catch(() => {});
   };
+  // Spec 8: one status per row, chosen by precedence; everything else
+  // lives in the inspector. Blocked/transient/probe/partial are refusals
+  // and hiccups, not failures, and never aggregate into one red count.
+  const flagNames: string[] = call.loop_flags ? JSON.parse(call.loop_flags) : [];
+  const status = blocked ? { cls: "blocked", text: "Blocked" }
+    : transient ? { cls: "blocked", text: `Transient ${call.status_code}` }
+    : probe ? { cls: "fw", text: "Probe" }
+    : call.error_detail?.startsWith("partial:") ? { cls: "fw", text: "Partial" }
+    : failed ? { cls: "error", text: `Failed ${call.status_code}` }
+    : flagNames.length > 0 ? { cls: "flagged", text: "Flagged" }
+    : { cls: "ok", text: "OK" };
+  const shortModel = (id: string | null) => {
+    if (!id) return "unknown";
+    const tail = id.replace(/^(us|eu|apac)\./, "").replace(/^(anthropic|amazon|meta)\./, "");
+    return tail.length > 30 ? tail.slice(0, 29) + "…" : tail;
+  };
+  const statusTitle = call.error_detail
+    || (flagNames.length ? flagNames.map((n) => `${flagInfo(n).title}`).join("; ") : undefined);
   return (
     <div className="card call-card">
-      <div className="call-head" onClick={() => setOpen(!open)}>
+      <div className="call-row" onClick={() => setOpen(!open)}
+           role="button" aria-expanded={open} tabIndex={0}
+           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); } }}>
         {num != null && (
           <span className="call-num" title="call number within this session, in time order; the report card uses the same numbers">
             #{num}
           </span>
         )}
-        <ProviderMark provider={call.provider} model={call.model_id} />
-        <span className="model">{call.model_id}</span>
-        {interactionTags(call).map(({ tag, label }) => (
-          <span key={tag} className={`badge proto ${tag.toLowerCase()}`} title={label}>
-            {tag}
-          </span>
-        ))}
-        {failed && <span className="badge error">{call.status_code}</span>}
-        {blocked && (
-          <span className="badge blocked" title={call.error_detail ?? undefined}>
-            blocked
-          </span>
-        )}
-        {transient && (
-          <span className="badge blocked"
-                title={(call.error_detail ?? "") + ". A provider hiccup clients retry through; not counted as an agent error"}>
-            transient {call.status_code}
-          </span>
-        )}
-        {probe && (
-          <span className="badge fw"
-                title={(call.error_detail ?? "") + ". A routine client probe; not counted as an agent error"}>
-            probe
-          </span>
-        )}
-        {call.error_detail?.startsWith("partial:") && (
-          <span className="badge fw" title={call.error_detail}>partial</span>
-        )}
-        {call.loop_flags &&
-          (JSON.parse(call.loop_flags) as string[]).map((n) => (
-            <span
-              key={n}
-              className={`badge ${flagBadgeClass(n)}`}
-              title={`${flagInfo(n).title}: ${flagInfo(n).detail}`}
-            >
-              {n}
-            </span>
-          ))}
-        {call.framework && <span className="badge fw">{call.framework}</span>}
-        {tools.length > 0 && (
-          <span className="tools-chip" title={tools.join(", ")}>
-            ⚙ {tools.slice(0, 3).join(" · ")}
-            {tools.length > 3 ? ` +${tools.length - 3}` : ""}
-          </span>
-        )}
-        {call.step_index != null && (
-          <span className="dim" title="position of this call within its inferred thread, assigned by the loop engine">
-            step {call.step_index}
-          </span>
-        )}
-        {call.iteration != null && (
-          <span className="dim" title="which iteration of the run this call belongs to">
-            iter {call.iteration}
-          </span>
-        )}
-        <span
-          className="dim"
-          title={`input: ${fmtNum(call.tokens_in)} new` +
-            (call.cache_read_tokens ? ` + ${fmtNum(call.cache_read_tokens)} cache reads` : "") +
-            (call.cache_write_tokens ? ` + ${fmtNum(call.cache_write_tokens)} cache writes` : "") +
-            ` · output: ${fmtNum(call.tokens_out)}`}
-        >
-          {fmtNum((call.tokens_in ?? 0) + (call.cache_read_tokens ?? 0) + (call.cache_write_tokens ?? 0))}
-          {" → "}{fmtNum(call.tokens_out)} tok
+        <span className="call-time mono">{fmtTime(call.timestamp)}</span>
+        <span className="call-model" title={call.model_id ?? undefined}>
+          <ProviderMark provider={call.provider} model={call.model_id} />
+          <span className="model">{shortModel(call.model_id)}</span>
         </span>
-        {call.cache_read_tokens != null && call.cache_read_tokens > 0 && (
-          <span className="dim" title="prompt-cache reads, billed at a fraction of the input rate">
-            ⚡ {fmtNum(call.cache_read_tokens)} cached
-          </span>
-        )}
-        {call.cache_write_tokens != null && call.cache_write_tokens > 0 && (
-          <span className="dim" title="prompt-cache writes, billed at a premium over the input rate; this is usually where a surprising cost comes from">
-            ✍ {fmtNum(call.cache_write_tokens)} written
-          </span>
-        )}
-        <span className="dim">{fmtUsd(call.cost_usd)}</span>
-        <span className="dim">{call.latency_ms != null ? `${call.latency_ms}ms` : ""}</span>
-        <span className="spacer" />
-        <span className="dim">{fmtTime(call.timestamp)}</span>
+        <span className={`call-status badge ${status.cls}`} title={statusTitle}>{status.text}</span>
+        <span className="call-latency mono dim">{call.latency_ms != null ? `${call.latency_ms}ms` : ""}</span>
+        <span className="call-cost mono" title={call.cost_usd == null
+          ? "no price is on record for this call's model; budgets do not see this spend"
+          : undefined}>
+          {call.cost_usd == null ? "Unknown" : fmtUsd(call.cost_usd)}
+        </span>
       </div>
       {open && (
         <div className="call-body">
-          {(call.framework !== "replay") && (
-            <button
-              className="link-btn"
-              onClick={(e) => { e.stopPropagation(); setReplaying(!replaying); }}
-            >
-              {replaying ? "Hide replay" : "↻ Replay this call"}
-            </button>
-          )}
-          {call.framework === "replay" && call.parent_action_id && onOpenSession && (
-            <button className="link-btn" title="jump to the call this replay re-ran"
-                    onClick={openOriginal}>
-              ↩ Open original
-            </button>
-          )}
+          <div className="inspector-meta">
+            {interactionTags(call).map(({ tag, label }) => (
+              <span key={tag} className={`badge proto ${tag.toLowerCase()}`} title={label}>{tag}</span>
+            ))}
+            {call.framework && <span className="badge fw">{call.framework}</span>}
+            {flagNames.map((n) => (
+              <span key={n} className={`badge ${flagBadgeClass(n)}`}
+                    title={`${flagInfo(n).title}: ${flagInfo(n).detail}`}>{n}</span>
+            ))}
+            {call.step_index != null && <span className="dim">step {call.step_index}</span>}
+            {call.iteration != null && <span className="dim">iter {call.iteration}</span>}
+            <span className="dim mono"
+                  title={`input: ${fmtNum(call.tokens_in)} new` +
+                    (call.cache_read_tokens ? ` + ${fmtNum(call.cache_read_tokens)} cache reads` : "") +
+                    (call.cache_write_tokens ? ` + ${fmtNum(call.cache_write_tokens)} cache writes` : "") +
+                    ` · output: ${fmtNum(call.tokens_out)}`}>
+              {fmtNum((call.tokens_in ?? 0) + (call.cache_read_tokens ?? 0) + (call.cache_write_tokens ?? 0))}
+              {" → "}{fmtNum(call.tokens_out)} tok
+            </span>
+            {(call.cache_read_tokens ?? 0) > 0 && (
+              <span className="dim" title="prompt-cache reads, billed at a fraction of the input rate">
+                ⚡ {fmtNum(call.cache_read_tokens)} cached</span>
+            )}
+            {(call.cache_write_tokens ?? 0) > 0 && (
+              <span className="dim" title="prompt-cache writes, billed at a premium over the input rate">
+                ✍ {fmtNum(call.cache_write_tokens)} written</span>
+            )}
+            {tools.length > 0 && (
+              <span className="tools-chip" title={tools.join(", ")}>
+                ⚙ {tools.slice(0, 3).join(" · ")}{tools.length > 3 ? ` +${tools.length - 3}` : ""}</span>
+            )}
+            <span className="spacer" />
+            {(call.framework !== "replay") && (
+              <button className="link-btn"
+                      onClick={(e) => { e.stopPropagation(); setReplaying(!replaying); }}>
+                {replaying ? "Hide replay" : "↻ Replay this call"}
+              </button>
+            )}
+            {call.framework === "replay" && call.parent_action_id && onOpenSession && (
+              <button className="link-btn" title="jump to the call this replay re-ran"
+                      onClick={openOriginal}>↩ Open original</button>
+            )}
+          </div>
           {replaying && <ReplayPanel call={call} />}
-          {call.error_detail && (<><h4>Error</h4><pre>{call.error_detail}</pre></>)}
-          {call.system_prompt && (<><h4>System prompt</h4><pre>{call.system_prompt}</pre></>)}
-          {call.thinking && (<><h4>Thinking</h4><pre>{call.thinking}</pre></>)}
-          {call.content?.trim() ? (
-            <><h4>Response</h4><pre>{call.content}</pre></>
-          ) : call.tool_calls && call.tool_calls.length > 0 ? (
-            <><h4>Response</h4>
-              <div className="muted">(no text; the model answered with tool calls below)</div></>
-          ) : null}
-          {call.tool_calls && (
-            <><h4>Tool calls</h4><pre>{JSON.stringify(call.tool_calls, null, 2)}</pre></>
+          <div role="tablist" aria-label="Call detail" className="subtabs inspector-tabs">
+            {(["response", "tools", "prompt", "raw"] as const).map((t) => (
+              <button key={t} role="tab" aria-selected={itab === t}
+                      className={`subtab ${itab === t ? "active" : ""}`}
+                      onClick={(e) => { e.stopPropagation(); setItab(t); }}>
+                {t === "response" ? "Response" : t === "tools" ? "Tools" : t === "prompt" ? "Prompt" : "Raw"}
+              </button>
+            ))}
+          </div>
+          {itab === "response" && (
+            <>
+              {call.error_detail && (<><h4>{failed ? "Error" : "Refusal / note"}</h4><pre>{call.error_detail}</pre></>)}
+              {call.thinking && (
+                <details><summary>Captured thinking (what the provider returned; not proof of full reasoning)</summary>
+                  <pre>{call.thinking}</pre></details>
+              )}
+              {call.content?.trim() ? (
+                <><h4>Response</h4><pre>{call.content}</pre></>
+              ) : call.tool_calls && call.tool_calls.length > 0 ? (
+                <div className="muted">No text: the model answered with tool calls. See the Tools tab.</div>
+              ) : call.error_detail ? null : (
+                <div className="muted">No captured text content for this call.</div>
+              )}
+            </>
           )}
-          {call.tool_results != null && (
-            <><h4>Tool results (fed into this call)</h4><pre>{JSON.stringify(call.tool_results, null, 2)}</pre></>
+          {itab === "tools" && (
+            <>
+              {call.tool_calls
+                ? (<><h4>Tool calls</h4><pre>{JSON.stringify(call.tool_calls, null, 2)}</pre></>)
+                : <div className="muted">This call requested no tools.</div>}
+              {call.tool_results != null && (
+                <><h4>Tool results (fed into this call)</h4><pre>{JSON.stringify(call.tool_results, null, 2)}</pre></>
+              )}
+            </>
           )}
-          <h4>Messages</h4>
-          <pre>{JSON.stringify(call.messages, null, 2)}</pre>
+          {itab === "prompt" && (
+            <>
+              {call.system_prompt
+                ? (<details open={call.system_prompt.length < 2000}>
+                     <summary>System prompt ({call.system_prompt.length.toLocaleString()} chars)</summary>
+                     <pre>{call.system_prompt}</pre></details>)
+                : <div className="muted">No system prompt on record (capture level, or none sent).</div>}
+              <h4>Messages</h4>
+              <pre>{JSON.stringify(call.messages, null, 2)}</pre>
+            </>
+          )}
+          {itab === "raw" && (
+            <>
+              <button className="link-btn"
+                      onClick={(e) => { e.stopPropagation();
+                        navigator.clipboard?.writeText(JSON.stringify(call, null, 2)).catch(() => {}); }}>
+                ⧉ Copy record
+              </button>
+              <pre>{JSON.stringify(call, null, 2)}</pre>
+            </>
+          )}
         </div>
       )}
     </div>

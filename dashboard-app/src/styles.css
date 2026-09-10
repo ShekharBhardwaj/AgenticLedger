@@ -1029,3 +1029,45 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 }
 .cache-method { margin-top: 8px; font-size: 12.5px; }
 .cache-method summary { cursor: pointer; color: var(--accent); }
+
+/* ── Stage 3: flat list rows and the call inspector (spec 6, 8) ─────────── */
+/* Sidebar entries: flat separated rows, not raised tiles. Selection is a
+   leading rule plus background, per spec 4.1. */
+.sidebar .card {
+  background: none; border: none; border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  border-radius: 0; box-shadow: none; margin-bottom: 0;
+  padding: 12px 14px 12px 11px;
+}
+.sidebar .card:hover { background: var(--bg-hover); border-color: var(--border); border-left-color: transparent; }
+.sidebar .card.selected {
+  background: var(--selected-bg);
+  border-left-color: var(--accent);
+  box-shadow: none;
+}
+
+/* Call rows: stable columns — number, time, model, status, latency, cost. */
+.call-card { background: none; border: none; border-bottom: 1px solid var(--border); border-radius: 0; margin-bottom: 0; box-shadow: none; padding: 0; }
+.call-row {
+  display: grid;
+  grid-template-columns: 44px 76px minmax(140px, 1fr) 110px 70px 90px;
+  align-items: center; gap: 10px;
+  min-height: 48px; padding: 4px 10px; cursor: pointer;
+}
+.call-row:hover { background: var(--bg-hover); }
+.call-row .call-time { font-size: 12px; color: var(--text-dim); }
+.call-row .call-model { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.call-row .call-model .model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.call-row .call-status { justify-self: start; }
+.call-row .badge.ok { background: none; color: var(--text-dim); border: 1px solid var(--border); }
+.call-row .call-latency, .call-row .call-cost { text-align: right; justify-self: end; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.call-body { padding: 8px 12px 16px; }
+.inspector-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.inspector-tabs { border-bottom: 1px solid var(--border); margin: 8px 0 12px; display: flex; }
+.call-body details summary { cursor: pointer; color: var(--accent); font-size: 13px; margin: 6px 0; }
+
+@media (max-width: 720px) {
+  /* Phones: identity, status, money stay; latency folds into the inspector. */
+  .call-row { grid-template-columns: 40px minmax(100px, 1fr) 92px 80px; }
+  .call-row .call-time, .call-row .call-latency { display: none; }
+}
