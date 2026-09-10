@@ -467,7 +467,9 @@ body {
 .badge.fw       { background: var(--bg-hover); color: var(--text-dim); font-family: var(--mono); font-weight: 500; }
 .badge.team     { background: rgba(78,161,255,.14); color: var(--accent); font-family: var(--mono); font-weight: 500; }
 .badge.blocked  { background: rgba(210,153,34,.16); color: var(--amber); }
-.badge.stopped  { background: rgba(248,81,73,.14);  color: var(--red); font-weight: 650; }
+/* Our own doctrine: red means something broke, amber means refused on
+   purpose. An operator-stopped run is a decision, not a failure. */
+.badge.stopped  { background: rgba(255,179,71,.14);  color: var(--amber); font-weight: 650; }
 .badge.replay   { background: rgba(183,138,245,.15); color: var(--purple); }
 .setting-cell { max-width: 520px; }
 .setting-name { font-weight: 600; }
@@ -581,7 +583,15 @@ body {
   transition: opacity var(--ease), filter var(--ease);
 }
 .ribbon .bar.flagged { background: linear-gradient(180deg, var(--amber), #9a7118); }
-.ribbon .bar.errored { background: linear-gradient(180deg, var(--red), #b23a35); }
+/* Chart truth: a day's bar shows SPEND; errors get their own marker so
+   an expensive healthy day and a cheap broken day stop looking alike. */
+.ribbon .bar.errored { position: relative; }
+.ribbon .bar.errored::after {
+  content: ""; position: absolute; top: -7px; left: 50%;
+  width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
+  background: var(--red);
+}
+.ribbon-scale { font-size: 10.5px; color: var(--text-dim); text-align: right; }
 /* The wall's bar speaks the same amber as its badge: refused, not broken. */
 .ribbon .bar.blocked { background: linear-gradient(180deg, var(--amber), #8a6414); opacity: 0.9; }
 .ribbon .bar:hover { opacity: 1; filter: brightness(1.15); }

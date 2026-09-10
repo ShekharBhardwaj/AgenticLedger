@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **An operator-stopped run is amber, not red.** The stopped badge
+  wore failure's color, against the product's own rule that red means
+  broke and amber means refused on purpose.
+- **The daily chart stops misleading.** It is now titled "days with
+  activity" (gaps are not drawn to scale and the title says so on
+  hover), shows the tallest bar's dollar value as a scale, and marks
+  error days with a red dot instead of painting the whole spend bar
+  red, which made an expensive healthy day and a cheap broken day
+  look alike.
 - **A failed ceiling save is unmissable.** Saving a run's cost ceiling
   showed nothing on failure, leaving the user trusting a wall that did
   not exist. The editor now shows saving, then the confirmed value or

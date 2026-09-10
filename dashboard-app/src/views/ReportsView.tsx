@@ -218,16 +218,19 @@ export default function ReportsView() {
 
       {report.daily.length > 0 && (
         <>
-          <div className="section-title">
-            Spend per day ({tzOffset === 0 ? "UTC" : "your local time"})
+          <div className="section-title"
+               title="days with no spend are omitted, so gaps in time are not drawn to scale; a red dot marks a day that contained errors">
+            Spend per day, days with activity ({tzOffset === 0 ? "UTC" : "your local time"})
           </div>
+          <div className="ribbon-scale">tallest bar = {fmtUsd(maxDay)}/day</div>
           <div className="ribbon">
             {report.daily.map((d) => (
               <div
                 key={d.day}
                 className={`bar ${d.error_calls ? "errored" : ""}`}
                 style={{ height: `${Math.max((100 * (d.cost_usd || 0)) / maxDay, 3)}%` }}
-                title={`${d.day}: ${fmtUsd(d.cost_usd)}, ${d.call_count} calls`}
+                title={`${d.day}: ${fmtUsd(d.cost_usd)}, ${d.call_count} calls`
+                       + (d.error_calls ? ` (${d.error_calls} errored)` : "")}
               />
             ))}
           </div>
