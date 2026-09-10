@@ -33,6 +33,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now --fix always looks.
 
 ### Added
+- **The premium dashboard (docs/design/premium-dashboard.md).** The
+  full redesign ships in this release. Foundations: spec color tokens
+  with dark, light, and system appearance (browser-local, resolved
+  before first paint), flat surfaces with shadows reserved for
+  overlays, the permanent footer replaced by an About menu. Run
+  detail: one open metric strip (Recorded spend, Run ceiling with an
+  honest accounting track and a validated editor, Model calls),
+  Overview / Activity / Cache subtabs, the recorded-concern band with
+  Inspect, What-if and Replay as secondary tools, and status labels
+  that state only what was observed (Completion declared, Calls
+  blocked). Sessions: flat rows, call columns (time, model, one
+  status by precedence, latency, cost with Unknown stated), and a
+  four-tab call inspector (Response, Tools, Prompt, Raw). Reports:
+  money-first model table with share-of-spend and expandable
+  technical detail, a continuous date axis with zero-filled days,
+  calendar-week aggregation past 31 buckets, and chart values as
+  text. Navigation: hash routes for tabs, runs, and sessions; deep
+  links, reload, and Back/Forward preserve the investigation; links
+  never carry credentials.
 - **Direct-LAN https (#118).** AGENTICLEDGER_TLS=1 adds a
   dashboard-only https listener (default port 8443) beside the plain
   http agent port, with a self-generated certificate reused across
