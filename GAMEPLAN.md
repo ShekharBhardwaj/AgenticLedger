@@ -262,6 +262,21 @@ already; the site's Base44 prompt gets the audit and the immune
 install), the demo re-record with the full money story (meter,
 ceiling, audit), and the campaign fires with the tag.
 
+**The launch scorecard (adopted 2026-09-10 from an outside
+assessment).** The campaign's success metric is not stars or
+downloads; it is proof of usefulness from 5-10 independent users
+running normal workloads for two weeks, measured four ways: they
+install without our intervention, they keep it running, they return
+voluntarily, and they can name a concrete problem it solved (a
+prevented runaway, a diagnosed failure, a verified saving). These
+four numbers outrank any feature. Positioning note conceded in the
+same assessment: LiteLLM sits in-path with budgets and Langfuse
+self-hosts, so the moat claim is the COMBINATION - flight-recorder
+capture with loop reconstruction, enforcement, and audit in one
+small local install - not "the only thing that can refuse". Copy on
+the site and README shifts to the truer, narrower claim at the 0.13
+docs pass.
+
 **0.14 is deliberately unshaped (milestone 4).** The campaign is the
 experiment; stranger-issues get first claim. The bench while we wait:
 audit follow-ons (weekly waste rollup in Reports, auditing plain
