@@ -557,8 +557,8 @@ export default function SessionsView({ focusSession, onOpenRun }: {
                 </div>
               </div>
             )}
-            <div className="card-title" title={s.session_id}>
-              {s.label ?? s.session_id}
+            <div className="card-title title-with-chip" title={s.session_id}>
+              <span className="title-text">{s.label ?? s.session_id}</span>
               {s.run_id && (
                 <span className="run-chip"
                       title={`this session belongs to run "${s.run_id}" — click to open it in the Loop Lens`}

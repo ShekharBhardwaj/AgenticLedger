@@ -892,7 +892,14 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 
 /* ── Run chip on session cards (#91): which run does this session belong
    to. Click jumps to the run in the Loop Lens. */
+/* Title and chip share a row without either crushing the other: the
+   TITLE truncates first (hover shows it in full), the chip keeps at
+   least its run name's head. An empty blue lozenge helps nobody. */
+.title-with-chip { display: flex; align-items: center; min-width: 0; }
+.title-with-chip .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-chip {
+  flex-shrink: 0; max-width: 45%;
+  overflow: hidden; text-overflow: ellipsis;
   margin-left: 8px; padding: 1px 8px; border-radius: 999px;
   font-size: 11px; font-weight: 500; cursor: pointer;
   font-family: var(--mono, monospace);

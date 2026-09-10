@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The session card's run chip no longer crushes to an empty pill.**
+  A long session name shared one ellipsized row with the run chip and
+  won: the chip clipped to a blank blue lozenge (user screenshot). The
+  title now truncates first (full id on hover) and the chip keeps its
+  run name with its own ellipsis.
 - **An operator-stopped run is amber, not red.** The stopped badge
   wore failure's color, against the product's own rule that red means
   broke and amber means refused on purpose.
