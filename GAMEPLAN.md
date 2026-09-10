@@ -248,19 +248,21 @@ word — the 0.9.2 retest discipline is the permanent process now.
 
 ## Where the plan stands (2026-09-09)
 
-**0.13 "Nothing wasted" is nearly complete.** Shipped since the slate
-was signed: httpx2 migration (#93), refusal capture (#115), the
-blessed install path (#117), per-framework redetect (#70, outside
-contributor), Gemini CLI detection (#67, same contributor), the cache
-audit headline (#113, built and live-verified, open only for the
-user-zero hand test), session run chips (#91), and the migration page
-(#112). Remaining: direct-LAN https (#118), the Headroom recipe
-(#114) with its outreach after, and the pricing packs PR (#65,
-awaiting the contributor's DeepSeek corrections; offer to finish it
-for them stands). Then the release-docs pass (README led with uv tool
-already; the site's Base44 prompt gets the audit and the immune
-install), the demo re-record with the full money story (meter,
-ceiling, audit), and the campaign fires with the tag.
+**0.13 "Nothing wasted" is build-complete (2026-09-10).** Everything
+built and CI-green: httpx2 (#93), refusal capture (#115), blessed
+install (#117), redetect breakdown (#70) and Gemini detection (#67)
+from contributor cananoo, the cache audit (#113, closed on
+machine-verified three-verdict arithmetic; the hand pass folds into
+the combined pre-tag test), the partial-coverage review fix, session
+run chips (#91), migration page (#112), direct-LAN https (#118), and
+the verified compressor chain (#114). The pricing PR (#65) moved to
+0.14 rather than holding the train; the offer to finish it stands.
+
+Before the tag: the combined hand-test under user zero (audit
+verdicts, https wifi link, everything since 0.12 in one pass), the
+release-docs pass with the narrowed moat claim (README carries it;
+the site's Base44 prompt is drafted), the demo re-record (meter,
+ceiling, audit), then tag and campaign, then the ten-user scorecard.
 
 **The strategy, tightened twice by outside review (2026-09-10).**
 The standard applies to our own prose: no claim ahead of its
