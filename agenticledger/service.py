@@ -219,11 +219,17 @@ def start() -> int:
         kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED | NEW_GROUP
     with open(LOG_FILE, "ab") as log:
         # The child inherits the fd; closing our handle after spawn is fine.
+        env = _child_env()
         proc = subprocess.Popen([sys.executable, "-m", "agenticledger.proxy"],
-                                stdout=log, env=_child_env(), **kwargs)
+                                stdout=log, env=env, **kwargs)
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(proc.pid))
     _port_state_file().write_text(str(port))
+    tls_state = PID_FILE.parent / "tls.port"
+    if env.get("AGENTICLEDGER_TLS", "").lower() in ("1", "true", "auto"):
+        tls_state.write_text(env.get("AGENTICLEDGER_TLS_PORT", "8443"))
+    else:
+        tls_state.unlink(missing_ok=True)
 
     # Wait for it to answer, so "start" means started — not "maybe".
     for _ in range(40):
@@ -365,8 +371,17 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
         if not ip:
             print("No network address found — is this machine online?")
             return 1
-        pairing = (f"http://{ip}:{port}/app?api_key={key}" if key
-                   else f"http://{ip}:{port}/app")
+        # Direct-LAN https (#118): when the running service has the https
+        # listener, the pairing link uses it. Self-signed, so the phone
+        # warns once; that trade is stated below.
+        tls_state = PID_FILE.parent / "tls.port"
+        scheme_port = f"http://{ip}:{port}"
+        https = False
+        if tls_state.exists():
+            scheme_port = f"https://{ip}:{tls_state.read_text().strip()}"
+            https = True
+        pairing = (f"{scheme_port}/app?api_key={key}" if key
+                   else f"{scheme_port}/app")
         print("Your dashboard, for devices on the same wifi (or tailnet):")
         print(f"  {pairing}")
         print()
@@ -374,8 +389,13 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
         print("Point your phone's camera at the code, or open the link.")
         if key:
             print("The link carries the key: share it only with your own devices.")
-        print("Note: this link is plain http. For https (and for devices not")
-        print("on this network), run:  agenticledger share")
+        if https:
+            print("The certificate is self-signed: the phone shows a warning")
+            print("once; accept it and the traffic is encrypted on your wifi.")
+        else:
+            print("Note: this link is plain http. For https on this network,")
+            print("restart with AGENTICLEDGER_TLS=1; for anywhere-access, run:")
+            print("  agenticledger share")
         return 0
 
     cloudflared = shutil.which("cloudflared")

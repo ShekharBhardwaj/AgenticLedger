@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Direct-LAN https (#118).** AGENTICLEDGER_TLS=1 adds a
+  dashboard-only https listener (default port 8443) beside the plain
+  http agent port, with a self-generated certificate reused across
+  restarts. share --wifi prints the https pairing link and says
+  squarely that the phone will warn once. The agent port stays plain
+  http on purpose: SDK clients verify certificates; humans can tap
+  through a warning.
+- **The compressor chain, verified (#114).** docs/chaining.md: put a
+  context compressor (Headroom) behind the ledger with one upstream
+  URL; the ledger records and refuses first, the compressor shrinks
+  second, and your own numbers measure the compressor's savings. The
+  chain mechanics are proven by test: intact reply, both hops
+  recorded, run attribution kept.
 - **The migration page (#112).** docs/migrating.md translates Helicone
   and LangSmith concepts, gives the two-line switch for each, and says
   honestly what you gain (local-first, refusal, loops, the audit) and

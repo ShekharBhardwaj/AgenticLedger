@@ -402,3 +402,58 @@ def test_config_set_warns_when_the_running_proxy_loaded_another_file(
     service.CONFIG_STATE_FILE.write_text(str(other))
     assert main(["config", "unset", "budgets.daily"]) == 0
     assert "Warning" not in capsys.readouterr().out
+
+
+def test_tls_cert_generation_is_idempotent(tmp_path):
+    """#118: the dashboard certificate is generated once and reused; a
+    certificate that changes every restart means a warning every restart."""
+    import shutil
+
+    import pytest as _pytest
+
+    from agenticledger.tls import ensure_cert
+    if not shutil.which("openssl"):
+        _pytest.skip("openssl not available")
+    cert, key = ensure_cert(tmp_path, "192.168.1.50")
+    assert cert.exists() and key.exists()
+    assert oct(key.stat().st_mode & 0o777) == "0o600"
+    first = cert.read_bytes()
+    cert2, _ = ensure_cert(tmp_path, "192.168.1.50")
+    assert cert2.read_bytes() == first   # reused, not regenerated
+
+
+@pytest.mark.skipif(os.name != "posix", reason="daemonization is POSIX-only in tests")
+def test_tls_listener_serves_the_dashboard_beside_plain_http(tmp_path, monkeypatch):
+    """#118 end to end: AGENTICLEDGER_TLS=1 adds a self-signed https door
+    for the dashboard while the agent port stays plain http."""
+    import shutil
+    import socket
+
+    import httpx2 as httpx
+
+    from agenticledger import service
+    if not shutil.which("openssl"):
+        pytest.skip("openssl not available")
+    ports = []
+    for _ in range(2):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            ports.append(s.getsockname()[1])
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTICLEDGER_PORT", str(ports[0]))
+    monkeypatch.setenv("AGENTICLEDGER_TLS", "1")
+    monkeypatch.setenv("AGENTICLEDGER_TLS_PORT", str(ports[1]))
+    monkeypatch.setattr(service, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(service, "PID_FILE", tmp_path / "state" / "proxy.pid")
+    monkeypatch.setattr(service, "LOG_FILE", tmp_path / "state" / "proxy.log")
+    monkeypatch.setattr(service, "CONFIG_STATE_FILE", tmp_path / "state" / "proxy.config")
+    assert service.start() == 0
+    try:
+        assert (tmp_path / "state" / "tls.port").read_text().strip() == str(ports[1])
+        plain = httpx.get(f"http://127.0.0.1:{ports[0]}/health", timeout=5)
+        assert plain.status_code == 200
+        secure = httpx.get(f"https://127.0.0.1:{ports[1]}/health", timeout=5, verify=False)
+        assert secure.status_code == 200
+        assert secure.json()["status"] == "ok"
+    finally:
+        assert service.stop() == 0

@@ -41,7 +41,7 @@ Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any L
 
 **Step 1 — Start the proxy**
 
-Coming from Helicone or LangSmith? The [migration page](docs/migrating.md) does the translation in two lines.
+Coming from Helicone or LangSmith? The [migration page](docs/migrating.md) does the translation in two lines. Running a context compressor like Headroom? [They chain](docs/chaining.md).
 
 Two commands, zero config, no terminal held hostage:
 

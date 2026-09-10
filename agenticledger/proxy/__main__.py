@@ -228,4 +228,29 @@ if not _secret_env("AGENTICLEDGER_API_KEY"):
         "(`agenticledger share` prints the pairing link)."
     )
 
-uvicorn.run(app, host=host, port=port)
+# Direct-LAN https (#118): AGENTICLEDGER_TLS=1 adds a DASHBOARD-ONLY
+# https listener beside the plain-http agent port. Self-signed, so the
+# phone warns once; SDK clients keep the http port and never see it.
+if os.environ.get("AGENTICLEDGER_TLS", "").lower() in ("1", "true", "auto"):
+    import asyncio
+    from pathlib import Path as _Path
+
+    from agenticledger.service import _lan_ip
+    from agenticledger.tls import ensure_cert
+
+    tls_port = int(os.environ.get("AGENTICLEDGER_TLS_PORT", "8443"))
+    cert, key = ensure_cert(_Path.home() / ".agenticledger", _lan_ip())
+    print(f"  https (dashboard, self-signed): https://localhost:{tls_port}/app",
+          file=sys.stderr, flush=True)
+
+    async def _serve_both() -> None:
+        plain = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info"))
+        secure = uvicorn.Server(uvicorn.Config(
+            app, host=host, port=tls_port, log_level="info",
+            ssl_certfile=str(cert), ssl_keyfile=str(key)))
+        # One app, two doors: agents through http, the phone through https.
+        await asyncio.gather(plain.serve(), secure.serve())
+
+    asyncio.run(_serve_both())
+else:
+    uvicorn.run(app, host=host, port=port)
