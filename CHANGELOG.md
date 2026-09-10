@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Returning to a tab keeps your place.** Going to Settings and back
+  to a run (or between tabs) dropped the selection to the empty list;
+  a mount-order race echoed an initial null selection into the URL,
+  erasing the run. Tabs now restore their last selection.
+- **The light-mode header is readable.** The topbar kept a hardcoded
+  dark background while its text went dark in light mode; it uses the
+  panel token now, so nav is legible in every theme.
+- **Narrow-width polish.** One pane at a time below 960px (was 720),
+  and at 320px the page no longer expands past the viewport and the
+  call-row and control layouts tighten instead of wrapping awkwardly.
+- **Sidebar rows breathe.** A run or session name gets its own line
+  (wrapping to two, in sans-serif); status and right-aligned cost sit
+  beneath it instead of competing on one crushed row.
+- **The iteration chart shows its scale**, like the reports chart:
+  "tallest bar = $X/iteration".
 - **The session card's run chip no longer crushes to an empty pill.**
   A long session name shared one ellipsized row with the run chip and
   won: the chip clipped to a blank blue lozenge (user screenshot). The
@@ -34,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   away.
 
 ### Added
+- **The landing state.** The unselected Loop Lens pane, once a bare
+  "select a run", now answers "does anything need me?": runs needing
+  attention (flagged or blocked, with the concern and a link), active
+  runs, and recent ones, every count scoped to the loaded list, with
+  an honest "waiting for the first call" onboarding state when there
+  are none.
 - **The premium dashboard (docs/design/premium-dashboard.md).** The
   full redesign ships in this release. Foundations: spec color tokens
   with dark, light, and system appearance (browser-local, resolved

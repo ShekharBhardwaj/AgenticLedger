@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { connectionStatus, health, shareInfo, shareQr, whoami, WhoAmI } from "./api";
 import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
@@ -251,6 +251,8 @@ export default function App() {
 
   const [focusRun, setFocusRun] = useState<string | null>(initial.runId ?? null);
 
+  const lastRun = useRef<string | null>(initial.runId ?? null);
+  const lastSession = useRef<string | null>(initial.sessionId ?? null);
   const navigate = (r: Route, push = true) => {
     const hash = routeHash(r);
     if (window.location.hash !== hash) {
@@ -261,7 +263,13 @@ export default function App() {
     setFocusRun(r.tab === "runs" ? r.runId ?? null : null);
     setFocusSession(r.tab === "sessions" ? r.sessionId ?? null : null);
   };
-  const setTab = (t: Tab) => navigate({ tab: t });
+  // Switching tabs restores the tab's last selection instead of dropping
+  // it (returning from Settings must not lose the run you were reading).
+  const setTab = (t: Tab) => navigate({
+    tab: t,
+    runId: t === "runs" ? lastRun.current ?? undefined : undefined,
+    sessionId: t === "sessions" ? lastSession.current ?? undefined : undefined,
+  });
   const openSession = (sessionId: string) => navigate({ tab: "sessions", sessionId });
   const openRun = (runId: string) => navigate({ tab: "runs", runId });
 
@@ -278,10 +286,14 @@ export default function App() {
   }, []);
 
   // Views report their selection so links, reload, and Back stay truthful.
-  const onRunSelected = (id: string | null) =>
+  const onRunSelected = (id: string | null) => {
+    lastRun.current = id;
     navigate({ tab: "runs", runId: id ?? undefined });
-  const onSessionSelected = (id: string | null) =>
+  };
+  const onSessionSelected = (id: string | null) => {
+    lastSession.current = id;
     navigate({ tab: "sessions", sessionId: id ?? undefined });
+  };
 
   return (
     <>

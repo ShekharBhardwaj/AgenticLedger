@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import {
   Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
   getCall, interactionTags, listProjects, liveUpdates, post, ReplayResult,
@@ -422,10 +422,13 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selected, setSelected] = useState<string | null>(focusSession ?? null);
 
+  const propDriven = useRef(true);
+  useEffect(() => { propDriven.current = true; setSelected(focusSession ?? null); }, [focusSession]);
   useEffect(() => {
-    setSelected(focusSession ?? null);
-  }, [focusSession]);
-  useEffect(() => { onSelectedChange?.(selected); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [selected]);
+    if (propDriven.current) { propDriven.current = false; return; }
+    onSelectedChange?.(selected);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [selected]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);
@@ -597,10 +600,12 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
                            label={s.label} project={s.project} projects={projects}
                            onSaved={refresh} onClose={() => setEditing(null)} />
             )}
+            <div className="card-meta-row">
+              <span className="dim">{fmtAgo(s.last_call_at ?? s.started_at)}</span>
+              <span className="dim">{s.call_count} calls</span>
+              <span className="card-cost">{fmtUsd(s.total_cost_usd)}</span>
+            </div>
             <div className="card-sub">
-              <span>{fmtAgo(s.last_call_at ?? s.started_at)}</span>
-              <span>{s.call_count} calls</span>
-              <span>{fmtUsd(s.total_cost_usd)}</span>
               {s.session_id.startsWith("replay-") && (
                 <span className="badge replay" title="a re-run of a captured call">replay</span>
               )}

@@ -151,8 +151,16 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   useEffect(() => { setConfirmStop(false); setCopied(false); }, [selected]);
   // The URL owns the selection: a run id in the hash lands here, and
   // Back to a bare #/runs clears the detail (premium spec, section 5).
-  useEffect(() => { setSelected(focusRun ?? null); }, [focusRun]);
-  useEffect(() => { onSelectedChange?.(selected); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [selected]);
+  // The URL owns selection. A prop-driven change (deep link, tab return)
+  // must NOT echo back to the router, or the initial null on remount
+  // clobbers the restored run out of the URL before the prop syncs in.
+  const propDriven = useRef(true);
+  useEffect(() => { propDriven.current = true; setSelected(focusRun ?? null); }, [focusRun]);
+  useEffect(() => {
+    if (propDriven.current) { propDriven.current = false; return; }
+    onSelectedChange?.(selected);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [selected]);
   interface CacheAudit {
     verdict: string; reason: string; fix: string | null;
     received_usd: number;
@@ -248,10 +256,13 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             >
               ⇆
             </button>
-            <div className="card-title card-title-row" title={r.run_id}>
+            <div className="card-title" title={r.run_id}>
               <span className="card-name">{r.label ?? r.run_id}</span>
+            </div>
+            <div className="card-meta-row">
               <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{STATUS_LABEL[r.status] ?? r.status}</span>
               <RunMascot status={r.status} small />
+              <span className="card-cost">{fmtUsd(r.total_cost_usd)}</span>
             </div>
             {r.label && r.label !== r.run_id && <div className="card-id mono">{r.run_id}</div>}
             {editing === r.run_id && (
@@ -263,7 +274,6 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
               <span>{fmtAgo(r.last_call_at)}</span>
               <span>{plural(r.iterations, "iteration")}</span>
               <span>{plural(r.call_count, "call")}</span>
-              <span>{fmtUsd(r.total_cost_usd)}</span>
               {r.models && (
                 <span className="mono model-cell" title={r.models.split(",").join("\n")}>
                   <ProviderMark model={r.models.split(",")[0]} />
@@ -311,11 +321,60 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             onClose={() => setCompare([])}
             onOpenSession={onOpenSession}
           />
-        ) : !detail ? (
+        ) : !detail && compare.length === 1 ? (
           <div className="empty">
-            {compare.length === 1
-              ? <>Pick a second run with <span className="mono">⇆</span> to compare.</>
-              : "Select a run to open the Loop Lens."}
+            Pick a second run with <span className="mono">⇆</span> to compare.
+          </div>
+        ) : !detail && runs.length > 0 ? (
+          <div className="landing">
+            {(() => {
+              const concerns = runs.filter((r) => r.status === "flagged" || r.status === "stopped");
+              const active = runs.filter((r) => r.status === "running");
+              const recent = runs.filter((r) => !concerns.includes(r) && !active.includes(r)).slice(0, 5);
+              const row = (r: Run, note?: string) => (
+                <div key={r.run_id} className="landing-row" role="button" tabIndex={0}
+                     onClick={() => setSelected(r.run_id)}
+                     onKeyDown={(e) => { if (e.key === "Enter") setSelected(r.run_id); }}>
+                  <span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span>
+                  <span className="card-name">{r.label ?? r.run_id}</span>
+                  {note && <span className="dim">{note}</span>}
+                  <span className="landing-cost">{fmtUsd(r.total_cost_usd)}</span>
+                </div>
+              );
+              return (
+                <>
+                  <div className="section-title">Needs attention</div>
+                  {concerns.length === 0
+                    ? <div className="landing-quiet">No active concerns.</div>
+                    : concerns.map((r) => row(r, r.status === "flagged"
+                        ? plural(r.flagged_calls, "flagged call") : "calls blocked"))}
+                  <div className="section-title">Active now</div>
+                  {active.length === 0
+                    ? <div className="landing-quiet">No active runs.</div>
+                    : active.map((r) => row(r, plural(r.iterations, "iteration")))}
+                  {recent.length > 0 && (
+                    <>
+                      <div className="section-title">Recent</div>
+                      {recent.map((r) => row(r))}
+                    </>
+                  )}
+                  <div className="landing-scope">
+                    Across the {plural(runs.length, "most recent run")} this view loaded.
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        ) : !detail ? (
+          <div className="landing landing-first">
+            <div className="section-title">Waiting for the first call</div>
+            <div className="landing-quiet">
+              Point an agent at this ledger and its calls appear here as they happen:
+            </div>
+            <pre>export ANTHROPIC_BASE_URL=http://localhost:8000{"\n"}# or OPENAI_BASE_URL=http://localhost:8000/v1</pre>
+            <div className="landing-quiet">
+              Or wire a framework in one command: <code>agenticledger connect claude-code</code>
+            </div>
           </div>
         ) : (
           <>
@@ -640,6 +699,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             {subview === "overview" && iterations.length > 0 && (
               <>
                 <div className="section-title">Cost per iteration</div>
+                <div className="iter-scale">tallest bar = {fmtUsd(maxCost)}/iteration</div>
                 <div className="ribbon">
                   {iterations.map((it) => (
                     <div
