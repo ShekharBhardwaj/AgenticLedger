@@ -262,20 +262,51 @@ already; the site's Base44 prompt gets the audit and the immune
 install), the demo re-record with the full money story (meter,
 ceiling, audit), and the campaign fires with the tag.
 
-**The launch scorecard (adopted 2026-09-10 from an outside
-assessment).** The campaign's success metric is not stars or
-downloads; it is proof of usefulness from 5-10 independent users
-running normal workloads for two weeks, measured four ways: they
-install without our intervention, they keep it running, they return
-voluntarily, and they can name a concrete problem it solved (a
-prevented runaway, a diagnosed failure, a verified saving). These
-four numbers outrank any feature. Positioning note conceded in the
-same assessment: LiteLLM sits in-path with budgets and Langfuse
-self-hosts, so the moat claim is the COMBINATION - flight-recorder
-capture with loop reconstruction, enforcement, and audit in one
-small local install - not "the only thing that can refuse". Copy on
-the site and README shifts to the truer, narrower claim at the 0.13
-docs pass.
+**The strategy, tightened twice by outside review (2026-09-10).**
+The standard applies to our own prose: no claim ahead of its
+evidence, in code, copy, or strategy.
+
+*Durable principles* (identity; not up for revision): every guarantee
+explicit, tested, and observable, with supported conditions and
+failure behavior stated; measured, estimated, and unknown always
+distinguished; application semantics preserved through the proxy (we
+re-sign and strip transport headers; we never alter what the agent
+said or the model answered); local-first, no relay of ours.
+
+*Sequencing rules* (hold until evidence says otherwise): enterprise
+features wait for demonstrated demand; outside-reported problems get
+serious attention, prioritized by frequency, severity, and fit with
+the intended user, never by volume of the reporter.
+
+*Scope decisions* (current, revisable without identity loss): no eval
+platform (we answer model-switch questions only); no prompt registry
+(we observe versions from the wire).
+
+*The moat, stated with evidence:* the lightweight local deployment is
+credibly hard for heavy architectures to match, but not impossible.
+What compounds with use and cannot be shortcut: the wire-truth corpus
+and regression fixtures (each a captured reality a new entrant must
+re-encounter), accumulated detection quality (every fingerprint and
+contributed stuck-loop transcript), compatibility knowledge across
+provider quirks, and user trust, which only time deposits.
+
+*Retention, honestly framed:* the real signal is workloads still
+flowing through the ledger in week two, not dashboard visits. A
+safeguard users rarely open because it reliably alerts them is a
+SUCCESS. Summaries and timelines are built to help decisions, not to
+farm attendance.
+
+**The launch scorecard**, four explicit numbers from 5-10 independent
+users over two weeks:
+1. unassisted, verified activation within five minutes
+2. continued real-workload traffic in week two
+3. concrete, independently checked useful outcomes users can name
+4. maintainer support time per activated user
+
+Ten users can expose failures and demand signals; they cannot
+establish an enduring moat. We control the quality of the product and
+the discipline of the experiment. The launch tests whether enough
+people find it useful enough to keep.
 
 **0.14 is deliberately unshaped (milestone 4).** The campaign is the
 experiment; stranger-issues get first claim. The bench while we wait:
