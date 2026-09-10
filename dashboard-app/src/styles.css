@@ -1071,3 +1071,15 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
   .call-row { grid-template-columns: 40px minmax(100px, 1fr) 92px 80px; }
   .call-row .call-time, .call-row .call-latency { display: none; }
 }
+
+/* ── Stage 4: reports (spec 9) ─────────────────────────────────────────── */
+.rtable .num, .rtable th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.money-first .model-row { cursor: pointer; }
+.money-first .model-row:hover td { background: var(--bg-hover); }
+.money-first .model-detail td {
+  font-size: 12.5px; color: var(--text-dim); padding: 6px 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.expand-cell { color: var(--text-dim); width: 28px; }
+.chart-table { margin: 4px 0 16px; font-size: 12.5px; }
+.chart-table summary { cursor: pointer; color: var(--accent); }

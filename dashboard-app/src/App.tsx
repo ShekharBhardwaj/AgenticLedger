@@ -210,9 +210,31 @@ function AboutMenu({ version }: { version: string | null }) {
   );
 }
 
+/** Hash routing (premium spec, section 5): the URL preserves the
+ *  investigation. Hash routes need no server rewrites, opaque ids stay
+ *  encoded, and ordinary copied links never carry credentials. */
+type Route = { tab: Tab; runId?: string; sessionId?: string };
+
+function parseRoute(): Route {
+  const h = window.location.hash.replace(/^#\/?/, "");
+  const [head, id] = h.split("/").map((part) => part.split("?")[0]);
+  if (head === "sessions") return { tab: "sessions", sessionId: id ? decodeURIComponent(id) : undefined };
+  if (head === "reports") return { tab: "reports" };
+  if (head === "settings") return { tab: "settings" };
+  if (head === "runs") return { tab: "runs", runId: id ? decodeURIComponent(id) : undefined };
+  return { tab: "runs" };
+}
+
+function routeHash(r: Route): string {
+  if (r.tab === "runs") return r.runId ? `#/runs/${encodeURIComponent(r.runId)}` : "#/runs";
+  if (r.tab === "sessions") return r.sessionId ? `#/sessions/${encodeURIComponent(r.sessionId)}` : "#/sessions";
+  return `#/${r.tab}`;
+}
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>("runs");
-  const [focusSession, setFocusSession] = useState<string | null>(null);
+  const initial = parseRoute();
+  const [tab, setTabState] = useState<Tab>(initial.tab);
+  const [focusSession, setFocusSession] = useState<string | null>(initial.sessionId ?? null);
   const [live, setLive] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [instance, setInstance] = useState<string | null>(null);
@@ -227,15 +249,39 @@ export default function App() {
     }).catch(() => {});
   }, []);
 
-  const openSession = (sessionId: string) => {
-    setFocusSession(sessionId);
-    setTab("sessions");
+  const [focusRun, setFocusRun] = useState<string | null>(initial.runId ?? null);
+
+  const navigate = (r: Route, push = true) => {
+    const hash = routeHash(r);
+    if (window.location.hash !== hash) {
+      if (push) window.history.pushState(null, "", hash);
+      else window.history.replaceState(null, "", hash);
+    }
+    setTabState(r.tab);
+    setFocusRun(r.tab === "runs" ? r.runId ?? null : null);
+    setFocusSession(r.tab === "sessions" ? r.sessionId ?? null : null);
   };
-  const [focusRun, setFocusRun] = useState<string | null>(null);
-  const openRun = (runId: string) => {
-    setFocusRun(runId);
-    setTab("runs");
-  };
+  const setTab = (t: Tab) => navigate({ tab: t });
+  const openSession = (sessionId: string) => navigate({ tab: "sessions", sessionId });
+  const openRun = (runId: string) => navigate({ tab: "runs", runId });
+
+  // Back/Forward restore the route; selection state follows the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const r = parseRoute();
+      setTabState(r.tab);
+      setFocusRun(r.tab === "runs" ? r.runId ?? null : null);
+      setFocusSession(r.tab === "sessions" ? r.sessionId ?? null : null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Views report their selection so links, reload, and Back stay truthful.
+  const onRunSelected = (id: string | null) =>
+    navigate({ tab: "runs", runId: id ?? undefined });
+  const onSessionSelected = (id: string | null) =>
+    navigate({ tab: "sessions", sessionId: id ?? undefined });
 
   return (
     <>
@@ -278,13 +324,15 @@ export default function App() {
         ><span className="sr-only">{live ? "Live updates connected" : "Reconnecting"}</span></span>
       </div>
       {tab === "runs" ? (
-        <RunsView onOpenSession={openSession} focusRun={focusRun} />
+        <RunsView onOpenSession={openSession} focusRun={focusRun}
+                  onSelectedChange={onRunSelected} />
       ) : tab === "reports" ? (
         <ReportsView />
       ) : tab === "settings" ? (
         <SettingsView />
       ) : (
-        <SessionsView focusSession={focusSession} onOpenRun={openRun} />
+        <SessionsView focusSession={focusSession} onOpenRun={openRun}
+                      onSelectedChange={onSessionSelected} />
       )}
 
     </>

@@ -414,16 +414,18 @@ function CallCard({ call, num, onOpenSession }: {
   );
 }
 
-export default function SessionsView({ focusSession, onOpenRun }: {
+export default function SessionsView({ focusSession, onOpenRun, onSelectedChange }: {
   focusSession?: string | null;
   onOpenRun?: (runId: string) => void;
+  onSelectedChange?: (id: string | null) => void;
 }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selected, setSelected] = useState<string | null>(focusSession ?? null);
 
   useEffect(() => {
-    if (focusSession) setSelected(focusSession);
+    setSelected(focusSession ?? null);
   }, [focusSession]);
+  useEffect(() => { onSelectedChange?.(selected); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [selected]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);
