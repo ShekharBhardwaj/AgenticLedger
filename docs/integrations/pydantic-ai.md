@@ -18,6 +18,6 @@ Anthropic models: point the provider at `http://localhost:8000`.
 
 Pydantic AI is OTel-native and works with any OTLP backend. The ledger
 accepts the OTLP JSON encoding; Python's exporter emits protobuf, so bridge
-with a Collector — see the [integrations index](README.md#otlp-protocol-note).
+with a Collector - see the [integrations index](README.md#otlp-protocol-note).
 
 The proxy route also unlocks budgets, rate limits, and stuck-loop breaking.

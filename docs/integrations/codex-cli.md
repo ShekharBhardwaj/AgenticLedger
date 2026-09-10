@@ -18,7 +18,7 @@ AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com python -m agenticledger.proxy
 Codex's `[otel]` section in `~/.codex/config.toml` can export telemetry.
 Point it at the ledger's OTLP endpoint (`http://localhost:8000`) using the
 JSON encoding. OTel-only capture is metadata-level (model, tokens, cost,
-latency) — no message bodies.
+latency) - no message bodies.
 
 ## Guardrails
 

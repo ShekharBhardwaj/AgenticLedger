@@ -67,7 +67,7 @@ client = boto3.client("bedrock-runtime", endpoint_url="http://localhost:8000")
 ```
 
 To name the work while you're at it, wrap the command instead of exporting
-the URL yourself — the runner sets `ANTHROPIC_BEDROCK_BASE_URL` (and the
+the URL yourself - the runner sets `ANTHROPIC_BEDROCK_BASE_URL` (and the
 OpenAI/Anthropic base URLs) with the run name in it, counts each launch as
 the next iteration, and `--project` files the tile:
 

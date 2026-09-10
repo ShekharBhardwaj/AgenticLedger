@@ -1,6 +1,6 @@
 # Agentic Ledger + BMAD-METHOD
 
-BMAD has no telemetry of its own — it rides on host coding agents. Because
+BMAD has no telemetry of its own - it rides on host coding agents. Because
 every host supports a base-URL override, Agentic Ledger captures **100% of a
 BMAD project's LLM traffic with zero BMAD changes**, and answers the questions
 the community asks constantly: *what did this story cost, which persona burns
@@ -38,11 +38,11 @@ agenticledger config set budgets.session 5.0   # one story cycle
 agenticledger config set budgets.daily 25.0    # the whole project, per day
 ```
 
-(Environment variables still work and always override the file — the old
+(Environment variables still work and always override the file - the old
 `AGENTICLEDGER_UPSTREAM_URL=... python -m agenticledger.proxy` command is
 unchanged if you prefer it.)
 
-**Claude Code** — add to `.claude/settings.json` in your BMAD project:
+**Claude Code** - add to `.claude/settings.json` in your BMAD project:
 
 ```json
 {
@@ -59,7 +59,7 @@ unchanged if you prefer it.)
 export OPENAI_BASE_URL=http://localhost:8000/v1
 ```
 
-**Gemini CLI** — no base-URL override; use OTLP instead:
+**Gemini CLI** - no base-URL override; use OTLP instead:
 
 ```bash
 gemini --telemetry --telemetry-otlp-endpoint=http://localhost:8000 \
@@ -69,7 +69,7 @@ gemini --telemetry --telemetry-otlp-endpoint=http://localhost:8000 \
 ## What you get automatically
 
 - **Persona detection.** Calls are tagged `framework=bmad` with the persona
-  that is actually running — `bmad:spec`, `bmad:dev`, `bmad:analyst`,
+  that is actually running - `bmad:spec`, `bmad:dev`, `bmad:analyst`,
   `bmad:architect`, `bmad:pm`, and so on. Both generations of BMAD are
   recognised: v4/v5 shipped personas as system prompts, while **v6 ships
   them as host-tool skills**, so the ledger reads the skill invocation
@@ -79,8 +79,8 @@ gemini --telemetry --telemetry-otlp-endpoint=http://localhost:8000 \
   these tags; per-persona budgets and rate limits key off them.
 - **Cost per story cycle.** Each fresh-context dev cycle appears as its own
   session (Claude Code sessions are auto-detected); repeated cycles against
-  the same story prompt group into a run — see the Loop Lens at `/app`.
-- **Unattended `bmad-loop` guardrails.** Budgets stop runaway stories —
+  the same story prompt group into a run - see the Loop Lens at `/app`.
+- **Unattended `bmad-loop` guardrails.** Budgets stop runaway stories - 
   set them in `[budgets]` above, and add loop guards in the same file:
 
   ```toml
@@ -90,7 +90,7 @@ gemini --telemetry --telemetry-otlp-endpoint=http://localhost:8000 \
   ```
 
   A story stopped by its ceiling is recorded as **blocked** (amber), never
-  as an error — a wall doing its job never makes the run look broken.
+  as an error - a wall doing its job never makes the run look broken.
 
 - **Mid-run introspection.** Register the MCP server in the same host tool
   (`http://localhost:8000/mcp`) and any persona can ask
@@ -101,13 +101,13 @@ gemini --telemetry --telemetry-otlp-endpoint=http://localhost:8000 \
 
 The question BMAD teams actually argue about. Open a story cycle's run (or
 session) in the dashboard and hit **⟳ Replay whole run**: every step
-re-executes on the model you choose — including a free local one — with its
+re-executes on the model you choose - including a free local one - with its
 original inputs, and you get a report card instead of forty transcripts:
 
 > **31 / 38 moments matched** · 7 to read · $0.00 on qwen3 vs $4.12 original
 
-The fumbles are named — *dropped the tools*, *invented tools*, *different
-tools* — which for BMAD usually means a persona that stopped calling its
+The fumbles are named - *dropped the tools*, *invented tools*, *different
+tools* - which for BMAD usually means a persona that stopped calling its
 file/story tools and started narrating. That's the evidence for keeping
 Opus on `bmad:dev` while moving `bmad:analyst` somewhere cheap.
 
@@ -123,14 +123,14 @@ curl -X POST http://localhost:8000/api/tokens \
 ```
 
 Each card opens the proxy, stamps every call with the squad's name, and
-carries its own daily allowance — one squad running dry never blocks the
+carries its own daily allowance - one squad running dry never blocks the
 others. Revoke a card and it dies instantly.
 
 ## Naming what you'll want to find later
 
 Epics generate a lot of look-alike sessions. In the dashboard: ✎ to name a
-cycle ("story 2.4 — payment retries"), ★ to pin the one you're arguing
-about, and a project field to file every session in an epic together —
+cycle ("story 2.4 - payment retries"), ★ to pin the one you're arguing
+about, and a project field to file every session in an epic together - 
 then filter the whole view down to that epic.
 
 ## Explicit tagging (optional)
@@ -144,6 +144,6 @@ x-agenticledger-iteration: 3          # story number within the epic
 x-agenticledger-agent-name: bmad:dev
 ```
 
-New BMAD versions change persona wording — the fingerprint table lives in
+New BMAD versions change persona wording - the fingerprint table lives in
 `agenticledger/proxy/detect.py` (`_BMAD_MARKERS` / `_BMAD_PERSONAS`); PRs
 adding signatures are welcome.

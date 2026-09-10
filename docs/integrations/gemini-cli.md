@@ -10,7 +10,7 @@ gemini --telemetry \
 ```
 
 GenAI spans become ledger calls: model, tokens, cost, session grouping via
-`gen_ai.conversation.id`, and error status. OTel capture is metadata-level —
+`gen_ai.conversation.id`, and error status. OTel capture is metadata-level - 
 no prompt bodies.
 
 **Protocol note:** the ledger accepts the OTLP *JSON* encoding over HTTP. If

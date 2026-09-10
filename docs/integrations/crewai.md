@@ -1,6 +1,6 @@
 # Agentic Ledger + CrewAI
 
-CrewAI's `LLM` accepts a `base_url` — that's the whole integration.
+CrewAI's `LLM` accepts a `base_url` - that's the whole integration.
 
 ```bash
 AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com python -m agenticledger.proxy

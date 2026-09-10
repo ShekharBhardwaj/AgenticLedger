@@ -68,8 +68,11 @@ your instrumentation: see the OTel section of the README.
   ledger runs. Team access is pairing links and team cards, not a
   SaaS org with SSO (that posture is deliberately downstream).
 - **Helicone's gateway extras.** Provider fallback routing and
-  vendor-side caching are not this product; the ledger forwards your
-  bytes untouched, always.
+  vendor-side caching are not this product; the ledger preserves your
+  application content: it never rewrites what your agent said or what
+  the model answered. (Transport is adjusted where the wire demands
+  it: Bedrock calls are re-signed by design, and refusals you
+  configured, budgets and ceilings, answer instead of forwarding.)
 
 ## Keeping both
 

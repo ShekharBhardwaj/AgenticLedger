@@ -14,11 +14,11 @@ limits are today.
 |---|---|---|
 | PyPI | [`agentic-ledger`](https://pypi.org/project/agentic-ledger/) | Published via trusted publishing (OIDC, no long-lived tokens) with PEP 740 attestations. |
 | GHCR | `ghcr.io/shekharbhardwaj/agentic-ledger` | Multi-arch (`linux/amd64`, `linux/arm64`), signed, with SBOM + provenance attestations. |
-| Docker Hub | `docker.io` mirror of the same image | Same digest as GHCR — pull from whichever your network prefers. |
+| Docker Hub | `docker.io` mirror of the same image | Same digest as GHCR - pull from whichever your network prefers. |
 
 **Enterprise mirrors (Artifactory, Nexus, AWS CodeArtifact, Azure
 Artifacts):** no extra publishing step is needed. These products proxy the
-public indexes — point a *remote repository* at PyPI for the package
+public indexes - point a *remote repository* at PyPI for the package
 (`pip install agentic-ledger` through your mirror URL) and a *remote Docker
 repository* at GHCR or Docker Hub for the image. Your mirror caches and
 scans the artifacts under your own policies.
@@ -26,7 +26,7 @@ scans the artifacts under your own policies.
 ## Verifying what you pull
 
 Release images are signed with [Sigstore cosign](https://docs.sigstore.dev/)
-(keyless — the signature is bound to the GitHub Actions release workflow
+(keyless - the signature is bound to the GitHub Actions release workflow
 identity, not a key someone could lose):
 
 ```bash
@@ -41,12 +41,12 @@ Each image also carries BuildKit **SBOM and SLSA provenance attestations**
 SBOM (`sbom-agenticledger-image.spdx.json`) for ingestion into dependency
 scanners.
 
-Python packages on PyPI carry PEP 740 publish attestations — PyPI displays
+Python packages on PyPI carry PEP 740 publish attestations - PyPI displays
 the verified GitHub repository and workflow on the file details page.
 
 ## Building the image yourself
 
-Cold builds work from a plain checkout — no wheel required:
+Cold builds work from a plain checkout - no wheel required:
 
 ```bash
 docker build -t agenticledger .
@@ -54,7 +54,7 @@ docker build -t agenticledger .
 
 With nothing in `dist/`, the build installs the latest published release
 from PyPI (pin one with `--build-arg AGENTICLEDGER_VERSION=0.4.0`). If you
-drop a locally built wheel into `dist/`, it takes precedence — that is the
+drop a locally built wheel into `dist/`, it takes precedence - that is the
 path the release pipeline uses.
 
 ---
@@ -65,7 +65,7 @@ path the release pipeline uses.
 
 The proxy runs as user `agenticledger` (uid 10001). Two consequences:
 
-- **Named volumes** work out of the box — `/data` ownership is inherited on
+- **Named volumes** work out of the box - `/data` ownership is inherited on
   first mount.
 - **Bind mounts on Linux hosts** need the directory handed over once:
 
@@ -87,7 +87,7 @@ docker run --read-only --tmpfs /tmp \
 
 ### TLS: terminate in front of the proxy
 
-The proxy serves plain HTTP and deliberately does not implement TLS —
+The proxy serves plain HTTP and deliberately does not implement TLS - 
 terminate it at a reverse proxy or your ingress, like any other internal
 service. Keep the proxy bound to a private interface and let only the
 terminator reach it.
@@ -128,24 +128,24 @@ Every deployment that leaves localhost should set:
 | Variable | What it closes |
 |---|---|
 | `AGENTICLEDGER_API_KEY` | Dashboard, read, and management endpoints require the admin key; scoped tokens can then be minted for narrower roles. |
-| `AGENTICLEDGER_INGEST_KEY` | The proxy forwards traffic only when the caller presents the matching `x-agenticledger-ingest-key` header — closes the open-relay hole where anyone who can reach the proxy can spend your LLM credits. |
+| `AGENTICLEDGER_INGEST_KEY` | The proxy forwards traffic only when the caller presents the matching `x-agenticledger-ingest-key` header - closes the open-relay hole where anyone who can reach the proxy can spend your LLM credits. |
 | `AGENTICLEDGER_HOST=127.0.0.1` | When the proxy and its TLS terminator share a host, don't listen on all interfaces. |
 | `AGENTICLEDGER_EXPORT_HMAC_KEY` | Compliance exports get a keyed tamper-evident integrity tag instead of a plain hash. |
-| `AGENTICLEDGER_REPLAY_API_KEY` | Off by default. When set, `POST /api/replay` (editor role and above) can re-execute captured calls, spending real tokens on this key. Use a dedicated key with its own spend limit on your provider console, not your production agent key — replay spend then stays separately visible and separately capped. Agents' own keys are never stored, with or without this. |
+| `AGENTICLEDGER_REPLAY_API_KEY` | Off by default. When set, `POST /api/replay` (editor role and above) can re-execute captured calls, spending real tokens on this key. Use a dedicated key with its own spend limit on your provider console, not your production agent key - replay spend then stays separately visible and separately capped. Agents' own keys are never stored, with or without this. |
 
 ### Protect the data you capture
 
 Captured prompts are the most sensitive thing in this system. The controls,
 in escalating order:
 
-- `AGENTICLEDGER_REDACT=all` (or a list: `email,ssn,credit_card,ip,api_key`) —
+- `AGENTICLEDGER_REDACT=all` (or a list: `email,ssn,credit_card,ip,api_key`) - 
   scrub PII/secrets before they are stored; `AGENTICLEDGER_REDACT_PATTERNS`
   adds your own regexes.
-- `AGENTICLEDGER_CAPTURE_LEVEL=metadata` — store only metrics and metadata
+- `AGENTICLEDGER_CAPTURE_LEVEL=metadata` - store only metrics and metadata
   (model, tokens, cost, latency, agent, status), never prompt/response
   bodies.
-- `AGENTICLEDGER_RETENTION_DAYS=30` — a background worker purges older calls.
-- `AGENTICLEDGER_AUDIT_LOG` is on by default — who viewed, exported, or
+- `AGENTICLEDGER_RETENTION_DAYS=30` - a background worker purges older calls.
+- `AGENTICLEDGER_AUDIT_LOG` is on by default - who viewed, exported, or
   deleted what.
 
 ### Database
@@ -167,7 +167,7 @@ running. Postgres backups are your standard `pg_dump`.
 ## Scaling: the honest section
 
 Run **one replica**. Budget enforcement, rate limiting, and the loop
-engine's thread/run tracking keep working state in process memory — two
+engine's thread/run tracking keep working state in process memory - two
 replicas behind a load balancer would each see half the traffic and enforce
 half the truth. What that costs you in practice is small: the proxy is an
 async passthrough, and a single instance comfortably handles the request
@@ -185,7 +185,7 @@ What you *can* do today:
   shared-service shape).
 - Use Postgres so dashboards, the MCP server (`agenticledger mcp`), and API
   consumers read the ledger without touching the proxy's write path.
-- Watch `/metrics` (Prometheus format) and probe `/health` and `/readyz` —
+- Watch `/metrics` (Prometheus format) and probe `/health` and `/readyz` - 
   the container image ships a `HEALTHCHECK` that hits `/health`.
 
 ## Deployment checklist

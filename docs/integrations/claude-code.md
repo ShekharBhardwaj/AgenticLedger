@@ -20,7 +20,7 @@ claude
   actual UUID (the same id `claude --resume` shows), tagged
   `framework=claude-code`.
 - **True costs.** Prompt-cache reads and writes are captured and priced with
-  Anthropic's convention — cache traffic is most of a coding session's spend.
+  Anthropic's convention - cache traffic is most of a coding session's spend.
 - **Thread stitching.** Steps, parent links, and tool pairing; small
   housekeeping calls (titles, summaries) are excluded so step counts stay
   honest; `/compact` re-links instead of breaking the thread.

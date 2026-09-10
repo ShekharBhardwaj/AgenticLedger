@@ -16,12 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An operator-stopped run is amber, not red.** The stopped badge
   wore failure's color, against the product's own rule that red means
   broke and amber means refused on purpose.
-- **The daily chart stops misleading.** It is now titled "days with
-  activity" (gaps are not drawn to scale and the title says so on
-  hover), shows the tallest bar's dollar value as a scale, and marks
-  error days with a red dot instead of painting the whole spend bar
-  red, which made an expensive healthy day and a cheap broken day
-  look alike.
 - **A failed ceiling save is unmissable.** Saving a run's cost ceiling
   showed nothing on failure, leaving the user trusting a wall that did
   not exist. The editor now shows saving, then the confirmed value or
@@ -31,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because fix mode returned early on a clean verdict and never offered
   the zprofile cleanup. A healthy machine can still carry the vector;
   now --fix always looks.
+- **Pre-forward refusals leave a record (#115).** A credential-less
+  Bedrock call or an unconfigured Azure upstream was refused with no
+  trace: three refused calls once produced an entirely empty
+  dashboard. Refusals now ride the standard capture rail (normalized
+  request, 502 with the reason, zero cost, attribution intact), so a
+  run of pure refusals still shows its tile with the reason one click
+  away.
 
 ### Added
 - **The premium dashboard (docs/design/premium-dashboard.md).** The
@@ -63,8 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   context compressor (Headroom) behind the ledger with one upstream
   URL; the ledger records and refuses first, the compressor shrinks
   second, and your own numbers measure the compressor's savings. The
-  chain mechanics are proven by test: intact reply, both hops
-  recorded, run attribution kept.
+  chain mechanics are proven by tests/test_chaining.py: intact reply
+  through two real proxy pipelines, both hops recorded, run
+  attribution kept.
 - **The migration page (#112).** docs/migrating.md translates Helicone
   and LangSmith concepts, gives the two-line switch for each, and says
   honestly what you gain (local-first, refusal, loops, the audit) and
@@ -89,12 +91,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (capture level strips prompts). GET /api/runs/{id}/cache-audit for
   API clients. The audit reads the record and does arithmetic; it
   never touches traffic.
-
-
-### Added
 - **The blessed install path (#117).** The README leads with
   `uv tool install agentic-ledger` (pipx equally): one isolated shim on
-  PATH, shadow installs structurally impossible. `agenticledger
+  PATH, so shadow installs become rare and doctor-detectable. `agenticledger
   upgrade` now recognizes pipx-, uv-, and Homebrew-managed installs
   and runs the managing tool's own upgrade command instead of handing
   the user homework (dev `--from <repo>` included), and doctor's
@@ -102,17 +101,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gemini CLI auto-detection (#67).** Proxy requests carrying Gemini CLI's
   documented `GeminiCLI` User-Agent prefix are now attributed as `gemini-cli`,
   including integrated variants; BMAD riders still take precedence.
-
-### Fixed
-- **Pre-forward refusals leave a record (#115).** A credential-less
-  Bedrock call or an unconfigured Azure upstream was refused with no
-  trace: three refused calls once produced an entirely empty
-  dashboard. Refusals now ride the standard capture rail (normalized
-  request, 502 with the reason, zero cost, attribution intact), so a
-  run of pure refusals still shows its tile with the reason one click
-  away.
-
-### Added
 - **Per-framework redetect results (#70).** The Settings maintenance action
   now reports how many newly attributed calls belong to each detected
   framework, and `POST /api/redetect` exposes the same breakdown for API
@@ -1497,6 +1485,8 @@ https://github.com/ShekharBhardwaj/AgenticLedger/releases
 [0.12.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.3...v0.10.0
+[0.9.3]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.2...v0.9.3
+[0.9.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.8.1...v0.8.2

@@ -248,6 +248,16 @@ word — the 0.9.2 retest discipline is the permanent process now.
 
 ## Where the plan stands (2026-09-09)
 
+**Scope decision (2026-09-10): the premium dashboard pulled forward
+into 0.13.** The maintainer's call: the full redesign (the spec's
+five stages) ships now rather than as the 0.14 UI workstream, so
+0.13 releases the complete package and 0.14 refills with solid
+features. All five stages landed the same day, each verified and
+CI-gated; the combined hand test therefore covers the entire
+redesign, not just the audit and https additions. Demo ordering,
+decided: the 0.11 precedent holds. Tag first, record the demo
+against released bits, publish demo and campaign together.
+
 **0.13 "Nothing wasted" is build-complete (2026-09-10).** Everything
 built and CI-green: httpx2 (#93), refusal capture (#115), blessed
 install (#117), redetect breakdown (#70) and Gemini detection (#67)
@@ -261,7 +271,7 @@ the verified compressor chain (#114). The pricing PR (#65) moved to
 Before the tag: the combined hand-test under user zero (audit
 verdicts, https wifi link, everything since 0.12 in one pass), the
 release-docs pass with the narrowed moat claim (README carries it;
-the site's Base44 prompt is drafted), the demo re-record (meter,
+the site's Base44 prompt is at ../site-prompt-0.13.md, outside the repo with the campaign drafts), the demo re-record (meter,
 ceiling, audit), then tag and campaign, then the ten-user scorecard.
 
 **The strategy, tightened twice by outside review (2026-09-10).**

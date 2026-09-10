@@ -29,9 +29,9 @@ changes.
   ledger's token counts against the provider's usage report for the
   same period.
 
-The chain mechanics are covered by a verified test: a call through two
-chained proxies arrives intact, is recorded on both hops, and keeps its
-run attribution on the front ledger.
+The chain mechanics are covered by tests/test_chaining.py: a call
+through two real proxy pipelines arrives intact, is recorded on both
+hops, and keeps its run attribution on the front ledger.
 
 ## Caveats, honestly
 
