@@ -344,6 +344,14 @@ def doctor_command(fix: bool = False, _second_pass: bool = False) -> int:
     print("\nVerdict:")
     if not verdicts:
         print("  healthy: one install, and it is the one running.")
+        if fix and not _second_pass:
+            # The resurrection vector outlives the eviction: a healthy
+            # machine can still carry the python.org PATH prepend that
+            # brought the shadow back four times. --fix offers the cleanup
+            # even when today's verdict is clean.
+            note = offer_zprofile_fix()
+            if note:
+                print(f"  - {note}")
         return 0
     for v in verdicts:
         print(f"  - {v}")

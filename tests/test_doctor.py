@@ -209,3 +209,24 @@ def test_multi_install_verdict_recommends_the_immune_path():
     # One healthy install: no disease, no lecture.
     healthy = diagnose([a], {"running": True, "version": "1.0"})
     assert not any("uv tool install" in v for v in healthy)
+
+
+def test_fix_offers_zprofile_cleanup_even_when_healthy(tmp_path, monkeypatch):
+    """The shadow's resurrection vector (the python.org PATH prepend)
+    survived four evictions because --fix returned early on a healthy
+    verdict and never offered the cleanup."""
+    import io
+
+    from agenticledger import doctor
+    profile = tmp_path / ".zprofile"
+    profile.write_text('# Setting PATH for Python 3.13\n'
+                       '# The original version is saved in .zprofile.pysave\n'
+                       'PATH="/Library/Frameworks/Python.framework/Versions/3.13/bin:${PATH}"\n'
+                       'export PATH\n')
+    monkeypatch.setattr(doctor.Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr("sys.stdin", io.StringIO())   # not a tty: message, no prompt
+    note = doctor.offer_zprofile_fix()
+    assert note is not None and "PATH" in note
+    # And with the block absent, no noise.
+    profile.write_text("export EDITOR=vim\n")
+    assert doctor.offer_zprofile_fix() is None

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **doctor --fix checks the shadow's resurrection vector even when
+  healthy.** The python.org PATH prepend survived four evictions
+  because fix mode returned early on a clean verdict and never offered
+  the zprofile cleanup. A healthy machine can still carry the vector;
+  now --fix always looks.
+
 ### Added
 - **Direct-LAN https (#118).** AGENTICLEDGER_TLS=1 adds a
   dashboard-only https listener (default port 8443) beside the plain
