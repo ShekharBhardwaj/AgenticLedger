@@ -962,3 +962,70 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 }
 .seg-btn.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .appearance-note { font-size: 12px; }
+
+/* ── Run detail: metric strip, subtabs, concern band, cache panel
+   (premium spec 7.1-7.6) ──────────────────────────────────────────────── */
+.metric-strip {
+  display: flex; gap: 32px; flex-wrap: wrap;
+  padding: 16px 0 4px; align-items: flex-start;
+}
+.metric { min-width: 150px; }
+.metric-label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.metric-primary {
+  font-size: 32px; line-height: 40px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.metric-secondary {
+  font-size: 24px; line-height: 32px; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.metric-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.metric-sub .link-btn { font-size: 12px; }
+.metric-tokens { font-size: 12px; margin: 2px 0 8px; }
+.metric .meter-track { display: block; margin-top: 6px; max-width: 180px; }
+
+.subview-row {
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border); margin: 12px 0 16px;
+}
+.subtabs { display: flex; gap: 2px; }
+.subtab {
+  padding: 8px 14px; min-height: 36px; border: none; background: none;
+  color: var(--text-dim); cursor: pointer; font-size: 14px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.subtab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.subtab:hover { color: var(--text); }
+
+.concern-band {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--warning-bg); border-left: 3px solid var(--amber);
+  padding: 12px 16px; margin: 0 0 16px;
+}
+.concern-title { color: var(--amber); font-weight: 600; font-size: 14px; }
+.concern-sub { color: var(--text-dim); font-size: 12.5px; margin-top: 2px; }
+.concern-band .inspect-btn {
+  margin-left: auto; padding: 8px 16px; min-height: 36px;
+  border: 1px solid var(--border-control); border-radius: var(--radius);
+  background: var(--bg-card); color: var(--text); cursor: pointer; font-size: 13px;
+}
+.concern-band .inspect-btn:hover { background: var(--bg-hover); }
+
+.cache-panel {
+  border-left: 3px solid var(--border); background: var(--bg-panel);
+  padding: 14px 16px; margin: 0 0 16px; font-size: 13px; line-height: 1.55;
+}
+.cache-panel.never_requested, .cache-panel.partially_cached,
+.cache-panel.unstable_opening { border-left-color: var(--amber); background: var(--warning-bg); }
+.cache-headline { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.cache-panel.never_requested .cache-headline,
+.cache-panel.partially_cached .cache-headline,
+.cache-panel.unstable_opening .cache-headline { color: var(--amber); }
+.cache-line { margin: 3px 0; }
+.est-mark {
+  font-size: 11px; font-weight: 600; letter-spacing: 0;
+  color: var(--text-dim); border: 1px solid var(--border-control);
+  border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px;
+}
+.cache-method { margin-top: 8px; font-size: 12.5px; }
+.cache-method summary { cursor: pointer; color: var(--accent); }

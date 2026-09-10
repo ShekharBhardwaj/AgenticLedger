@@ -59,6 +59,15 @@ function RunMascot({ status, small }: { status: Run["status"]; small?: boolean }
   );
 }
 
+/** Spec 7.2: visible labels state what was OBSERVED, never more. */
+const STATUS_LABEL: Record<string, string> = {
+  running: "Running",
+  flagged: "Flagged",
+  complete: "Completion declared",
+  ended: "Ended",
+  stopped: "Calls blocked",
+};
+
 function FlagCard({ flag, onOpenSession }: { flag: FlaggedCall; onOpenSession: (s: string) => void }) {
   const names: string[] = JSON.parse(flag.loop_flags);
   const tools = (flag.tool_calls ?? [])
@@ -115,6 +124,11 @@ export default function RunsView({ onOpenSession, focusRun }: {
   const [detail, setDetail] = useState<Run | null>(null);
   const [iterations, setIterations] = useState<Iteration[]>([]);
   const [flags, setFlags] = useState<FlaggedCall[]>([]);
+  // Premium spec 7.1: Overview | Activity | Cache, with What-if/Replay as
+  // secondary tools rather than permanently expanded panels.
+  const [subview, setSubview] = useState<"overview" | "activity" | "cache">("overview");
+  const [showTools, setShowTools] = useState(false);
+  useEffect(() => { setSubview("overview"); setShowTools(false); }, [selected]);
   const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
   const [projects, setProjects] = useState<string[]>([]);
@@ -233,7 +247,7 @@ export default function RunsView({ onOpenSession, focusRun }: {
             </button>
             <div className="card-title card-title-row" title={r.run_id}>
               <span className="card-name">{r.label ?? r.run_id}</span>
-              <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{r.status}</span>
+              <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{STATUS_LABEL[r.status] ?? r.status}</span>
               <RunMascot status={r.status} small />
             </div>
             {r.label && r.label !== r.run_id && <div className="card-id mono">{r.run_id}</div>}
@@ -304,7 +318,7 @@ export default function RunsView({ onOpenSession, focusRun }: {
           <>
             <h2 className="page-title">
               {detail.label ?? detail.run_id}{" "}
-              <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{detail.status}</span>
+              <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{STATUS_LABEL[detail.status] ?? detail.status}</span>
               <RunMascot status={detail.status} />
               {detail.status === "stopped" ? (
                 <button className="link-btn" style={{ marginLeft: 10 }}
@@ -368,23 +382,7 @@ export default function RunsView({ onOpenSession, focusRun }: {
               )}
             </div>
 
-            <div className="stats-row">
-              <div className="stat"><div className="v">{detail.iterations ?? "—"}</div><div className="l">iterations</div></div>
-              <div className="stat"><div className="v">{fmtUsd(detail.total_cost_usd)}</div><div className="l">total cost</div></div>
-              <div className="stat"><div className="v">{detail.call_count}</div><div className="l">llm calls</div></div>
-              <div className="stat"><div className="v">{fmtNum(detail.total_tokens_in)}</div><div className="l">tokens in</div></div>
-              <div className="stat"><div className="v">{fmtNum(detail.total_tokens_out)}</div><div className="l">tokens out</div></div>
-              <div className="stat">
-                <div className="v" style={{ color: detail.flagged_calls ? "var(--amber)" : undefined }}>
-                  {detail.flagged_calls}
-                </div>
-                <div className="l">flagged calls</div>
-              </div>
-            </div>
-
             {(() => {
-              // The bill, before the bill (#0.11): burn, projection, and
-              // the run's own ceiling — editable while it runs.
               const burn = detail.burn_last_hour_usd ?? 0;
               const ceiling = detail.budget_usd ?? null;
               const spent = detail.total_cost_usd || 0;
@@ -403,92 +401,184 @@ export default function RunsView({ onOpenSession, focusRun }: {
                   .catch((e) => setCeilingState(
                     `ceiling NOT saved: ${e?.message || "request failed"} - the wall is unchanged`));
               };
+              const submitCeiling = () => {
+                const v = parseFloat(ceilingEdit ?? "");
+                if (Number.isNaN(v) || !Number.isFinite(v) || v <= 0 || v > 1_000_000) {
+                  setCeilingState("a ceiling is a dollar amount above zero, at most 1,000,000");
+                  return;
+                }
+                saveCeiling(v);
+              };
               return (
-                <div className="spend-meter">
-                  <span className="mono">{fmtUsd(spent)} spent</span>
-                  {liveNow && burn > 0 && (
-                    <span className="muted"
-                          title="the last hour's spend, projected forward unchanged">
-                      · burning {fmtUsd(burn)}/h · at this pace {fmtUsd(projected)} by{" "}
-                      {morning.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                    </span>
-                  )}
-                  {ceiling ? (
-                    <>
-                      <span className={`meter-track ${frac >= 1 ? "at" : frac >= 0.8 ? "near" : ""}`}
-                            title={`ceiling: calls are refused once spend reaches ${fmtUsd(ceiling)}`}>
-                        <span className="meter-fill" style={{ width: `${frac * 100}%` }} />
+                <div className="metric-strip">
+                  <div className="metric">
+                    <div className="metric-label">Recorded spend</div>
+                    <div className="metric-primary mono">{fmtUsd(spent)}</div>
+                    {liveNow && burn > 0 && (
+                      <div className="metric-sub"
+                           title="the last hour's recorded spend projected forward unchanged; not a predicted invoice">
+                        At the recent pace: {fmtUsd(projected)} by{" "}
+                        {morning.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="metric">
+                    <div className="metric-label">Run ceiling</div>
+                    {ceiling ? (
+                      <>
+                        <div className="metric-secondary mono">{fmtUsd(ceiling)}</div>
+                        <span className={`meter-track ${frac >= 1 ? "at" : frac >= 0.8 ? "near" : ""}`}
+                              title={`recorded spend over the configured ceiling; an accounting display, not proof of remaining admission`}>
+                          <span className="meter-fill" style={{ width: `${frac * 100}%` }} />
+                        </span>
+                        <div className="metric-sub">
+                          <button className="link-btn" onClick={() => setCeilingEdit(String(ceiling))}>Edit</button>
+                          <button className="link-btn" title="Remove run ceiling: this run's calls stop being refused by it. Other agent/team/daily limits still apply."
+                                  onClick={() => saveCeiling(0)}>Remove</button>
+                        </div>
+                      </>
+                    ) : ceilingEdit === null ? (
+                      <>
+                        <div className="metric-secondary muted">No run ceiling</div>
+                        <div className="metric-sub">
+                          <button className="link-btn"
+                                  title="refuse this run's calls at the proxy once its spend reaches a dollar amount; survives restarts"
+                                  onClick={() => setCeilingEdit("")}>Set ceiling</button>
+                        </div>
+                      </>
+                    ) : null}
+                    {ceilingEdit !== null && (
+                      <span className="key-actions">
+                        <label className="sr-only" htmlFor="ceiling-usd">Run ceiling in US dollars</label>
+                        <input id="ceiling-usd" autoFocus className="ceiling-input"
+                               inputMode="decimal" placeholder="USD"
+                               value={ceilingEdit}
+                               disabled={ceilingState === "saving"}
+                               onChange={(e) => setCeilingEdit(e.target.value)}
+                               onKeyDown={(e) => {
+                                 if (e.key === "Enter") submitCeiling();
+                                 if (e.key === "Escape") setCeilingEdit(null);
+                               }} />
+                        <button className="link-btn" disabled={ceilingState === "saving"}
+                                onClick={submitCeiling}>Save</button>
+                        <button className="link-btn" onClick={() => setCeilingEdit(null)}>Cancel</button>
                       </span>
-                      <span className="mono">{fmtUsd(ceiling)} ceiling</span>
-                      <button className="link-btn" onClick={() => setCeilingEdit(String(ceiling))}>edit</button>
-                      <button className="link-btn" title="remove the ceiling; calls flow again"
-                              onClick={() => saveCeiling(0)}>clear</button>
-                    </>
-                  ) : ceilingEdit === null ? (
-                    <button className="link-btn"
-                            title="refuse this run's calls at the proxy once its spend reaches a dollar amount; survives restarts"
-                            onClick={() => setCeilingEdit("")}>+ cost ceiling</button>
-                  ) : null}
-                  {ceilingState === "saving" && <span className="muted">saving…</span>}
-                  {ceilingState && ceilingState !== "saving" && (
-                    <span className="ceiling-error">{ceilingState}</span>
-                  )}
-                  {ceilingEdit !== null && (
-                    <span className="key-actions">
-                      <input autoFocus className="ceiling-input" placeholder="$"
-                             value={ceilingEdit}
-                             onChange={(e) => setCeilingEdit(e.target.value)}
-                             onKeyDown={(e) => {
-                               if (e.key === "Enter") {
-                                 const v = parseFloat(ceilingEdit);
-                                 if (!Number.isNaN(v) && v >= 0) saveCeiling(v);
-                               }
-                               if (e.key === "Escape") setCeilingEdit(null);
-                             }} />
-                      <button className="link-btn" onClick={() => {
-                        const v = parseFloat(ceilingEdit);
-                        if (!Number.isNaN(v) && v >= 0) saveCeiling(v);
-                      }}>Save</button>
-                      <button className="link-btn" onClick={() => setCeilingEdit(null)}>Cancel</button>
-                    </span>
-                  )}
+                    )}
+                    {ceilingState === "saving" && <div className="metric-sub">saving…</div>}
+                    {ceilingState && ceilingState !== "saving" && (
+                      <div className="ceiling-error">{ceilingState}</div>
+                    )}
+                    {ceiling !== null && ceiling < spent && (
+                      <div className="metric-sub" style={{ color: "var(--amber)" }}>
+                        below recorded spend: future requests may be refused
+                      </div>
+                    )}
+                  </div>
+                  <div className="metric">
+                    <div className="metric-label">Model calls</div>
+                    <div className="metric-secondary mono">{detail.call_count}</div>
+                    <div className="metric-sub">
+                      {plural(detail.iterations, "iteration")}
+                      {detail.flagged_calls ? (
+                        <span style={{ color: "var(--amber)" }}> · {detail.flagged_calls} flagged</span>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
               );
             })()}
+            <div className="metric-tokens muted mono">
+              {fmtNum(detail.total_tokens_in)} tokens in · {fmtNum(detail.total_tokens_out)} tokens out
+            </div>
 
-            {audit && audit.verdict !== "not_auditable" && (
-              <div className={`cache-audit ${audit.verdict}`}>
-                {(audit.verdict === "never_requested" || audit.verdict === "partially_cached") && audit.eligible ? (
-                  <span>
-                    <span className="audit-headline">
-                      ~{fmtUsd(audit.eligible.estimated_usd)} of repeat-discount
-                      {audit.verdict === "partially_cached" ? " still missed" : " missed"}
-                    </span>
-                    <span className="muted" title={audit.eligible.method}> (estimate)</span>
-                    {" · "}{audit.reason}. <span className="audit-fix">Fix: {audit.fix}.</span>
-                  </span>
-                ) : audit.verdict === "unstable_opening" ? (
-                  <span>
-                    <span className="audit-headline">cache discount missed</span>
-                    {" · "}{audit.reason}. <span className="audit-fix">Fix: {audit.fix}.</span>
-                  </span>
-                ) : audit.verdict === "well_cached" ? (
-                  <span className="muted">
-                    Cache audit: {audit.received_usd > 0
-                      ? `${fmtUsd(audit.received_usd)} saved by caching; `
-                      : ""}nothing missed.
-                  </span>
-                ) : (
-                  <span className="muted">Cache audit: {audit.reason}; nothing to fix.</span>
+            <div className="subview-row">
+              <div role="tablist" aria-label="Run views" className="subtabs">
+                {(["overview", "activity", "cache"] as const).map((v) => (
+                  <button key={v} role="tab" aria-selected={subview === v}
+                          className={`subtab ${subview === v ? "active" : ""}`}
+                          onClick={() => setSubview(v)}>
+                    {v === "overview" ? "Overview" : v === "activity" ? "Activity" : "Cache"}
+                  </button>
+                ))}
+              </div>
+              <span className="spacer" />
+              <button className="link-btn" aria-expanded={showTools}
+                      onClick={() => setShowTools(!showTools)}>
+                What-if / Replay {showTools ? "▴" : "▾"}
+              </button>
+            </div>
+
+            {subview === "overview" && flags.length > 0 && (
+              <div className="concern-band" role="note">
+                <div className="concern-text">
+                  <div className="concern-title">
+                    Recorded concern: {(() => {
+                      try { return (JSON.parse(flags[0].loop_flags) as string[]).join(", "); }
+                      catch { return "loop flag"; }
+                    })()}
+                  </div>
+                  <div className="concern-sub">
+                    {plural(flags.length, "flagged call")} on record
+                    {flags[0].iteration != null ? ` · latest in iteration ${flags[0].iteration}` : ""}
+                  </div>
+                </div>
+                {flags[0].session_id && (
+                  <button className="inspect-btn"
+                          onClick={() => onOpenSession(flags[0].session_id!)}>
+                    Inspect
+                  </button>
                 )}
               </div>
             )}
 
-            {(
+            {subview === "cache" && (
+              !audit ? (
+                <div className="empty">The cache audit did not load. <button className="link-btn" onClick={refresh}>Retry</button></div>
+              ) : (
+              <div className={`cache-panel ${audit.verdict}`}>
+                <div className="cache-headline">
+                  {audit.verdict === "never_requested" && audit.eligible ? (
+                    <>~{fmtUsd(audit.eligible.estimated_usd)} of repeat-discount missed
+                      <span className="est-mark" title={audit.eligible.method}> Estimate</span></>
+                  ) : audit.verdict === "partially_cached" ? (
+                    <>Partially cached{audit.eligible ? <> · ~{fmtUsd(audit.eligible.estimated_usd)} still missed
+                      <span className="est-mark" title={audit.eligible.method}> Estimate</span></> : null}</>
+                  ) : audit.verdict === "unstable_opening" ? (
+                    <>Cache discount missed: the opening changes between calls</>
+                  ) : audit.verdict === "well_cached" ? (
+                    <>Nothing missed</>
+                  ) : audit.verdict === "too_short" ? (
+                    <>Nothing to fix</>
+                  ) : (
+                    <>Cache audit unavailable</>
+                  )}
+                </div>
+                <div className="cache-line">{audit.reason}.</div>
+                {audit.fix && <div className="cache-line">Fix: {audit.fix}.</div>}
+                {audit.received_usd > 0 && (
+                  <div className="cache-line muted"
+                       title="exact, from provider-reported cache reads; the discount received versus full input price. Not net savings after cache-write charges.">
+                    Cache-read discount received: {fmtUsd(audit.received_usd)}
+                  </div>
+                )}
+                {audit.eligible && (
+                  <details className="cache-method">
+                    <summary>How the estimate is computed</summary>
+                    <div className="muted">{audit.eligible.method}. An identical
+                      {" "}{audit.eligible.prompt_chars.toLocaleString()}-character prompt,
+                      {" "}{audit.eligible.occurrences} occurrences,
+                      ~{audit.eligible.estimated_tokens.toLocaleString()} tokens.</div>
+                  </details>
+                )}
+              </div>
+              )
+            )}
+
+            {subview === "activity" && (
               <>
                 <div className="section-title"
-                     title="a live feed: the proxy announces every capture the moment it happens">
-                  Calls, as they happen
+                     title="the live event buffer: every capture the proxy announced while this view was open. Not the complete persisted history.">
+                  Activity · arrivals since this view opened
                 </div>
                 {feed.length === 0 ? (
                   <div className="muted live-empty">
@@ -537,10 +627,14 @@ export default function RunsView({ onOpenSession, focusRun }: {
               </>
             )}
 
-            <WhatIf params={`run_id=${encodeURIComponent(detail.run_id)}`} />
-            <BatchReplay scope="run" refId={detail.run_id} onOpenSession={onOpenSession} />
+            {showTools && (
+              <>
+                <WhatIf params={`run_id=${encodeURIComponent(detail.run_id)}`} />
+                <BatchReplay scope="run" refId={detail.run_id} onOpenSession={onOpenSession} />
+              </>
+            )}
 
-            {iterations.length > 0 && (
+            {subview === "overview" && iterations.length > 0 && (
               <>
                 <div className="section-title">Cost per iteration</div>
                 <div className="ribbon">
