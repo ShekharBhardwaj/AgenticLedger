@@ -172,6 +172,44 @@ function KeyPanel() {
   );
 }
 
+/** About menu: version, links, and the local-first sentence — everything
+ *  the old permanent footer said, available on demand instead of spending
+ *  80px of every phone screen (premium-dashboard spec, section 5). */
+function AboutMenu({ version }: { version: string | null }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="key-wrap">
+      <button className="key-btn" title="About Agentic Ledger"
+              aria-haspopup="menu" aria-expanded={open}
+              onClick={() => setOpen(!open)}>
+        ?
+      </button>
+      {open && (
+        <div className="key-pop about-pop" role="menu">
+          <div className="key-pop-title">Agentic Ledger</div>
+          {version && (
+            <div className="about-version mono">
+              v{version.split("+")[0]}
+              {version.includes(".dev") && <span className="version-dev">dev</span>}
+            </div>
+          )}
+          <div className="about-line">
+            The flight recorder for AI agents. Local-first: everything on
+            this page stays on this machine.
+          </div>
+          <a href="https://agentic-ledger.dev" target="_blank" rel="noreferrer" role="menuitem">agentic-ledger.dev</a>
+          <a href="https://github.com/ShekharBhardwaj/AgenticLedger#readme" target="_blank" rel="noreferrer" role="menuitem">Documentation</a>
+          <a href="https://github.com/ShekharBhardwaj/AgenticLedger" target="_blank" rel="noreferrer" role="menuitem">GitHub</a>
+          <a href="https://github.com/ShekharBhardwaj/AgenticLedger/issues" target="_blank" rel="noreferrer" role="menuitem">Report an issue</a>
+          <div className="key-actions">
+            <button className="link-btn" onClick={() => setOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("runs");
   const [focusSession, setFocusSession] = useState<string | null>(null);
@@ -224,19 +262,7 @@ export default function App() {
           </button>
         </div>
         <span className="spacer" />
-        {version && (
-          <button
-            className="version-chip"
-            title={`Agentic Ledger ${version}${version.includes(".dev")
-              ? " (a dev build; its version is stamped at install time)"
-              : ""} · click for settings`}
-            onClick={() => setTab("settings")}
-          >
-            {/* local build metadata (+g<sha>) is noise in the header */}
-            v{version.split("+")[0]}
-            {version.includes(".dev") && <span className="version-dev">dev</span>}
-          </button>
-        )}
+        <AboutMenu version={version} />
         <button
           className={`key-btn ${tab === "settings" ? "set" : ""}`}
           title="Settings: what the proxy is running with (read-only)"
@@ -247,8 +273,9 @@ export default function App() {
         <KeyPanel />
         <span
           className={`live-dot ${live ? "" : "down"}`}
-          title={live ? "live via WebSocket" : "disconnected: proxy unreachable, retrying"}
-        />
+          role="status"
+          title={live ? "Live updates connected" : "Reconnecting"}
+        ><span className="sr-only">{live ? "Live updates connected" : "Reconnecting"}</span></span>
       </div>
       {tab === "runs" ? (
         <RunsView onOpenSession={openSession} focusRun={focusRun} />
@@ -259,15 +286,7 @@ export default function App() {
       ) : (
         <SessionsView focusSession={focusSession} onOpenRun={openRun} />
       )}
-      <footer className="console-footer">
-        <span>Agentic Ledger, the flight recorder for AI agents. Local-first: everything on this page stays on this machine.</span>
-        <span className="spacer" />
-        <a href="https://agentic-ledger.dev" target="_blank" rel="noreferrer">agentic-ledger.dev</a>
-        {/* README is the documentation until the website grows real doc pages (0.9) */}
-        <a href="https://github.com/ShekharBhardwaj/AgenticLedger#readme" target="_blank" rel="noreferrer">Docs</a>
-        <a href="https://github.com/ShekharBhardwaj/AgenticLedger" target="_blank" rel="noreferrer">GitHub</a>
-        <a href="https://github.com/ShekharBhardwaj/AgenticLedger/issues" target="_blank" rel="noreferrer">Report an issue</a>
-      </footer>
+
     </>
   );
 }

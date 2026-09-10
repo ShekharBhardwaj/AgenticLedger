@@ -5,39 +5,64 @@
    color is reserved for meaning (green = money/live, amber = walls,
    red = breakage, purple = replay lineage, blue = interactive). */
 
-:root {
-  --bg: #0a0e14;
-  --bg-panel: #0f151d;
-  --bg-card: #141c26;
-  --bg-card-top: #18212d;
-  --bg-hover: #1d2735;
-  --bg-input: #0c1219;
-  --border: #242f3d;
-  --border-strong: #32405222;
-  --text: #e8eef5;
-  --text-dim: #8c9aac;
-  --accent: #4ea1ff;
-  --accent-soft: rgba(78, 161, 255, 0.13);
-  --green: #3fb950;
-  --amber: #d29922;
-  --red: #f85149;
-  --purple: #b78af5;
+:root, :root[data-theme="dark"] {
+  --bg: #111315;
+  --bg-panel: #16191C;
+  --bg-card: #1B1F23;
+  --bg-card-top: #1B1F23;      /* legacy alias: gradients are gone */
+  --bg-hover: #23282D;
+  --bg-input: #15181B;
+  --border: #30363C;
+  --border-strong: #77828C;
+  --border-control: #77828C;
+  --text: #EDF0F2;
+  --text-dim: #A0A9B1;
+  --accent: #87B5EF;
+  --accent-soft: rgba(135, 181, 239, 0.14);
+  --green: #8BCEAC;
+  --amber: #E6BB73;
+  --red: #FF9393;
+  --purple: #C7ACED;
+  --warning-bg: #211E18;
+  --selected-bg: #1B2838;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.35);
-  --ease: 0.16s ease;
-  --radius: 10px;
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.24);
+  --shadow-1: none;            /* legacy alias: shadows are overlay-only */
+  --shadow-2: none;
+  --ease: 0.14s ease;
+  --radius: 6px;
+  --radius-dialog: 8px;
+}
+:root[data-theme="light"] {
+  --bg: #FFFFFF;
+  --bg-panel: #F7F8F9;
+  --bg-card: #FFFFFF;
+  --bg-card-top: #FFFFFF;
+  --bg-hover: #EEF1F4;
+  --bg-input: #FFFFFF;
+  --border: #DDE2E7;
+  --border-strong: #78838E;
+  --border-control: #78838E;
+  --text: #202428;
+  --text-dim: #606972;
+  --accent: #245FAB;
+  --accent-soft: rgba(36, 95, 171, 0.12);
+  --green: #247452;
+  --amber: #855413;
+  --red: #B42332;
+  --purple: #7443AA;
+  --warning-bg: #FCF8EF;
+  --selected-bg: #EAF1FA;
+  --shadow-overlay: 0 8px 24px rgba(20, 30, 40, 0.12);
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background:
-    radial-gradient(1200px 500px at 70% -10%, rgba(78, 161, 255, 0.05), transparent 60%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  font: 14px/1.571 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -112,9 +137,8 @@ body {
 .key-pop {
   position: absolute; top: 30px; right: 0; z-index: 30;
   width: 300px; padding: 14px;
-  background: linear-gradient(180deg, var(--bg-card-top), var(--bg-card));
+  background: var(--bg-card);
   border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow-2);
   display: flex; flex-direction: column; gap: 9px;
 }
 .key-pop-title {
@@ -159,17 +183,14 @@ body {
 
 .card {
   position: relative;
-  background: linear-gradient(180deg, var(--bg-card-top), var(--bg-card));
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
   cursor: pointer;
-  box-shadow: var(--shadow-1);
-  transition: border-color var(--ease), transform var(--ease), box-shadow var(--ease);
+  transition: border-color var(--ease), background var(--ease);
 }
 .card:hover {
   border-color: #3a4c63;
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-2);
 }
 .card.selected {
   border-color: var(--accent);
@@ -519,7 +540,6 @@ body {
   display: inline-flex; gap: 2px; margin-bottom: 14px;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 9px; padding: 3px;
-  box-shadow: var(--shadow-1);
 }
 .seg button {
   padding: 4px 14px; font-size: 13px; cursor: pointer;
@@ -553,15 +573,14 @@ body {
 
 .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
 .stat {
-  background: linear-gradient(180deg, var(--bg-card-top), var(--bg-card));
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px 18px 10px; min-width: 120px;
-  box-shadow: var(--shadow-1);
   position: relative; overflow: hidden;
 }
 .stat::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, var(--accent), transparent 70%);
+  background: var(--accent-soft);
   opacity: 0.55;
 }
 .stat .v {
@@ -578,11 +597,11 @@ body {
 .ribbon { display: flex; align-items: flex-end; gap: 6px; height: 120px; margin: 12px 0 4px; }
 .ribbon .bar {
   flex: 1; max-width: 48px; min-width: 14px; border-radius: 4px 4px 0 0;
-  background: linear-gradient(180deg, var(--accent), #2f6fb8);
+  background: var(--accent);
   opacity: 0.9; cursor: pointer; position: relative;
   transition: opacity var(--ease), filter var(--ease);
 }
-.ribbon .bar.flagged { background: linear-gradient(180deg, var(--amber), #9a7118); }
+.ribbon .bar.flagged { background: var(--amber); }
 /* Chart truth: a day's bar shows SPEND; errors get their own marker so
    an expensive healthy day and a cheap broken day stop looking alike. */
 .ribbon .bar.errored { position: relative; }
@@ -593,7 +612,7 @@ body {
 }
 .ribbon-scale { font-size: 10.5px; color: var(--text-dim); text-align: right; }
 /* The wall's bar speaks the same amber as its badge: refused, not broken. */
-.ribbon .bar.blocked { background: linear-gradient(180deg, var(--amber), #8a6414); opacity: 0.9; }
+.ribbon .bar.blocked { background: var(--amber); opacity: 0.75; }
 .ribbon .bar:hover { opacity: 1; filter: brightness(1.15); }
 .ribbon-labels { display: flex; gap: 6px; color: var(--text-dim); font-size: 11px; font-family: var(--mono); }
 .ribbon-labels div { flex: 1; max-width: 48px; min-width: 14px; text-align: center; }
@@ -700,7 +719,7 @@ table.grid tr.row-link { cursor: pointer; }
   background: var(--bg-input); overflow: hidden;
 }
 .batch-bar-fill {
-  height: 100%; background: linear-gradient(90deg, var(--accent), #7db8ff);
+  height: 100%; background: var(--accent);
   transition: width 0.3s ease;
 }
 .report-card { margin-top: 14px; }
@@ -911,3 +930,35 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 /* A failed ceiling save must be unmissable: the user was about to trust a
    wall that does not exist. */
 .ceiling-error { color: var(--red, #ff6b6b); font-weight: 600; font-size: 12.5px; }
+
+/* ── Premium chrome (spec section 5) ─────────────────────────────────────── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.topbar { min-height: 56px; }
+.about-pop a {
+  display: block; padding: 6px 2px; color: var(--text);
+  text-decoration: none; font-size: 13px;
+}
+.about-pop a:hover { color: var(--accent); }
+.about-version { font-size: 12px; color: var(--text-dim); }
+.about-line { font-size: 12px; color: var(--text-dim); line-height: 1.5; margin: 4px 0; }
+/* Overlays are the only shadow carriers now. */
+.key-pop { box-shadow: var(--shadow-overlay); border-radius: var(--radius-dialog); }
+
+/* ── Appearance preference (browser-local) ──────────────────────────────── */
+.appearance-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 0 16px;
+}
+.appearance-label { font-weight: 600; font-size: 14px; }
+.appearance-options { display: flex; gap: 4px; }
+.seg-btn {
+  padding: 6px 14px; min-height: 36px; border-radius: var(--radius);
+  border: 1px solid var(--border-control); background: none;
+  color: var(--text-dim); cursor: pointer; font-size: 13px;
+  transition: background var(--ease), color var(--ease);
+}
+.seg-btn.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.appearance-note { font-size: 12px; }

@@ -6,6 +6,43 @@ interface SettingRow {
   means: string; set_with: string;
 }
 
+type ThemePref = "dark" | "light" | "system";
+
+/** Appearance: a browser-local preference, clearly separate from the
+ *  read-only proxy configuration below (premium-dashboard spec, 5/10).
+ *  Applies immediately; resolved before paint on the next load by the
+ *  inline script in index.html. */
+function AppearancePicker() {
+  const [pref, setPref] = useState<ThemePref>(() => {
+    try { return (localStorage.getItem("agenticledger.ui.theme") as ThemePref) || "dark"; }
+    catch { return "dark"; }
+  });
+  const apply = (next: ThemePref) => {
+    setPref(next);
+    try { localStorage.setItem("agenticledger.ui.theme", next); } catch { /* private mode */ }
+    const dark = next === "dark" ||
+      (next === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  };
+  return (
+    <div className="appearance-row">
+      <span className="appearance-label">Appearance</span>
+      <div role="radiogroup" aria-label="Appearance" className="appearance-options">
+        {(["dark", "light", "system"] as ThemePref[]).map((opt) => (
+          <button key={opt} role="radio" aria-checked={pref === opt}
+                  className={`seg-btn ${pref === opt ? "active" : ""}`}
+                  onClick={() => apply(opt)}>
+            {opt === "dark" ? "Dark" : opt === "light" ? "Light" : "System"}
+          </button>
+        ))}
+      </div>
+      <span className="muted appearance-note">
+        Stored in this browser only; it does not change proxy configuration.
+      </span>
+    </div>
+  );
+}
+
 /** #50 — the oven window: what the proxy is actually running with.
  *  Read-only; secrets arrive pre-masked from the server. */
 export default function SettingsView() {
@@ -33,6 +70,7 @@ export default function SettingsView() {
   return (
     <div className="reports">
       <h2 className="page-title">Settings</h2>
+      <AppearancePicker />
       <div className="muted" style={{ marginBottom: 8, maxWidth: 760 }}>
         What the proxy is running with: read-only, secrets hidden. Each row
         says where its value came from: <b>file</b> = your agenticledger.toml ·{" "}
