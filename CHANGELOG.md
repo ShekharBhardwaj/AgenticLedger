@@ -49,12 +49,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   away.
 
 ### Added
-- **The landing state.** The unselected Loop Lens pane, once a bare
-  "select a run", now answers "does anything need me?": runs needing
-  attention (flagged or blocked, with the concern and a link), active
-  runs, and recent ones, every count scoped to the loaded list, with
-  an honest "waiting for the first call" onboarding state when there
-  are none.
+- **The landing overview.** The unselected Loop Lens pane, once a
+  bare "select a run", is now a working overview: a scoped summary
+  (recorded spend, recorded calls, how many runs need attention), an
+  attention queue of flagged and blocked runs each with what happened,
+  which run, when, and Inspect, an active-now table, and a recent-runs
+  table (run, observed state, recorded spend, calls, last activity).
+  Every figure is scoped to the loaded runs and points to Reports for
+  period and project breakdowns; selecting a row opens the detail.
+  Three honest states: this overview, a first-call onboarding when
+  nothing has been captured, and an explicit "could not load runs"
+  with Retry on a fetch failure - a broken connection never shows the
+  reassuring fresh-install message.
 - **The premium dashboard (docs/design/premium-dashboard.md).** The
   full redesign ships in this release. Foundations: spec color tokens
   with dark, light, and system appearance (browser-local, resolved

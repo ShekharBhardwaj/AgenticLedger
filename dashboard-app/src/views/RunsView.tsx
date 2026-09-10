@@ -325,41 +325,101 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
           <div className="empty">
             Pick a second run with <span className="mono">⇆</span> to compare.
           </div>
+        ) : !detail && error ? (
+          <div className="landing">
+            <div className="section-title">Could not load runs</div>
+            <div className="landing-quiet">{error}</div>
+            <button className="link-btn" onClick={refresh}>Retry</button>
+          </div>
         ) : !detail && runs.length > 0 ? (
           <div className="landing">
             {(() => {
               const concerns = runs.filter((r) => r.status === "flagged" || r.status === "stopped");
               const active = runs.filter((r) => r.status === "running");
-              const recent = runs.filter((r) => !concerns.includes(r) && !active.includes(r)).slice(0, 5);
-              const row = (r: Run, note?: string) => (
+              const recent = runs.filter((r) => !concerns.includes(r) && !active.includes(r)).slice(0, 6);
+              const spend = runs.reduce((a, r) => a + (r.total_cost_usd || 0), 0);
+              const calls = runs.reduce((a, r) => a + (r.call_count || 0), 0);
+              const attentionRow = (r: Run, what: string) => (
                 <div key={r.run_id} className="landing-row" role="button" tabIndex={0}
                      onClick={() => setSelected(r.run_id)}
                      onKeyDown={(e) => { if (e.key === "Enter") setSelected(r.run_id); }}>
                   <span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span>
-                  <span className="card-name">{r.label ?? r.run_id}</span>
-                  {note && <span className="dim">{note}</span>}
-                  <span className="landing-cost">{fmtUsd(r.total_cost_usd)}</span>
+                  <span className="landing-what">{what}</span>
+                  <span className="card-name landing-run">{r.label ?? r.run_id}</span>
+                  <span className="dim landing-when">{fmtAgo(r.last_call_at)}</span>
+                  <span className="landing-inspect">Inspect →</span>
                 </div>
               );
               return (
                 <>
+                  <div className="landing-summary">
+                    <div className="ls-metric">
+                      <div className="ls-value mono">{fmtUsd(spend)}</div>
+                      <div className="ls-label">recorded spend</div>
+                    </div>
+                    <div className="ls-metric">
+                      <div className="ls-value mono">{fmtNum(calls)}</div>
+                      <div className="ls-label">recorded calls</div>
+                    </div>
+                    <div className="ls-metric">
+                      <div className="ls-value mono" style={{ color: concerns.length ? "var(--amber)" : undefined }}>
+                        {concerns.length}
+                      </div>
+                      <div className="ls-label">need attention</div>
+                    </div>
+                  </div>
+
                   <div className="section-title">Needs attention</div>
                   {concerns.length === 0
-                    ? <div className="landing-quiet">No active concerns.</div>
-                    : concerns.map((r) => row(r, r.status === "flagged"
+                    ? <div className="landing-quiet">No recorded concerns in the loaded runs.</div>
+                    : concerns.map((r) => attentionRow(r, r.status === "flagged"
                         ? plural(r.flagged_calls, "flagged call") : "calls blocked"))}
-                  <div className="section-title">Active now</div>
-                  {active.length === 0
-                    ? <div className="landing-quiet">No active runs.</div>
-                    : active.map((r) => row(r, plural(r.iterations, "iteration")))}
-                  {recent.length > 0 && (
+
+                  {active.length > 0 && (
                     <>
-                      <div className="section-title">Recent</div>
-                      {recent.map((r) => row(r))}
+                      <div className="section-title">Active now</div>
+                      <table className="landing-table">
+                        <tbody>
+                          {active.map((r) => (
+                            <tr key={r.run_id} className="landing-trow" onClick={() => setSelected(r.run_id)}>
+                              <td className="lt-name">{r.label ?? r.run_id}</td>
+                              <td><span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
+                              <td className="num mono">{fmtUsd(r.total_cost_usd)}</td>
+                              <td className="num mono">{fmtNum(r.call_count)}</td>
+                              <td className="lt-when dim">{fmtAgo(r.last_call_at)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </>
                   )}
+
+                  {recent.length > 0 && (
+                    <>
+                      <div className="section-title">Recent runs</div>
+                      <table className="landing-table">
+                        <thead>
+                          <tr><th>run</th><th>observed state</th><th className="num">recorded spend</th>
+                              <th className="num">calls</th><th>last activity</th></tr>
+                        </thead>
+                        <tbody>
+                          {recent.map((r) => (
+                            <tr key={r.run_id} className="landing-trow" onClick={() => setSelected(r.run_id)}>
+                              <td className="lt-name">{r.label ?? r.run_id}</td>
+                              <td><span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
+                              <td className="num mono">{fmtUsd(r.total_cost_usd)}</td>
+                              <td className="num mono">{fmtNum(r.call_count)}</td>
+                              <td className="lt-when dim">{fmtAgo(r.last_call_at)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+
                   <div className="landing-scope">
                     Across the {plural(runs.length, "most recent run")} this view loaded.
+                    For spend by day, model, and project, open <b>Reports</b>.
                   </div>
                 </>
               );
