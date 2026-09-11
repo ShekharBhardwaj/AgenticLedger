@@ -82,7 +82,7 @@ body {
 /* ── Top bar ─────────────────────────────────────────────────────────────── */
 
 .topbar {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   padding: 10px 20px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
@@ -1172,3 +1172,13 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
 .landing-head .page-title { margin: 0; }
 .landing-scope-top { color: var(--text-dim); font-size: 13px; }
 .section-note { color: var(--text-dim); font-weight: 400; font-size: 12px; }
+
+/* A11y: skip link (visible on focus) and the reports expander button. */
+.skip-link {
+  position: absolute; left: 8px; top: -40px; z-index: 100;
+  background: var(--bg-card); color: var(--text); padding: 8px 12px;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  transition: top var(--ease);
+}
+.skip-link:focus { top: 8px; }
+.expand-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 13px; padding: 4px; }

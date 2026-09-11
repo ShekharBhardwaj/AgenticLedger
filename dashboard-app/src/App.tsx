@@ -122,6 +122,7 @@ function KeyPanel() {
     <div className="key-wrap">
       <button
         className={`key-btn ${stored ? "set" : ""}`}
+        aria-label="Dashboard access key"
         title={stored ? "Dashboard access key: one is saved. Click to inspect, change, or clear"
           : "Dashboard access key: only needed when opening this dashboard from another device, or on a keyed server"}
         onClick={() => setOpen(!open)}
@@ -179,7 +180,7 @@ function AboutMenu({ version }: { version: string | null }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="key-wrap">
-      <button className="key-btn" title="About Agentic Ledger"
+      <button className="key-btn" title="About Agentic Ledger" aria-label="About Agentic Ledger"
               aria-haspopup="menu" aria-expanded={open}
               onClick={() => setOpen(!open)}>
         ?
@@ -300,7 +301,8 @@ export default function App() {
 
   return (
     <>
-      <div className="topbar">
+      <a href="#main-content" className="skip-link">Skip to content</a>
+      <header className="topbar">
         <button className="brand" title="Home: the Loop Lens overview"
                 onClick={() => openRun("")}>
           <Logo />
@@ -314,7 +316,7 @@ export default function App() {
             {instance}
           </span>
         )}
-        <div className="tabs">
+        <nav className="tabs" aria-label="Views">
           <button className={`tab ${tab === "runs" ? "active" : ""}`} onClick={() => setTab("runs")}>
             Loop Lens
           </button>
@@ -324,12 +326,12 @@ export default function App() {
           <button className={`tab ${tab === "reports" ? "active" : ""}`} onClick={() => setTab("reports")}>
             Reports
           </button>
-        </div>
+        </nav>
         <span className="spacer" />
         <AboutMenu version={version} />
         <button
           className={`key-btn ${tab === "settings" ? "set" : ""}`}
-          title="Settings: what the proxy is running with (read-only)"
+          title="Settings: what the proxy is running with (read-only)" aria-label="Settings"
           onClick={() => setTab(tab === "settings" ? "runs" : "settings")}
         >
           ⚙
@@ -340,7 +342,8 @@ export default function App() {
           role="status"
           title={live ? "Live updates connected" : "Reconnecting"}
         ><span className="sr-only">{live ? "Live updates connected" : "Reconnecting"}</span></span>
-      </div>
+      </header>
+      <main id="main-content">
       {tab === "runs" ? (
         <RunsView onOpenSession={openSession} focusRun={focusRun}
                   onSelectedChange={onRunSelected} />
@@ -352,6 +355,7 @@ export default function App() {
         <SessionsView focusSession={focusSession} onOpenRun={openRun}
                       onSelectedChange={onSessionSelected} />
       )}
+      </main>
 
     </>
   );

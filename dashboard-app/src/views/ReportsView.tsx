@@ -337,7 +337,12 @@ export default function ReportsView() {
                       <td className="num">{denom > 0 ? `${(100 * (m.cost_usd || 0) / denom).toFixed(1)}%` : "unavailable"}</td>
                       <ErrorCell n={m.error_calls} />
                       <BlockedCell n={m.blocked_calls} />
-                      <td className="num expand-cell">{open ? "▴" : "▾"}</td>
+                      <td className="num expand-cell">
+                        <button className="expand-btn" aria-expanded={open}
+                                aria-label={open ? "Collapse model details" : "Expand model details"}>
+                          {open ? "▴" : "▾"}
+                        </button>
+                      </td>
                     </tr>
                     {open && (
                       <tr className="model-detail">

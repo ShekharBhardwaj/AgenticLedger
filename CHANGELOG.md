@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **First-load, loading, and not-found states.** The overview shows a
+  loading line until the first runs fetch settles (so a slow tunnel
+  never flashes the false "first install" onboarding), and a deep link
+  to a deleted or unknown run shows a real "Run not found" with a
+  return to the overview instead of silently falling through.
+- **Accessibility groundwork.** Landmark structure (header/nav/main),
+  a skip-to-content link, accessible names on the icon-only chrome
+  buttons, a real expander button in Reports, and Space-key
+  activation on the overview rows. (The deeper keyboard and
+  target-size pass is tracked for 0.14.)
+
 ### Fixed
+- **The topbar no longer overflows at 320px.** It wraps now; verified
+  no horizontal page scroll at a 320px viewport.
 - **A pairing key no longer lingers in the address bar.** The QR link's
   `?api_key=` was read into storage but left in the URL, so a copied
   link leaked full access. It is scrubbed to storage on load now;

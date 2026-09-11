@@ -182,6 +182,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                 occurrences: number; prompt_chars: number; method: string } | null;
   }
   const [audit, setAudit] = useState<CacheAudit | null>(null);
+  const [loaded, setLoaded] = useState(false);   // first /api/runs has settled
 
   // #75 — stop/resume must flip the sidebar tile and the detail badge in
   // the same render: update both local copies first, then re-fetch.
@@ -193,7 +194,8 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   const refresh = useCallback(() => {
     get<Run[]>("/api/runs")
       .then((v) => { setRuns(v); setError(null); })
-      .catch((e) => setError(String(e?.message || e)));
+      .catch((e) => setError(String(e?.message || e)))
+      .finally(() => setLoaded(true));
     listProjects().then((r) => setProjects(r.projects)).catch(() => {});
   }, []);
 
@@ -341,6 +343,14 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             onClose={() => setCompare([])}
             onOpenSession={onOpenSession}
           />
+        ) : !detail && !loaded ? (
+          <div className="landing"><div className="landing-quiet">Loading runs…</div></div>
+        ) : !detail && selected ? (
+          <div className="landing">
+            <div className="section-title">Run not found</div>
+            <div className="landing-quiet">The run "{selected}" is not in the loaded set - it may have been deleted, or the link is stale.</div>
+            <button className="link-btn" onClick={() => setSelected(null)}>Back to the overview</button>
+          </div>
         ) : !detail && compare.length === 1 ? (
           <div className="empty">
             Pick a second run with <span className="mono">⇆</span> to compare.
@@ -374,7 +384,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
               const attentionRow = (r: Run, what: string) => (
                 <div key={r.run_id} className="landing-row" role="button" tabIndex={0}
                      onClick={() => setSelected(r.run_id)}
-                     onKeyDown={(e) => { if (e.key === "Enter") setSelected(r.run_id); }}>
+                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(r.run_id); } }}>
                   <span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span>
                   <span className="landing-what">{what}</span>
                   <span className="card-name landing-run">{r.label ?? r.run_id}</span>
