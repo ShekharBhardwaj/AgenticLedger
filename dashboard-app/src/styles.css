@@ -840,11 +840,17 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
   .topbar h1 { display: none; }
   .tab { padding: 6px 9px; font-size: 13px; }
 
-  /* Master-detail becomes one pane at a time. */
+  /* One pane at a time. Default (Sessions): no selection shows the list
+     sidebar, selection shows the detail. */
   .sidebar { width: 100%; min-width: 0; border-right: none; }
   .layout > .main { display: none; }
   .layout.has-detail > .sidebar { display: none; }
   .layout.has-detail > .main { display: block; padding: 12px; }
+  /* Runs: no selection shows the OVERVIEW (the .main landing pane, itself
+     a scoped, navigable triage screen) instead of the raw sidebar list;
+     the mobile back button clears the selection and returns to it. */
+  .layout.runs:not(.has-detail) > .sidebar { display: none; }
+  .layout.runs:not(.has-detail) > .main { display: block; padding: 12px; }
   /* Reports and Settings render .main without a .layout — full width. */
   .main.reports, .main.settings { padding: 12px; }
 
@@ -1160,3 +1166,9 @@ h2.page-title { font-size: 18px; margin: 0 0 4px; font-family: var(--mono); }
   color: inherit; font: inherit;
 }
 .brand:hover h1 { opacity: 0.85; }
+
+/* Landing heading + scope line (Astra: scope belongs near the numbers). */
+.landing-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.landing-head .page-title { margin: 0; }
+.landing-scope-top { color: var(--text-dim); font-size: 13px; }
+.section-note { color: var(--text-dim); font-weight: 400; font-size: 12px; }

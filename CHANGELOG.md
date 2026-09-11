@@ -53,7 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   away.
 
 ### Added
-- **The landing overview.** The unselected Loop Lens pane, once a
+- **The landing overview** (refined after review). The unselected
+  Loop Lens pane is a working overview scoped to the CURRENT project
+  filter (the numbers move with the list, not stuck on all runs), led
+  by a "Run overview" heading and a "Latest N loaded runs · <scope>"
+  line by the figures. "Needs attention" is live concerns only
+  (flagged runs); deliberately blocked runs get their own
+  informational section with their real dates, never dressed up as
+  urgent. It stays visible at every width now, including phones (the
+  overview is the mobile home, itself navigable). An attention queue
+  with Inspect, an active-now table, and a recent-runs table complete
+  it. The unselected Loop Lens pane, once a
   bare "select a run", is now a working overview: a scoped summary
   (recorded spend, recorded calls, how many runs need attention), an
   attention queue of flagged and blocked runs each with what happened,

@@ -210,7 +210,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   const ordered = pinnedFirst(timeSorted(runs.filter((r) => matchesFilter(r, projectFilter)), oldestFirst));
 
   return (
-    <div className={`layout ${selected ? "has-detail" : ""}`}>
+    <div className={`layout runs ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
         {error && <div className="empty">{error}</div>}
         {runs.length === 0 && !error && (
@@ -331,14 +331,26 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             <div className="landing-quiet">{error}</div>
             <button className="link-btn" onClick={refresh}>Retry</button>
           </div>
-        ) : !detail && runs.length > 0 ? (
+        ) : !detail && ordered.length > 0 ? (
           <div className="landing">
             {(() => {
-              const concerns = runs.filter((r) => r.status === "flagged" || r.status === "stopped");
-              const active = runs.filter((r) => r.status === "running");
-              const recent = runs.filter((r) => !concerns.includes(r) && !active.includes(r)).slice(0, 6);
-              const spend = runs.reduce((a, r) => a + (r.total_cost_usd || 0), 0);
-              const calls = runs.reduce((a, r) => a + (r.call_count || 0), 0);
+              // The overview is scoped to exactly what the sidebar shows:
+              // the project filter must move the numbers with the list.
+              const scoped = ordered;
+              const projLabel = !projectFilter ? "all projects"
+                : projectFilter === "__starred__" ? "starred"
+                : projectFilter.startsWith("run:") ? `run "${projectFilter.slice(4)}"`
+                : `project "${projectFilter}"`;
+              // "Needs attention" is LIVE concerns only: flagged runs.
+              // A deliberate operator block, often days old, is not a
+              // to-do; it gets its own informational section with its date.
+              const attention = scoped.filter((r) => r.status === "flagged");
+              const blocked = scoped.filter((r) => r.status === "stopped");
+              const active = scoped.filter((r) => r.status === "running");
+              const recent = scoped.filter((r) =>
+                !attention.includes(r) && !blocked.includes(r) && !active.includes(r)).slice(0, 25);
+              const spend = scoped.reduce((a, r) => a + (r.total_cost_usd || 0), 0);
+              const calls = scoped.reduce((a, r) => a + (r.call_count || 0), 0);
               const attentionRow = (r: Run, what: string) => (
                 <div key={r.run_id} className="landing-row" role="button" tabIndex={0}
                      onClick={() => setSelected(r.run_id)}
@@ -352,6 +364,12 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
               );
               return (
                 <>
+                  <div className="landing-head">
+                    <h2 className="page-title">Run overview</h2>
+                    <div className="landing-scope-top">
+                      Latest {plural(scoped.length, "loaded run")} · {projLabel}
+                    </div>
+                  </div>
                   <div className="landing-summary">
                     <div className="ls-metric">
                       <div className="ls-value mono">{fmtUsd(spend)}</div>
@@ -362,18 +380,38 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                       <div className="ls-label">recorded calls</div>
                     </div>
                     <div className="ls-metric">
-                      <div className="ls-value mono" style={{ color: concerns.length ? "var(--amber)" : undefined }}>
-                        {concerns.length}
+                      <div className="ls-value mono" style={{ color: attention.length ? "var(--amber)" : undefined }}>
+                        {attention.length}
                       </div>
                       <div className="ls-label">need attention</div>
                     </div>
                   </div>
 
                   <div className="section-title">Needs attention</div>
-                  {concerns.length === 0
-                    ? <div className="landing-quiet">No recorded concerns in the loaded runs.</div>
-                    : concerns.map((r) => attentionRow(r, r.status === "flagged"
-                        ? plural(r.flagged_calls, "flagged call") : "calls blocked"))}
+                  {attention.length === 0
+                    ? <div className="landing-quiet">No flagged runs in this scope.</div>
+                    : attention.map((r) => attentionRow(r, plural(r.flagged_calls, "flagged call")))}
+
+                  {blocked.length > 0 && (
+                    <>
+                      <div className="section-title">Blocked runs
+                        <span className="section-note"> · deliberate; no action required</span>
+                      </div>
+                      <table className="landing-table">
+                        <tbody>
+                          {blocked.map((r) => (
+                            <tr key={r.run_id} className="landing-trow" onClick={() => setSelected(r.run_id)}>
+                              <td className="lt-name">{r.label ?? r.run_id}</td>
+                              <td><span className="badge stopped">Calls blocked</span></td>
+                              <td className="num mono">{fmtUsd(r.total_cost_usd)}</td>
+                              <td className="num mono">{fmtNum(r.call_count)}</td>
+                              <td className="lt-when dim">blocked, last activity {fmtAgo(r.last_call_at)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
 
                   {active.length > 0 && (
                     <>
@@ -418,7 +456,6 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                   )}
 
                   <div className="landing-scope">
-                    Across the {plural(runs.length, "most recent run")} this view loaded.
                     For spend by day, model, and project, open <b>Reports</b>.
                   </div>
                 </>
