@@ -422,14 +422,10 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selected, setSelected] = useState<string | null>(focusSession ?? null);
 
-  const routedId = useRef<string | null>(focusSession ?? null);
+  const focusSessionRef = useRef<string | null>(focusSession ?? null);
+  useEffect(() => { focusSessionRef.current = focusSession ?? null; setSelected(focusSession ?? null); }, [focusSession]);
   useEffect(() => {
-    routedId.current = focusSession ?? null;
-    setSelected(focusSession ?? null);
-  }, [focusSession]);
-  useEffect(() => {
-    if (selected === routedId.current) return;
-    routedId.current = selected;
+    if (focusSessionRef.current === selected) return;
     onSelectedChange?.(selected);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [selected]);

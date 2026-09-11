@@ -116,7 +116,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   onSelectedChange?: (id: string | null) => void;
 }) {
   const [runs, setRuns] = useState<Run[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(focusRun ?? null);
   const [compare, setCompare] = useState<string[]>([]);
   const toggleCompare = (id: string) =>
     setCompare((cur) =>
@@ -164,14 +164,17 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   // click and must push to the router. A ref, not a boolean, so a no-op
   // setSelected(sameId) can never leave the guard wedged (which silently
   // dropped every other selection from the URL).
-  const routedId = useRef<string | null>(focusRun ?? null);
+  // focusRunRef tracks the id currently in the URL. external -> internal:
+  // when the URL changes (deep link, Back, tab return) sync selected to it.
+  // internal -> external: a user click makes selected diverge from the URL,
+  // so push it to the router; but NEVER echo a value that already matches
+  // the URL, which on mount (selected seeded from the prop) would otherwise
+  // push null and ping-pong selection every commit, storming the detail
+  // fetch to ERR_INSUFFICIENT_RESOURCES.
+  const focusRunRef = useRef<string | null>(focusRun ?? null);
+  useEffect(() => { focusRunRef.current = focusRun ?? null; setSelected(focusRun ?? null); }, [focusRun]);
   useEffect(() => {
-    routedId.current = focusRun ?? null;
-    setSelected(focusRun ?? null);
-  }, [focusRun]);
-  useEffect(() => {
-    if (selected === routedId.current) return;
-    routedId.current = selected;
+    if (focusRunRef.current === selected) return;
     onSelectedChange?.(selected);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [selected]);
@@ -208,22 +211,38 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
     });
   }, [refresh]);
 
+  // Live-refresh key: the selected run's own call count. It changes ONLY
+  // when a real call lands, so the detail refetches as the run works
+  // without refiring on every unrelated /api/runs refresh. Depending on
+  // the whole `runs` array here caused a fetch storm — a new array
+  // identity every ~400ms launched four fetches each time until the
+  // browser ran out of connections (ERR_INSUFFICIENT_RESOURCES).
+  const liveCallCount = runs.find((r) => r.run_id === selected)?.call_count ?? 0;
+
   useEffect(() => {
-    if (!selected) { setDetail(null); return; }   // home / deselect clears the detail
+    if (!selected) { setDetail(null); setIterations([]); setFlags([]); return; }
     let alive = true;
     const id = selected;
     const fresh = () => alive && id === selectedRef.current;
     get<Run>(`/api/runs/${encodeURIComponent(id)}`).then((v) => { if (fresh()) setDetail(v); }).catch(() => { if (fresh()) setDetail(null); });
-    get<Iteration[]>(`/api/runs/${encodeURIComponent(selected)}/iterations`)
-      .then(setIterations)
-      .catch(() => setIterations([]));
-    get<CacheAudit>(`/api/runs/${encodeURIComponent(selected)}/cache-audit`)
-      .then(setAudit).catch(() => setAudit(null));
-    get<FlaggedCall[]>(`/api/runs/${encodeURIComponent(selected)}/flags`)
-      .then(setFlags)
-      .catch(() => setFlags([]));
-      return () => { alive = false; };
-  }, [selected, runs]);
+    get<Iteration[]>(`/api/runs/${encodeURIComponent(id)}/iterations`)
+      .then((v) => { if (fresh()) setIterations(v); }).catch(() => { if (fresh()) setIterations([]); });
+    get<FlaggedCall[]>(`/api/runs/${encodeURIComponent(id)}/flags`)
+      .then((v) => { if (fresh()) setFlags(v); }).catch(() => { if (fresh()) setFlags([]); });
+    return () => { alive = false; };
+  }, [selected, liveCallCount]);
+
+  // The cache audit is heavier (it reads the run's calls); fetch it once
+  // per selection, not on every new call.
+  useEffect(() => {
+    if (!selected) { setAudit(null); return; }
+    let alive = true;
+    const id = selected;
+    get<CacheAudit>(`/api/runs/${encodeURIComponent(id)}/cache-audit`)
+      .then((v) => { if (alive && id === selectedRef.current) setAudit(v); })
+      .catch(() => { if (alive && id === selectedRef.current) setAudit(null); });
+    return () => { alive = false; };
+  }, [selected]);
 
   const maxCost = Math.max(...iterations.map((i) => i.cost_usd || 0), 0.000001);
 

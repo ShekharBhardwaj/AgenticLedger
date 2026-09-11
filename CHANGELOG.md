@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   target-size pass is tracked for 0.14.)
 
 ### Fixed
+- **A runaway fetch loop that could exhaust the browser
+  (ERR_INSUFFICIENT_RESOURCES).** Selecting a run while any run was
+  active drove the detail view into a tight loop, firing thousands of
+  `/api/runs/{id}` requests a second until the browser ran out of
+  connections and the detail never rendered. Cause: the run selection
+  synced two ways (URL to state and state to URL) through a guard that
+  ping-ponged when the selected id was seeded empty, flipping selection
+  every commit. The sync now never echoes a selection that already
+  matches the URL, and the detail refetches only when the selected
+  run's own call count changes. Verified: zero refetches on a static
+  run while another loops, bounded live updates on the active run, and
+  correct URL routing across selections.
 - **The topbar no longer overflows at 320px.** It wraps now; verified
   no horizontal page scroll at a 320px viewport.
 - **A pairing key no longer lingers in the address bar.** The QR link's
