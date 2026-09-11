@@ -481,7 +481,7 @@ body {
 }
 .badge.running  { background: rgba(78,161,255,.14); color: var(--accent); }
 .badge.ended    { background: var(--bg-hover); color: var(--text-dim); }
-.badge.complete { background: rgba(63,185,80,.14);  color: var(--green); }
+.badge.complete { background: var(--accent-soft); color: var(--accent); }
 .badge.flagged  { background: rgba(210,153,34,.16); color: var(--amber); }
 .badge.error    { background: rgba(248,81,73,.14);  color: var(--red); }
 .badge.fw       { background: var(--bg-hover); color: var(--text-dim); font-family: var(--mono); font-weight: 500; }

@@ -145,19 +145,33 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   // the confirmed value or a visible error - never a silent failure that
   // leaves the user believing in a ceiling that does not exist.
   const [ceilingState, setCeilingState] = useState<"saving" | string | null>(null);
+  // The kill switch is trust-critical: a block that silently fails leaves
+  // the operator believing spend is stopped. Same visible states as the
+  // ceiling save.
+  const [blockState, setBlockState] = useState<"working" | string | null>(null);
   const selectedRef = useRef<string | null>(null);
   useEffect(() => { selectedRef.current = selected; setFeed([]); }, [selected]);
 
-  useEffect(() => { setConfirmStop(false); setCopied(false); }, [selected]);
+  useEffect(() => {
+    setConfirmStop(false); setCopied(false); setBlockState(null);
+    setCeilingEdit(null); setCeilingState(null);   // never carry one run's typed ceiling onto another
+  }, [selected]);
   // The URL owns the selection: a run id in the hash lands here, and
   // Back to a bare #/runs clears the detail (premium spec, section 5).
-  // The URL owns selection. A prop-driven change (deep link, tab return)
-  // must NOT echo back to the router, or the initial null on remount
-  // clobbers the restored run out of the URL before the prop syncs in.
-  const propDriven = useRef(true);
-  useEffect(() => { propDriven.current = true; setSelected(focusRun ?? null); }, [focusRun]);
+  // The URL owns selection. routedId is the id currently reflected in the
+  // hash: a change matching it came FROM the router (deep link, Back, tab
+  // return) and must not echo back; a change diverging from it came from a
+  // click and must push to the router. A ref, not a boolean, so a no-op
+  // setSelected(sameId) can never leave the guard wedged (which silently
+  // dropped every other selection from the URL).
+  const routedId = useRef<string | null>(focusRun ?? null);
   useEffect(() => {
-    if (propDriven.current) { propDriven.current = false; return; }
+    routedId.current = focusRun ?? null;
+    setSelected(focusRun ?? null);
+  }, [focusRun]);
+  useEffect(() => {
+    if (selected === routedId.current) return;
+    routedId.current = selected;
     onSelectedChange?.(selected);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [selected]);
@@ -177,7 +191,9 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   };
 
   const refresh = useCallback(() => {
-    get<Run[]>("/api/runs").then(setRuns).catch((e) => setError(String(e)));
+    get<Run[]>("/api/runs")
+      .then((v) => { setRuns(v); setError(null); })
+      .catch((e) => setError(String(e?.message || e)));
     listProjects().then((r) => setProjects(r.projects)).catch(() => {});
   }, []);
 
@@ -192,7 +208,10 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
 
   useEffect(() => {
     if (!selected) { setDetail(null); return; }   // home / deselect clears the detail
-    get<Run>(`/api/runs/${encodeURIComponent(selected)}`).then(setDetail).catch(() => setDetail(null));
+    let alive = true;
+    const id = selected;
+    const fresh = () => alive && id === selectedRef.current;
+    get<Run>(`/api/runs/${encodeURIComponent(id)}`).then((v) => { if (fresh()) setDetail(v); }).catch(() => { if (fresh()) setDetail(null); });
     get<Iteration[]>(`/api/runs/${encodeURIComponent(selected)}/iterations`)
       .then(setIterations)
       .catch(() => setIterations([]));
@@ -201,6 +220,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
     get<FlaggedCall[]>(`/api/runs/${encodeURIComponent(selected)}/flags`)
       .then(setFlags)
       .catch(() => setFlags([]));
+      return () => { alive = false; };
   }, [selected, runs]);
 
   const maxCost = Math.max(...iterations.map((i) => i.cost_usd || 0), 0.000001);
@@ -383,13 +403,13 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                       <div className="ls-value mono" style={{ color: attention.length ? "var(--amber)" : undefined }}>
                         {attention.length}
                       </div>
-                      <div className="ls-label">need attention</div>
+                      <div className="ls-label">recorded concerns</div>
                     </div>
                   </div>
 
-                  <div className="section-title">Needs attention</div>
+                  <div className="section-title">Recorded concerns</div>
                   {attention.length === 0
-                    ? <div className="landing-quiet">No flagged runs in this scope.</div>
+                    ? <div className="landing-quiet">No recorded concerns in this scope.</div>
                     : attention.map((r) => attentionRow(r, plural(r.flagged_calls, "flagged call")))}
 
                   {blocked.length > 0 && (
@@ -483,20 +503,26 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                 <button className="link-btn" style={{ marginLeft: 10 }}
                         title="Lifts the block: calls under this run id flow again. Restarts nothing; if your loop exited, start it yourself."
                         onClick={() => {
+                          if (blockState === "working") return;
+                          setBlockState("working");
                           apiDel(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`)
                             .then(() => get<Run>(`/api/runs/${encodeURIComponent(detail.run_id)}`))
-                            .then((r) => setRunStatus(r.run_id, r.status))
-                            .then(refresh);
+                            .then((r) => { setRunStatus(r.run_id, r.status); setBlockState(null); refresh(); })
+                            .catch((e) => setBlockState(
+                              `could not lift the block: ${e?.message || "request failed"}. The run may still be blocked - reopen to check.`));
                         }}>
-                  allow calls again
+                  {blockState === "working" ? "lifting…" : "allow calls again"}
                 </button>
               ) : confirmStop ? (
                 <span className="key-actions" style={{ marginLeft: 10 }}>
                   <button className="link-btn project-purge"
                           onClick={() => {
+                            if (blockState === "working") return;
+                            setBlockState("working");
                             post(`/api/runs/${encodeURIComponent(detail.run_id)}/stop`, {})
-                              .then(() => setRunStatus(detail.run_id, "stopped"))
-                              .then(refresh);
+                              .then(() => { setRunStatus(detail.run_id, "stopped"); setBlockState(null); refresh(); })
+                              .catch((e) => setBlockState(
+                                `the block did NOT take: ${e?.message || "request failed"}. This run's calls are still flowing - retry.`));
                             setConfirmStop(false);
                           }}>
                     {detail.status === "running" || detail.status === "flagged"
@@ -518,6 +544,9 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                 </button>
               )}
             </h2>
+            {blockState && blockState !== "working" && (
+              <div className="ceiling-error" role="alert">{blockState}</div>
+            )}
             <div className="muted">
               <button
                 className="session-id mono"
@@ -554,11 +583,10 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
               const frac = ceiling ? Math.min(spent / ceiling, 1) : 0;
               const saveCeiling = (v: number) => {
                 setCeilingState("saving");
-                setCeilingEdit(null);
                 setLabel("run", detail.run_id, { budget_usd: v })
-                  .then(() => { setCeilingState(null); refresh(); })
+                  .then(() => { setCeilingState(null); setCeilingEdit(null); refresh(); })
                   .catch((e) => setCeilingState(
-                    `ceiling NOT saved: ${e?.message || "request failed"} - the wall is unchanged`));
+                    `ceiling may not have saved: ${e?.message || "request failed"}. Reopen the run to confirm the current ceiling before retrying.`));
               };
               const submitCeiling = () => {
                 const v = parseFloat(ceilingEdit ?? "");
@@ -766,7 +794,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                         </span>
                         <span className="mono live-num">{fmtNum(ev.tokens_in)} / {fmtNum(ev.tokens_out)} tok</span>
                         <span className="mono live-num">{ev.latency_ms ? `${Math.round(ev.latency_ms)} ms` : ""}</span>
-                        <span className="mono live-num">{fmtUsd(ev.cost_usd)}</span>
+                        <span className="mono live-num">{ev.cost_usd == null ? "Unknown" : fmtUsd(ev.cost_usd)}</span>
                         <span className="live-verdict">
                           {ev.blocked ? <span className="badge blocked">blocked</span>
                             : ev.error ? <span className="badge error">error</span>

@@ -5,7 +5,16 @@
 
 const params = new URLSearchParams(window.location.search);
 const urlKey = params.get("api_key") || params.get("token");
-if (urlKey) localStorage.setItem("agenticledger.key", urlKey);
+if (urlKey) {
+  localStorage.setItem("agenticledger.key", urlKey);
+  // Scrub the credential from the address bar immediately: only the
+  // deliberate pairing QR carries a key, and a copied link must never
+  // leak full access. Keep the path and hash; drop the query.
+  try {
+    const clean = window.location.pathname + window.location.hash;
+    window.history.replaceState(null, "", clean);
+  } catch { /* history unavailable: the key is at least out of new links */ }
+}
 
 export const apiKey: string | null =
   urlKey || localStorage.getItem("agenticledger.key");

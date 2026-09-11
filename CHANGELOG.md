@@ -8,6 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A pairing key no longer lingers in the address bar.** The QR link's
+  `?api_key=` was read into storage but left in the URL, so a copied
+  link leaked full access. It is scrubbed to storage on load now;
+  only the deliberate pairing flow carries a key.
+- **The kill switch reports failure.** Block and Allow-calls-again had
+  no error path: a failed block closed the dialog as if it worked
+  while calls kept flowing. They now show a working state, block
+  duplicate submits, and surface a visible error telling the operator
+  the block did not take.
+- **Selecting run after run keeps the URL honest.** An earlier guard
+  used a boolean that a no-op could wedge, so every other selection
+  silently failed to update the URL (copied links and Back then
+  targeted the wrong run). It tracks the routed id now; verified three
+  sequential selections produce three correct hashes.
+- **A run's data can't render under another run.** The detail and
+  session-calls fetches are guarded against out-of-order completion,
+  so a fast switch never misattributes one run's record to another
+  the operator might then act on.
+- **Fetch failures never masquerade as emptiness.** A failed
+  `/api/sessions` no longer shows "nothing captured yet", a failed
+  search no longer reads as "no matches", and the runs error clears on
+  a successful retry instead of sticking over loaded data. Each is a
+  distinct error state with Retry.
+- **`Completion declared` is not painted green.** The badge used the
+  favorable-financial color, reintroducing the success inference the
+  label was worded to avoid; it is neutral accent now, per the spec.
+- **A typed ceiling can't leak between runs, and a failed save keeps
+  your input.** The editor resets on run switch and closes only on a
+  confirmed save; a rejection preserves the value and words itself as
+  "may not have saved, reopen to confirm" rather than a false
+  certainty.
+- **"Recorded concerns", not "Needs attention".** The landing matches
+  the detail band and the spec: a flagged run is a recorded concern
+  with its date, not a standing imperative to-do.
 - **The brand mark is home.** Clicking the logo or wordmark now
   returns to the Loop Lens overview and clears the open run, the way
   a product's name is expected to behave. (A deselect also correctly

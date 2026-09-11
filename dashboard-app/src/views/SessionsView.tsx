@@ -422,16 +422,22 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selected, setSelected] = useState<string | null>(focusSession ?? null);
 
-  const propDriven = useRef(true);
-  useEffect(() => { propDriven.current = true; setSelected(focusSession ?? null); }, [focusSession]);
+  const routedId = useRef<string | null>(focusSession ?? null);
   useEffect(() => {
-    if (propDriven.current) { propDriven.current = false; return; }
+    routedId.current = focusSession ?? null;
+    setSelected(focusSession ?? null);
+  }, [focusSession]);
+  useEffect(() => {
+    if (selected === routedId.current) return;
+    routedId.current = selected;
     onSelectedChange?.(selected);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [selected]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);   // sessions fetch failed
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("calls");
   const [projects, setProjects] = useState<string[]>([]);
   const [projectFilter, setProjectFilter] = useState("");
@@ -440,7 +446,9 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    get<Session[]>("/api/sessions").then(setSessions).catch(() => {});
+    get<Session[]>("/api/sessions")
+      .then((v) => { setSessions(v); setLoadError(null); })
+      .catch((e) => setLoadError(String(e?.message || e)));
     listProjects().then((r) => setProjects(r.projects)).catch(() => {});
     // keep an open session view fresh too
     setSelected((cur) => {
@@ -455,15 +463,22 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   }, [refresh]);
 
   useEffect(() => {
-    if (!selected) return;
-    get<Call[]>(`/session/${encodeURIComponent(selected)}`).then(setCalls).catch(() => setCalls([]));
+    if (!selected) { setCalls([]); return; }
+    let alive = true;
+    const id = selected;
+    // Discard an out-of-order response for a session no longer selected.
+    get<Call[]>(`/session/${encodeURIComponent(id)}`)
+      .then((v) => { if (alive && id === selected) setCalls(v); })
+      .catch(() => { if (alive && id === selected) setCalls([]); });
+    return () => { alive = false; };
   }, [selected]);
 
   useEffect(() => {
-    if (!query.trim()) { setResults(null); return; }
+    if (!query.trim()) { setResults(null); setSearchError(null); return; }
     const t = window.setTimeout(() => {
       get<Call[]>(`/api/search?q=${encodeURIComponent(query.trim())}`)
-        .then(setResults).catch(() => setResults([]));
+        .then((v) => { setResults(v); setSearchError(null); })
+        .catch((e) => { setResults(null); setSearchError(String(e?.message || e)); });
     }, 300);
     return () => window.clearTimeout(t);
   }, [query]);
@@ -678,7 +693,11 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
             ))}
           </div>
         )}
-        {sessions.length === 0 && results === null ? (
+        {searchError ? (
+          <div className="empty">Search failed: {searchError} <button className="link-btn" onClick={() => setQuery((q) => q + " ")}>Retry</button></div>
+        ) : loadError && sessions.length === 0 ? (
+          <div className="empty">Could not load sessions: {loadError} <button className="link-btn" onClick={refresh}>Retry</button></div>
+        ) : sessions.length === 0 && results === null ? (
           <WiringGuide />
         ) : shown.length === 0 ? (
           <div className="empty">
