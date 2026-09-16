@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/agentic-ledger)](https://pypi.org/project/agentic-ledger/)
 [![Python versions](https://img.shields.io/pypi/pyversions/agentic-ledger)](https://pypi.org/project/agentic-ledger/)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/shekharbhardwaj/agentic-ledger)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/LICENSE)
 [![MCP server on Glama](https://glama.ai/mcp/servers/ShekharBhardwaj/AgenticLedger/badges/score.svg)](https://glama.ai/mcp/servers/ShekharBhardwaj/AgenticLedger)
 [![BYOAIK status](https://qhfc1deef2.execute-api.us-east-1.amazonaws.com/tools/agentic-ledger/badge.svg)](https://www.byoaik.com/tools/agentic-ledger/)
 
@@ -25,7 +25,7 @@ Works with **any agent framework**, **any LLM provider**, **any model gateway**.
 
 Agentic Ledger runs as a transparent proxy between your agent and the LLM provider. It intercepts every request and response, assigns it an `action_id`, stores it, and returns the upstream response unmodified. Your agent never knows the proxy is there. The full picture, with
 diagrams and a module map for contributors, lives in
-[ARCHITECTURE.md](ARCHITECTURE.md).
+[ARCHITECTURE.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/ARCHITECTURE.md).
 
 ```
 Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any LLM
@@ -41,7 +41,7 @@ Your Agent  →  Agentic Ledger Proxy  →  OpenAI / Anthropic / LiteLLM / any L
 
 **Step 1 - Start the proxy**
 
-Coming from Helicone or LangSmith? The [migration page](docs/migrating.md) does the translation in two lines. Running a context compressor like Headroom? [They chain](docs/chaining.md).
+Coming from Helicone or LangSmith? The [migration page](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/migrating.md) does the translation in two lines. Running a context compressor like Headroom? [They chain](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/chaining.md).
 
 Two commands, zero config, no terminal held hostage:
 
@@ -74,7 +74,7 @@ docker run -p 8000:8000 \
 > The image is multi-arch (amd64/arm64), runs as a non-root user, and every
 > release is signed with Sigstore and ships an SBOM. Hardening a shared
 > deployment (TLS, auth keys, redaction, verification)? See the
-> [deployment guide](docs/deployment.md).
+> [deployment guide](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/deployment.md).
 
 > **Using Anthropic / Claude?** Nothing to configure: with no upstream
 > set, the proxy routes each call by its wire format, so Anthropic-style
@@ -156,9 +156,9 @@ client = anthropic.Anthropic(
 )
 ```
 
-**Azure OpenAI:** point `AzureOpenAI(azure_endpoint="http://localhost:8000")` at the ledger with your resource set as the upstream; deployments are priced from the model the response names. See the [Azure guide](docs/integrations/azure-openai.md).
+**Azure OpenAI:** point `AzureOpenAI(azure_endpoint="http://localhost:8000")` at the ledger with your resource set as the upstream; deployments are priced from the model the response names. See the [Azure guide](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/azure-openai.md).
 
-**AWS Bedrock:** install `agentic-ledger[bedrock]`, give the ledger AWS credentials through the standard chain, and point `boto3` (`endpoint_url`) or Claude Code (`ANTHROPIC_BEDROCK_BASE_URL`) at it; the ledger re-signs each call itself. Both wires are covered: InvokeModel and the modern Converse/ConverseStream APIs. See the [Bedrock guide](docs/integrations/bedrock.md).
+**AWS Bedrock:** install `agentic-ledger[bedrock]`, give the ledger AWS credentials through the standard chain, and point `boto3` (`endpoint_url`) or Claude Code (`ANTHROPIC_BEDROCK_BASE_URL`) at it; the ledger re-signs each call itself. Both wires are covered: InvokeModel and the modern Converse/ConverseStream APIs. See the [Bedrock guide](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/bedrock.md).
 
 **LiteLLM / OpenRouter / any gateway:**
 ```bash
@@ -287,7 +287,7 @@ http://localhost:8000, and see it in Sessions.
    boto3: `boto3.client("bedrock-runtime", endpoint_url="http://localhost:8000")`.
 4. Make a call; it appears with an orange B mark. The ledger strips the
    caller's identity and re-signs with its own credentials. Full guide:
-   [docs/integrations/bedrock.md](docs/integrations/bedrock.md).
+   [docs/integrations/bedrock.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/bedrock.md).
 
 **Azure OpenAI**
 
@@ -300,7 +300,7 @@ http://localhost:8000, and see it in Sessions.
    your `api-key` header as it was.
 3. Calls are tagged `azure-openai` and priced by the model the RESPONSE
    names, so deployment aliases can't hide the real model. Full guide:
-   [docs/integrations/azure-openai.md](docs/integrations/azure-openai.md).
+   [docs/integrations/azure-openai.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/azure-openai.md).
 
 **Local models (LM Studio, Ollama with the OpenAI API)**
 
@@ -311,7 +311,7 @@ http://localhost:8000, and see it in Sessions.
    ```
 2. `export OPENAI_BASE_URL=http://localhost:8000/v1` in the agent.
 3. Calls appear with a purple mark and $0 cost. Full guide:
-   [docs/integrations/lm-studio.md](docs/integrations/lm-studio.md).
+   [docs/integrations/lm-studio.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/lm-studio.md).
 
 **Gateways (OpenRouter, LiteLLM)**
 
@@ -323,11 +323,11 @@ http://localhost:8000, and see it in Sessions.
 2. `export OPENAI_BASE_URL=http://localhost:8000/v1`; keep the gateway
    key as it was.
 3. Gateway-prefixed model ids ("anthropic/claude-...") price correctly
-   via substring matching. Guides: [openrouter.md](docs/integrations/openrouter.md),
-   [litellm.md](docs/integrations/litellm.md).
+   via substring matching. Guides: [openrouter.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/openrouter.md),
+   [litellm.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/litellm.md).
 
 Framework-specific recipes (CrewAI, LangGraph, AutoGen, Vercel AI SDK,
-pydantic-ai, and more) live in [docs/integrations/](docs/integrations/).
+pydantic-ai, and more) live in [docs/integrations/](https://github.com/ShekharBhardwaj/AgenticLedger/tree/main/docs/integrations/).
 
 ---
 
@@ -413,14 +413,14 @@ Both OTLP/HTTP encodings are accepted: JSON always, protobuf when the
 should switch to HTTP: `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
 
 **Framework guides** - one per integration in
-[docs/integrations](docs/integrations/README.md): Claude Code, Codex CLI,
+[docs/integrations](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/README.md): Claude Code, Codex CLI,
 opencode, OpenClaw, BMAD-METHOD, LangGraph/LangChain, CrewAI, OpenAI Agents
 SDK, Gemini CLI, AutoGen/AG2, Pydantic AI, Vercel AI SDK, LiteLLM,
 OpenRouter, and LM Studio (fully offline: local model, local ledger).
 
 **Production deployment** - TLS termination, auth keys, redaction, image
 signature/SBOM verification, enterprise mirrors, and scaling guidance in
-[docs/deployment.md](docs/deployment.md).
+[docs/deployment.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/deployment.md).
 
 ---
 
@@ -448,7 +448,7 @@ provider latency (hundreds of ms per call) dwarfs the proxy's overhead by
 an order of magnitude. Postgres numbers vary with your server; the same
 script measures them with `--dsn`. Cost math has its own guardrails and
 a five-minute parity check against your provider console: see
-[docs/accuracy.md](docs/accuracy.md).
+[docs/accuracy.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/accuracy.md).
 
 ## What gets captured
 
@@ -669,7 +669,7 @@ env-always-wins rule.
 | Variable | Default | Description |
 |---|---|---|
 | `AGENTICLEDGER_ALERT_WEBHOOK_URL` | _(none)_ | URL to POST alert payloads to. Required for any alerts to fire. |
-| `AGENTICLEDGER_DIGEST_HOUR` | _(off)_ | UTC hour (0–23) to POST a daily spend digest - last 24h totals, cache savings, top models/agents - to the alert webhook. Slack-incoming-webhook friendly (`text`). |
+| `AGENTICLEDGER_DIGEST_HOUR` | _(off)_ | UTC hour (0-23) to POST a daily spend digest - last 24h totals, cache savings, top models/agents - to the alert webhook. Slack-incoming-webhook friendly (`text`). |
 | `AGENTICLEDGER_ALERT_COST_PER_CALL` | _(none)_ | Alert when a single call costs more than `$X`. |
 | `AGENTICLEDGER_ALERT_LATENCY_MS` | _(none)_ | Alert when a single call takes longer than `Xms`. |
 | `AGENTICLEDGER_ALERT_ERROR_RATE` | _(none)_ | Alert when session error rate exceeds `X` (e.g. `0.5` = 50%). |
@@ -894,6 +894,7 @@ Agentic Ledger fires a `POST` to your webhook URL when a threshold is breached. 
 | `high_error_rate` | Session error rate exceeds `AGENTICLEDGER_ALERT_ERROR_RATE` |
 | `daily_spend` | Daily total spend crosses `AGENTICLEDGER_ALERT_DAILY_SPEND` |
 | `budget_exceeded` | A budget limit is hit and `AGENTICLEDGER_BUDGET_ACTION` is `warn` or `both` |
+| `run_ceiling_approaching` | A run's spend reaches 80% of its cost ceiling (fired once per run) |
 | `loop_flag` | The loop engine raised flags on a call (`repeat_tool_call`, `step_budget_exceeded`, `completion_promise`) |
 | `run_complete` | A run's completion promise was seen - the payload carries the full run summary (iterations, cost, tokens, flagged calls) |
 
@@ -1060,7 +1061,7 @@ which pip is the right one - then restart. The proxy prints its version on the f
 needs a real provider API key from [console.anthropic.com](https://console.anthropic.com)
 (or platform.openai.com). A Claude Code subscription login is **not** an API
 key and cannot be used. No key? Replay for free against a local model - see
-the [LM Studio guide](docs/integrations/lm-studio.md).
+the [LM Studio guide](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/lm-studio.md).
 
 **`incompatible architecture (have 'arm64', need 'x86_64')`** on macOS - your
 terminal is running under Rosetta, so Python picks its x86_64 slice while pip

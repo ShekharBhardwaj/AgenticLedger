@@ -9,7 +9,10 @@ always override the config file.
 Reads config from environment variables:
 
   Core:
-    AGENTICLEDGER_UPSTREAM_URL          LLM endpoint to proxy (default: https://api.openai.com)
+    AGENTICLEDGER_UPSTREAM_URL          LLM endpoint to proxy. Default: none, so each
+                                        call is routed by its wire format (Anthropic-style
+                                        calls to Anthropic, OpenAI-style calls to OpenAI).
+                                        Set it to pin one upstream (a gateway or provider).
     AGENTICLEDGER_DSN                   Database URL (default: sqlite:///agenticledger.db,
                                       relative to the cwd; `agenticledger start` defaults to
                                       ~/.agenticledger/agenticledger.db instead)
@@ -18,34 +21,34 @@ Reads config from environment variables:
     AGENTICLEDGER_API_KEY               Master admin key; protects dashboard/API/management
                                       endpoints and bootstraps scoped API tokens (default: none)
     AGENTICLEDGER_INGEST_KEY            Require x-agenticledger-ingest-key on the proxy path,
-                                      closing the open relay (default: none — open)
+                                      closing the open relay (default: none; open)
     AGENTICLEDGER_EXPORT_HMAC_KEY       Sign compliance exports with a tamper-evident keyed
                                       hmac-sha256 tag instead of a sha256 checksum (default: none)
     AGENTICLEDGER_EXTRA_PATHS           Extra comma-separated paths to capture (default: none)
 
   Performance (capture off the request hot path):
     AGENTICLEDGER_ASYNC_CAPTURE         Persist captures on a background worker so they never add
-                                      latency to the call — eventually consistent (default: off)
+                                      latency to the call; eventually consistent (default: off)
     AGENTICLEDGER_CAPTURE_QUEUE_MAX     Max queued captures before shedding load (default: 10000)
 
-  Data governance (applies to the stored copy only — the agent's response is untouched):
+  Data governance (applies to the stored copy only; the agent's response is untouched):
     AGENTICLEDGER_CAPTURE_LEVEL         full (default) | metadata (drop prompts/responses, keep metrics)
     AGENTICLEDGER_REDACT                Redact PII/secrets: "all" or a comma list of categories
                                       (email,ssn,credit_card,ip,api_key) (default: off)
-    AGENTICLEDGER_REDACT_PATTERNS       Optional JSON of extra regexes — {"label": "regex", ...} or ["regex", ...]
+    AGENTICLEDGER_REDACT_PATTERNS       Optional JSON of extra regexes: {"label": "regex", ...} or ["regex", ...]
     AGENTICLEDGER_RETENTION_DAYS        Delete captured calls older than N days via a background purge;
                                       unset = keep forever (default: none)
     AGENTICLEDGER_AUDIT_LOG             Record an audit trail of who viewed/exported/deleted what and
                                       token/erasure actions; set 0 to disable (default: on)
 
-  Budgets (returns HTTP 429 when exceeded, or warns — see AGENTICLEDGER_BUDGET_ACTION):
+  Budgets (returns HTTP 429 when exceeded, or warns; see AGENTICLEDGER_BUDGET_ACTION):
     AGENTICLEDGER_BUDGET_SESSION        Max USD per session_id (default: none)
     AGENTICLEDGER_BUDGET_AGENT          Max USD per agent_name per calendar day (default: none)
     AGENTICLEDGER_BUDGET_DAILY          Max USD total per calendar day (default: none)
     AGENTICLEDGER_BUDGET_USER           Max USD per user_id per calendar day (default: none)
     AGENTICLEDGER_BUDGET_ACTION         block (default) | warn | both
     AGENTICLEDGER_BUDGET_STATUS         HTTP status for budget blocks: 429 (default, sent with
-                                        Retry-After) or 402 — clients never retry a 402
+                                        Retry-After) or 402; clients never retry a 402
 
   Rate limits (returns HTTP 429, sliding 60-second window):
     AGENTICLEDGER_RATE_LIMIT_RPM        Max requests per minute globally (default: none)
@@ -53,7 +56,7 @@ Reads config from environment variables:
     AGENTICLEDGER_RATE_LIMIT_AGENT_RPM  Max requests per minute per agent_name (default: none)
     AGENTICLEDGER_RATE_LIMIT_USER_RPM   Max requests per minute per user_id (default: none)
 
-  Alerts (POST to webhook on threshold breach — does not block calls):
+  Alerts (POST to webhook on threshold breach; does not block calls):
     AGENTICLEDGER_ALERT_WEBHOOK_URL     Webhook URL for alerts (default: none)
     AGENTICLEDGER_DIGEST_HOUR           UTC hour (0-23) to POST a daily spend digest for the
                                         last 24h to the alert webhook (default: off)
@@ -77,10 +80,10 @@ Reads config from environment variables:
     AGENTICLEDGER_REPLAY_ANTHROPIC_URL  for free local replay
 
   Pricing overrides (merged over the built-in table at startup):
-    AGENTICLEDGER_PRICING               Inline JSON — e.g. '{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'
+    AGENTICLEDGER_PRICING               Inline JSON, e.g. '{"gpt-4o": [2.50, 10.00], "my-model": [1.00, 2.00]}'
     AGENTICLEDGER_PRICING_FILE          Path to a JSON file with the same format
 
-  Secrets from files (keeps keys out of shell history — the Docker-secrets
+  Secrets from files (keeps keys out of shell history; the Docker-secrets
   pattern): every key above also accepts a _FILE variant naming a file whose
   contents are the key. AGENTICLEDGER_API_KEY_FILE, AGENTICLEDGER_INGEST_KEY_FILE,
   AGENTICLEDGER_REPLAY_API_KEY_FILE, AGENTICLEDGER_REPLAY_OPENAI_KEY_FILE, …
@@ -99,7 +102,7 @@ from .otel import init_otel
 from .ratelimit import RateLimitConfig
 from .redact import build_redactor
 
-# The config file (agenticledger.toml) fills the environment FIRST — via
+# The config file (agenticledger.toml) fills the environment FIRST, via
 # setdefault, so anything already exported still wins. Every read below
 # stays a plain env read.
 _config_path = apply_config()
@@ -202,14 +205,14 @@ try:
     _version = _pkg_version("agentic-ledger")
 except Exception:
     _version = "0.0.0"
-# Version banner so testers can see at a glance what they are running —
+# Version banner so testers can see at a glance what they are running -
 # a stale venv silently serving an old release looks identical otherwise.
 print(
-    f"Agentic Ledger v{_version} — proxying "
+    f"Agentic Ledger v{_version} - proxying "
     + ("by call format (anthropic → api.anthropic.com, openai → api.openai.com)"
-       if upstream_auto else upstream_url) + " — "
+       if upstream_auto else upstream_url) + " - "
     f"dashboard: http://{'localhost' if host == '0.0.0.0' else host}:{port}"
-    + (f" — config: {_config_path}" if _config_path else ""),
+    + (f" - config: {_config_path}" if _config_path else ""),
     file=sys.stderr,
     flush=True,
 )
@@ -217,13 +220,13 @@ print(
 _logger = logging.getLogger("agenticledger")
 if not _secret_env("AGENTICLEDGER_INGEST_KEY"):
     _logger.warning(
-        "AGENTICLEDGER_INGEST_KEY is not set — the proxy will forward requests from "
+        "AGENTICLEDGER_INGEST_KEY is not set: the proxy will forward requests from "
         "ANYONE who can reach it (open relay). Set it to require x-agenticledger-ingest-key "
         "before exposing the proxy beyond localhost."
     )
 if not _secret_env("AGENTICLEDGER_API_KEY"):
     _logger.info(
-        "AGENTICLEDGER_API_KEY is not set — the dashboard is open on this machine; "
+        "AGENTICLEDGER_API_KEY is not set: the dashboard is open on this machine; "
         "visitors from other machines must present the auto-generated pairing key "
         "(`agenticledger share` prints the pairing link)."
     )

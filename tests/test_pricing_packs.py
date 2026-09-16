@@ -55,7 +55,7 @@ GOLDENS = [
     ("gpt-4o", 1_000_000, 1_000_000, None, None, "openai", 12.50),
     ("gpt-4o-mini", 1_000_000, 0, None, None, "openai", 0.15),
     ("claude-opus-5", 1_000_000, 1_000_000, None, None, "anthropic", 30.00),
-    ("claude-sonnet-5", 1_000_000, 0, None, None, "anthropic", 2.00),
+    ("claude-sonnet-5", 1_000_000, 0, None, None, "anthropic", 3.00),
     # Anthropic cache: reads 0.1x input, writes 1.25x input, billed on top.
     ("claude-opus-5", 100, 0, 1_000_000, 0, "anthropic", 0.5005),
     ("claude-opus-5", 0, 0, 0, 1_000_000, "anthropic", 6.25),

@@ -14,7 +14,7 @@ limits are today.
 |---|---|---|
 | PyPI | [`agentic-ledger`](https://pypi.org/project/agentic-ledger/) | Published via trusted publishing (OIDC, no long-lived tokens) with PEP 740 attestations. |
 | GHCR | `ghcr.io/shekharbhardwaj/agentic-ledger` | Multi-arch (`linux/amd64`, `linux/arm64`), signed, with SBOM + provenance attestations. |
-| Docker Hub | `docker.io` mirror of the same image | Same digest as GHCR - pull from whichever your network prefers. |
+| Docker Hub | optional `docker.io` mirror (published only when the maintainer configures it) | When present, the same digest as GHCR; otherwise use the GHCR reference above as the canonical pull. |
 
 **Enterprise mirrors (Artifactory, Nexus, AWS CodeArtifact, Azure
 Artifacts):** no extra publishing step is needed. These products proxy the
@@ -53,7 +53,7 @@ docker build -t agenticledger .
 ```
 
 With nothing in `dist/`, the build installs the latest published release
-from PyPI (pin one with `--build-arg AGENTICLEDGER_VERSION=0.4.0`). If you
+from PyPI (pin one with `--build-arg AGENTICLEDGER_VERSION=X.Y.Z`). If you
 drop a locally built wheel into `dist/`, it takes precedence - that is the
 path the release pipeline uses.
 
@@ -87,10 +87,19 @@ docker run --read-only --tmpfs /tmp \
 
 ### TLS: terminate in front of the proxy
 
-The proxy serves plain HTTP and deliberately does not implement TLS - 
-terminate it at a reverse proxy or your ingress, like any other internal
-service. Keep the proxy bound to a private interface and let only the
-terminator reach it.
+The agent-facing (ingest) port serves plain HTTP on purpose: SDK clients
+verify certificates, and a self-signed cert would break them. For public
+or production exposure, terminate TLS at a reverse proxy or your ingress,
+like any other internal service. Keep the proxy bound to a private
+interface and let only the terminator reach it.
+
+For LAN convenience there is also an optional built-in, dashboard-only
+HTTPS listener. Set `AGENTICLEDGER_TLS=1` (also accepts `true` or `auto`)
+to serve the dashboard over HTTPS on `AGENTICLEDGER_TLS_PORT` (default
+8443) alongside the plain-HTTP agent port. A self-signed certificate is
+generated once under `~/.agenticledger/tls` and reused across restarts, so
+a phone warns only once. It secures dashboard traffic on the LAN but is
+not a substitute for a public CA.
 
 Caddy (automatic certificates):
 
@@ -192,7 +201,7 @@ What you *can* do today:
 
 - [ ] Image pulled by digest or verified with `cosign verify`
 - [ ] `AGENTICLEDGER_API_KEY` and `AGENTICLEDGER_INGEST_KEY` set
-- [ ] TLS terminated in front; proxy not reachable directly
+- [ ] TLS terminated in front for public exposure (or `AGENTICLEDGER_TLS=1` for the built-in dashboard-only listener on a LAN); proxy not reachable directly
 - [ ] Redaction/capture level/retention chosen deliberately
 - [ ] Postgres DSN for shared deployments; backups scheduled
 - [ ] `/metrics` scraped; `/health` wired to your orchestrator's probes

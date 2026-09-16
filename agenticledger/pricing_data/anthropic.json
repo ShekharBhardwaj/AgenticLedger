@@ -1,6 +1,6 @@
 {
   "provider": "anthropic",
-  "checked": "2026-08-04",
+  "checked": "2026-09-15",
   "pricing_page": "https://www.anthropic.com/pricing",
   "notes": [
     "Prices are USD per million tokens: {\"input\": in, \"output\": out}.",
@@ -11,8 +11,7 @@
     "claude-fable-5":    {"input": 10.00, "output": 50.00},
     "claude-mythos-5":   {"input": 10.00, "output": 50.00},
     "claude-opus-5":     {"input": 5.00,  "output": 25.00},
-    "claude-sonnet-5":   {"input": 2.00,  "output": 10.00,
-                          "note": "introductory rate through 2026-08-31; becomes 3.00/15.00 on Sept 1"},
+    "claude-sonnet-5":   {"input": 3.00,  "output": 15.00},
     "claude-opus-4":     {"input": 15.00, "output": 75.00},
     "claude-opus-4-5":   {"input": 5.00,  "output": 25.00},
     "claude-opus-4-6":   {"input": 5.00,  "output": 25.00},

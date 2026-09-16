@@ -7,7 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-15
+
 ### Added
+- **The landing overview** (refined after review). The unselected
+  Loop Lens pane, once a bare "select a run", is now a working overview
+  scoped to the CURRENT project filter (the numbers move with the list,
+  not stuck on all runs), led by a "Run overview" heading and a
+  "Latest N loaded runs · <scope>" line by the figures. It has three
+  parts: an attention queue of flagged and blocked runs, each with what
+  happened, which run, when, and Inspect ("Needs attention" is live
+  concerns only; deliberately blocked runs get their own informational
+  section with their real dates, never dressed up as urgent); an
+  active-now table; and a recent-runs table (run, observed state,
+  recorded spend, calls, last activity). Every figure is scoped to the
+  loaded runs and points to Reports for period and project breakdowns;
+  selecting a row opens the detail. It stays visible at every width,
+  including phones (the overview is the mobile home, itself navigable).
+  Three honest states: this overview, a first-call onboarding when
+  nothing has been captured, and an explicit "could not load runs" with
+  Retry on a fetch failure, so a broken connection never shows the
+  reassuring fresh-install message.
+- **The premium dashboard (docs/design/premium-dashboard.md).** The
+  full redesign ships in this release. Foundations: spec color tokens
+  with dark, light, and system appearance (browser-local, resolved
+  before first paint), flat surfaces with shadows reserved for
+  overlays, the permanent footer replaced by an About menu. Run
+  detail: one open metric strip (Recorded spend, Run ceiling with an
+  honest accounting track and a validated editor, Model calls),
+  Overview / Activity / Cache subtabs, the recorded-concern band with
+  Inspect, What-if and Replay as secondary tools, and status labels
+  that state only what was observed (Completion declared, Calls
+  blocked). Sessions: flat rows, call columns (time, model, one
+  status by precedence, latency, cost with Unknown stated), and a
+  four-tab call inspector (Response, Tools, Prompt, Raw). Reports:
+  money-first model table with share-of-spend and expandable
+  technical detail, a continuous date axis with zero-filled days,
+  calendar-week aggregation past 31 buckets, and chart values as
+  text. Navigation: hash routes for tabs, runs, and sessions; deep
+  links, reload, and Back/Forward preserve the investigation; links
+  never carry credentials.
+- **Direct-LAN https (#118).** AGENTICLEDGER_TLS=1 adds a
+  dashboard-only https listener (default port 8443) beside the plain
+  http agent port, with a self-generated certificate reused across
+  restarts. share --wifi prints the https pairing link and says
+  squarely that the phone will warn once. The agent port stays plain
+  http on purpose: SDK clients verify certificates; humans can tap
+  through a warning.
+- **The compressor chain, verified (#114).** docs/chaining.md: put a
+  context compressor (Headroom) behind the ledger with one upstream
+  URL; the ledger records and refuses first, the compressor shrinks
+  second, and your own numbers measure the compressor's savings. The
+  chain mechanics are proven by tests/test_chaining.py: intact reply
+  through two real proxy pipelines, both hops recorded, run
+  attribution kept.
+- **The migration page (#112).** docs/migrating.md translates Helicone
+  and LangSmith concepts, gives the two-line switch for each, and says
+  honestly what you gain (local-first, refusal, loops, the audit) and
+  what you lose (evals, hosted team dashboards, gateway extras).
+- **Session cards show their run (#91).** A session that belongs to a
+  run wears a small chip with the run's name; clicking it jumps to
+  that run in the Loop Lens.
+- **The audit tells partial coverage from full (review catch).** One
+  cached call among fifty no longer earns "nothing missed": coverage
+  is compared against the repeats, and a partially_cached verdict
+  carries the remaining eligibility and the fix.
+- **The cache audit (#113), the 0.13 headline.** A run's detail gains
+  one line under the spend meter: the repeat-discount the run was
+  eligible for and did not receive. RECEIVED dollars are exact (the
+  provider reported the cache traffic; the packs know the rates).
+  ELIGIBLE is a stated-method estimate (text length / 4 chars per
+  token) that the exact figure replaces once caching is on. Every
+  verdict carries its reason and its one-line fix: caching never
+  requested (with the provider-specific request change), unstable
+  opening (with the exact first divergent character), too short
+  ("you're fine"), well cached ("nothing missed"), or not auditable
+  (capture level strips prompts). GET /api/runs/{id}/cache-audit for
+  API clients. The audit reads the record and does arithmetic; it
+  never touches traffic.
+- **The blessed install path (#117).** The README leads with
+  `uv tool install agentic-ledger` (pipx equally): one isolated shim on
+  PATH, so shadow installs become rare and doctor-detectable. `agenticledger
+  upgrade` now recognizes pipx-, uv-, and Homebrew-managed installs
+  and runs the managing tool's own upgrade command instead of handing
+  the user homework (dev `--from <repo>` included), and doctor's
+  multi-install verdict recommends migrating to the immune setup.
+- **Gemini CLI auto-detection (#67).** Proxy requests carrying Gemini CLI's
+  documented `GeminiCLI` User-Agent prefix are now attributed as `gemini-cli`,
+  including integrated variants; BMAD riders still take precedence.
+- **Per-framework redetect results (#70).** The Settings maintenance action
+  now reports how many newly attributed calls belong to each detected
+  framework, and `POST /api/redetect` exposes the same breakdown for API
+  clients.
 - **First-load, loading, and not-found states.** The overview shows a
   loading line until the first runs fetch settles (so a slow tunnel
   never flashes the false "first install" onboarding), and a deep link
@@ -112,105 +203,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run of pure refusals still shows its tile with the reason one click
   away.
 
-### Added
-- **The landing overview** (refined after review). The unselected
-  Loop Lens pane is a working overview scoped to the CURRENT project
-  filter (the numbers move with the list, not stuck on all runs), led
-  by a "Run overview" heading and a "Latest N loaded runs · <scope>"
-  line by the figures. "Needs attention" is live concerns only
-  (flagged runs); deliberately blocked runs get their own
-  informational section with their real dates, never dressed up as
-  urgent. It stays visible at every width now, including phones (the
-  overview is the mobile home, itself navigable). An attention queue
-  with Inspect, an active-now table, and a recent-runs table complete
-  it. The unselected Loop Lens pane, once a
-  bare "select a run", is now a working overview: a scoped summary
-  (recorded spend, recorded calls, how many runs need attention), an
-  attention queue of flagged and blocked runs each with what happened,
-  which run, when, and Inspect, an active-now table, and a recent-runs
-  table (run, observed state, recorded spend, calls, last activity).
-  Every figure is scoped to the loaded runs and points to Reports for
-  period and project breakdowns; selecting a row opens the detail.
-  Three honest states: this overview, a first-call onboarding when
-  nothing has been captured, and an explicit "could not load runs"
-  with Retry on a fetch failure - a broken connection never shows the
-  reassuring fresh-install message.
-- **The premium dashboard (docs/design/premium-dashboard.md).** The
-  full redesign ships in this release. Foundations: spec color tokens
-  with dark, light, and system appearance (browser-local, resolved
-  before first paint), flat surfaces with shadows reserved for
-  overlays, the permanent footer replaced by an About menu. Run
-  detail: one open metric strip (Recorded spend, Run ceiling with an
-  honest accounting track and a validated editor, Model calls),
-  Overview / Activity / Cache subtabs, the recorded-concern band with
-  Inspect, What-if and Replay as secondary tools, and status labels
-  that state only what was observed (Completion declared, Calls
-  blocked). Sessions: flat rows, call columns (time, model, one
-  status by precedence, latency, cost with Unknown stated), and a
-  four-tab call inspector (Response, Tools, Prompt, Raw). Reports:
-  money-first model table with share-of-spend and expandable
-  technical detail, a continuous date axis with zero-filled days,
-  calendar-week aggregation past 31 buckets, and chart values as
-  text. Navigation: hash routes for tabs, runs, and sessions; deep
-  links, reload, and Back/Forward preserve the investigation; links
-  never carry credentials.
-- **Direct-LAN https (#118).** AGENTICLEDGER_TLS=1 adds a
-  dashboard-only https listener (default port 8443) beside the plain
-  http agent port, with a self-generated certificate reused across
-  restarts. share --wifi prints the https pairing link and says
-  squarely that the phone will warn once. The agent port stays plain
-  http on purpose: SDK clients verify certificates; humans can tap
-  through a warning.
-- **The compressor chain, verified (#114).** docs/chaining.md: put a
-  context compressor (Headroom) behind the ledger with one upstream
-  URL; the ledger records and refuses first, the compressor shrinks
-  second, and your own numbers measure the compressor's savings. The
-  chain mechanics are proven by tests/test_chaining.py: intact reply
-  through two real proxy pipelines, both hops recorded, run
-  attribution kept.
-- **The migration page (#112).** docs/migrating.md translates Helicone
-  and LangSmith concepts, gives the two-line switch for each, and says
-  honestly what you gain (local-first, refusal, loops, the audit) and
-  what you lose (evals, hosted team dashboards, gateway extras).
-- **Session cards show their run (#91).** A session that belongs to a
-  run wears a small chip with the run's name; clicking it jumps to
-  that run in the Loop Lens.
-- **The audit tells partial coverage from full (review catch).** One
-  cached call among fifty no longer earns "nothing missed": coverage
-  is compared against the repeats, and a partially_cached verdict
-  carries the remaining eligibility and the fix.
-- **The cache audit (#113), the 0.13 headline.** A run's detail gains
-  one line under the spend meter: the repeat-discount the run was
-  eligible for and did not receive. RECEIVED dollars are exact (the
-  provider reported the cache traffic; the packs know the rates).
-  ELIGIBLE is a stated-method estimate (text length / 4 chars per
-  token) that the exact figure replaces once caching is on. Every
-  verdict carries its reason and its one-line fix: caching never
-  requested (with the provider-specific request change), unstable
-  opening (with the exact first divergent character), too short
-  ("you're fine"), well cached ("nothing missed"), or not auditable
-  (capture level strips prompts). GET /api/runs/{id}/cache-audit for
-  API clients. The audit reads the record and does arithmetic; it
-  never touches traffic.
-- **The blessed install path (#117).** The README leads with
-  `uv tool install agentic-ledger` (pipx equally): one isolated shim on
-  PATH, so shadow installs become rare and doctor-detectable. `agenticledger
-  upgrade` now recognizes pipx-, uv-, and Homebrew-managed installs
-  and runs the managing tool's own upgrade command instead of handing
-  the user homework (dev `--from <repo>` included), and doctor's
-  multi-install verdict recommends migrating to the immune setup.
-- **Gemini CLI auto-detection (#67).** Proxy requests carrying Gemini CLI's
-  documented `GeminiCLI` User-Agent prefix are now attributed as `gemini-cli`,
-  including integrated variants; BMAD riders still take precedence.
-- **Per-framework redetect results (#70).** The Settings maintenance action
-  now reports how many newly attributed calls belong to each detected
-  framework, and `POST /api/redetect` exposes the same breakdown for API
-  clients.
-
 ### Changed
 - **The HTTP client layer moved from httpx to httpx2 (#93).** Same
-  public API, the ecosystem's successor package (the Anthropic SDK and
-  Starlette's test client already made the jump). This retires the old
+  public API, the ecosystem's successor package (Starlette's test
+  client already uses it, and the OpenAI SDK ships it as an experimental
+  opt-in extra). This retires the old
   `<1.0` version cap, which was one popular-framework bump away from
   colliding with users' environments at install time. Verified three
   ways: the full suite, the wire-truth parity goldens byte for byte,
@@ -1583,6 +1580,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.9.3...v0.10.0

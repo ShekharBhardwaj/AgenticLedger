@@ -80,5 +80,5 @@ that is when a compressor earns its place, and the chain above lets your
 own numbers confirm it did.
 
 The chain mechanics are covered by tests/test_chaining.py: a call
-through two real proxy pipelines arrives intact, is recorded on both
-hops, and keeps its run attribution on the front ledger.
+completes through two real proxies, its response returns intact, and it
+is recorded on both hops with run attribution held on the front ledger.

@@ -41,14 +41,29 @@ holding us to it.
   feature (it prices your usage), but it will not match a $0 console.
 - **Unpriced models.** A model missing from the packs is recorded with
   cost unknown, never $0, and the proxy logs one loud warning naming it.
-  Unknown-cost calls are excluded from spend totals; add the model to a
-  pack (docs/pricing.md) and the calls reprice on the next report load.
+  Unknown-cost calls are excluded from spend totals. Adding the model to
+  a pack (docs/pricing.md) and restarting the proxy prices only the calls
+  captured after the restart; it does not reprice calls already recorded
+  as unknown, which stay unknown.
 - **Introductory and negotiated rates.** Packs carry list prices, with
   dated notes where a rate is temporary. Private rates belong in
   `AGENTICLEDGER_PRICING` overrides.
 - **Rounding.** Costs are computed per call and rounded at 8 decimal
   places; a day of thousands of calls can differ from the console by
   fractions of a cent.
+
+## The cache audit reports savings, not bill lines
+
+The parity check above is about spend: your recorded spend totals should
+match the console, and a mismatch there is the bug we want. The cache
+audit is different. It adds two dollar figures to a run (see the README,
+or `GET /api/runs/{id}/cache-audit`), and neither is a console line item.
+RECEIVED is the exact discount your cache reads already earned, computed
+from the provider's reported cache tokens and the pack rates. ELIGIBLE is
+a labeled estimate of a discount you could still capture, measured by a
+stated method (text length over four characters per token) that the exact
+figure replaces once caching is on. ELIGIBLE is an estimate on purpose,
+so it not matching your console is expected, not a bug.
 
 ## When it still disagrees
 
