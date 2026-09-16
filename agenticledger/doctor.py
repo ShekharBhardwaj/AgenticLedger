@@ -25,7 +25,7 @@ from typing import Optional
 
 _PROBE = (
     "from importlib.metadata import version;"
-    "import fastapi, pydantic_core, httpx;"  # the heavy, breakable imports
+    "import fastapi, pydantic_core, httpx2;"  # the heavy, breakable imports
     "print(version('agentic-ledger'))"
 )
 

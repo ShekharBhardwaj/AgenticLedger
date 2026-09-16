@@ -211,6 +211,23 @@ def test_multi_install_verdict_recommends_the_immune_path():
     assert not any("uv tool install" in v for v in healthy)
 
 
+def test_probe_imports_resolve_against_a_real_interpreter():
+    """The health probe runs as a string in a subprocess, so a dependency
+    rename can silently break it without failing the suite. It did: the
+    httpx -> httpx2 move (#93) left the probe importing httpx, so doctor
+    called every healthy 0.13 install BROKEN and told users to uninstall
+    the one that worked. Run the real probe against this interpreter (which
+    has the package and its deps installed) and require it to succeed."""
+    import subprocess
+    import sys
+
+    from agenticledger.doctor import _PROBE
+    out = subprocess.run([sys.executable, "-c", _PROBE],
+                         capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip()  # prints the installed version
+
+
 def test_fix_offers_zprofile_cleanup_even_when_healthy(tmp_path, monkeypatch):
     """The shadow's resurrection vector (the python.org PATH prepend)
     survived four evictions because --fix returned early on a healthy

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-16
+
+### Fixed
+- **`doctor` no longer reports a healthy install as broken.** Its health
+  probe still imported `httpx` after the httpx2 move (#93), so on every
+  correct 0.13 install it failed with "No module named 'httpx'" and
+  doctor called the working install BROKEN, advising the user to
+  uninstall it while endorsing a stale pre-migration copy. The probe now
+  imports httpx2, and a regression test runs it against a real
+  interpreter so a future dependency rename fails the suite instead of a
+  user's machine.
+
 ## [0.13.0] - 2026-09-15
 
 ### Added
@@ -1580,7 +1592,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.10.0...v0.11.0
