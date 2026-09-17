@@ -1,4 +1,4 @@
-<p align="left"><img src="https://raw.githubusercontent.com/ShekharBhardwaj/AgenticLedger/main/docs/raccoon.svg" alt="" width="72" height="66"></p>
+<p align="left"><img src="https://raw.githubusercontent.com/ShekharBhardwaj/AgenticLedger/main/docs/raccoon.svg" alt="" width="66" height="66"></p>
 
 # Agentic Ledger
 
