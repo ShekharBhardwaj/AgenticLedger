@@ -4,18 +4,13 @@ import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
 import SettingsView from "./views/SettingsView";
-import { RaccoonHead } from "./Raccoon";
+import { Icon } from "./LedgerVisuals";
 
 type Tab = "runs" | "sessions" | "reports" | "settings";
 
-/** The logo is the bookkeeper's own face: the same drawing that naps and
- *  trots in the Loop Lens, so the product wears one face everywhere. */
-function Logo({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={Math.round(size * 22 / 24)} viewBox="0 0 24 22" aria-hidden="true">
-      <RaccoonHead mood="logo" />
-    </svg>
-  );
+/** The approved geometric mark, shared with agentic-ledger.dev. */
+function Logo() {
+  return <img src="/app/assets/raccoon.svg" width="34" height="34" alt="" />;
 }
 
 /** Plain-words answer to "what is this key?" for the ⚿ panel. */
@@ -127,7 +122,7 @@ function KeyPanel() {
           : "Dashboard access key: only needed when opening this dashboard from another device, or on a keyed server"}
         onClick={() => setOpen(!open)}
       >
-        ⚿
+        <Icon name="key" />
       </button>
       {open && (
         <div className="key-pop">
@@ -183,7 +178,7 @@ function AboutMenu({ version }: { version: string | null }) {
       <button className="key-btn" title="About Agentic Ledger" aria-label="About Agentic Ledger"
               aria-haspopup="menu" aria-expanded={open}
               onClick={() => setOpen(!open)}>
-        ?
+        <Icon name="info" />
       </button>
       {open && (
         <div className="key-pop about-pop" role="menu">
@@ -317,14 +312,14 @@ export default function App() {
           </span>
         )}
         <nav className="tabs" aria-label="Views">
-          <button className={`tab ${tab === "runs" ? "active" : ""}`} onClick={() => setTab("runs")}>
-            Loop Lens
+          <button className={`tab ${tab === "runs" ? "active" : ""}`} aria-current={tab === "runs" ? "page" : undefined} onClick={() => setTab("runs")}>
+            <Icon name="activity" />Loop Lens
           </button>
-          <button className={`tab ${tab === "sessions" ? "active" : ""}`} onClick={() => setTab("sessions")}>
-            Sessions
+          <button className={`tab ${tab === "sessions" ? "active" : ""}`} aria-current={tab === "sessions" ? "page" : undefined} onClick={() => setTab("sessions")}>
+            <Icon name="sessions" />Sessions
           </button>
-          <button className={`tab ${tab === "reports" ? "active" : ""}`} onClick={() => setTab("reports")}>
-            Reports
+          <button className={`tab ${tab === "reports" ? "active" : ""}`} aria-current={tab === "reports" ? "page" : undefined} onClick={() => setTab("reports")}>
+            <Icon name="reports" />Reports
           </button>
         </nav>
         <span className="spacer" />
@@ -334,9 +329,10 @@ export default function App() {
           title="Settings: what the proxy is running with (read-only)" aria-label="Settings"
           onClick={() => setTab(tab === "settings" ? "runs" : "settings")}
         >
-          ⚙
+          <Icon name="settings" />
         </button>
         <KeyPanel />
+        <span className="connection-label">{live ? "Live updates" : "Reconnecting"}</span>
         <span
           className={`live-dot ${live ? "" : "down"}`}
           role="status"

@@ -12,6 +12,7 @@ import ProviderMark from "./ProviderMark";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
 import { RaccoonHead } from "../Raccoon";
+import { Breadcrumb, CostChart, Icon, RunTimeline } from "../LedgerVisuals";
 
 /** The bookkeeper: a small cartoon raccoon whose expression is the run's
  *  status. Decorative only: inline SVG, aria-hidden, fixed box (no layout
@@ -196,7 +197,18 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
 
   const refresh = useCallback(() => {
     get<Run[]>("/api/runs")
-      .then((v) => { setRuns(v); setError(null); })
+      .then((v) => {
+        setRuns(v);
+        // Labels, ceilings and observed status can change without a new
+        // call. Merge the confirmed summary, preserving detail-only fields
+        // (e.g. burn rate) and the call-count key that prevents fetch loops.
+        setDetail((cur) => {
+          if (!cur) return cur;
+          const summary = v.find((r) => r.run_id === cur.run_id);
+          return summary ? { ...cur, ...summary } : cur;
+        });
+        setError(null);
+      })
       .catch((e) => setError(String(e?.message || e)))
       .finally(() => setLoaded(true));
     listProjects().then((r) => setProjects(r.projects)).catch(() => {});
@@ -244,8 +256,6 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
     return () => { alive = false; };
   }, [selected]);
 
-  const maxCost = Math.max(...iterations.map((i) => i.cost_usd || 0), 0.000001);
-
   // The list in its rendered order — the phone's prev/next arrows walk
   // exactly what the eye saw, pins and sort direction included.
   const ordered = pinnedFirst(timeSorted(runs.filter((r) => matchesFilter(r, projectFilter)), oldestFirst));
@@ -253,6 +263,8 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   return (
     <div className={`layout runs ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
+        <div className="sidebar-heading"><Icon name="activity" /><h2>Loop Lens</h2><span className="sidebar-count">{runs.length}</span></div>
+        <p className="sidebar-caption">Every iteration, accounted for.</p>
         {error && <div className="empty">{error}</div>}
         {runs.length === 0 && !error && (
           <div className="empty">
@@ -276,6 +288,8 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             key={r.run_id}
             className={`card ${selected === r.run_id ? "selected" : ""}`}
             onClick={() => setSelected(r.run_id)}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setSelected(r.run_id); } }}
           >
             <PinButton scope="run" refId={r.run_id} pinned={r.pinned} onSaved={refresh} />
             <button
@@ -413,6 +427,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
               );
               return (
                 <>
+                  <Breadcrumb area="Workspace" name="Loop Lens" />
                   <div className="landing-head">
                     <h2 className="page-title">Run overview</h2>
                     <div className="landing-scope-top">
@@ -524,7 +539,9 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
           </div>
         ) : (
           <>
-            <h2 className="page-title">
+            <Breadcrumb area="Loop Lens" project={detail.project} name={detail.label ?? detail.run_id} />
+            <div className="eyebrow detail-eyebrow">{detail.framework || "Agent run"} · Run overview</div>
+            <h2 className="page-title run-title">
               {detail.label ?? detail.run_id}{" "}
               <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{STATUS_LABEL[detail.status] ?? detail.status}</span>
               <RunMascot status={detail.status} />
@@ -576,7 +593,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             {blockState && blockState !== "working" && (
               <div className="ceiling-error" role="alert">{blockState}</div>
             )}
-            <div className="muted">
+            <div className="muted run-meta">
               <button
                 className="session-id mono"
                 title="click to copy the run id"
@@ -597,6 +614,23 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                     ` +${detail.models.split(",").length - 1} more`}
                 </span></>
               )}
+            </div>
+
+            <div className="subview-row">
+              <div role="tablist" aria-label="Run views" className="subtabs">
+                {(["overview", "activity", "cache"] as const).map((v) => (
+                  <button key={v} role="tab" aria-selected={subview === v}
+                          className={`subtab ${subview === v ? "active" : ""}`}
+                          onClick={() => setSubview(v)}>
+                    {v === "overview" ? "Overview" : v === "activity" ? "Activity" : "Cache"}
+                  </button>
+                ))}
+              </div>
+              <span className="spacer" />
+              <button className="link-btn" aria-expanded={showTools}
+                      onClick={() => setShowTools(!showTools)}>
+                What-if / Replay {showTools ? "▴" : "▾"}
+              </button>
             </div>
 
             {(() => {
@@ -707,45 +741,6 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
               {fmtNum(detail.total_tokens_in)} tokens in · {fmtNum(detail.total_tokens_out)} tokens out
             </div>
 
-            <div className="subview-row">
-              <div role="tablist" aria-label="Run views" className="subtabs">
-                {(["overview", "activity", "cache"] as const).map((v) => (
-                  <button key={v} role="tab" aria-selected={subview === v}
-                          className={`subtab ${subview === v ? "active" : ""}`}
-                          onClick={() => setSubview(v)}>
-                    {v === "overview" ? "Overview" : v === "activity" ? "Activity" : "Cache"}
-                  </button>
-                ))}
-              </div>
-              <span className="spacer" />
-              <button className="link-btn" aria-expanded={showTools}
-                      onClick={() => setShowTools(!showTools)}>
-                What-if / Replay {showTools ? "▴" : "▾"}
-              </button>
-            </div>
-
-            {subview === "overview" && flags.length > 0 && (
-              <div className="concern-band" role="note">
-                <div className="concern-text">
-                  <div className="concern-title">
-                    Recorded concern: {(() => {
-                      try { return (JSON.parse(flags[0].loop_flags) as string[]).join(", "); }
-                      catch { return "loop flag"; }
-                    })()}
-                  </div>
-                  <div className="concern-sub">
-                    {plural(flags.length, "flagged call")} on record
-                    {flags[0].iteration != null ? ` · latest in iteration ${flags[0].iteration}` : ""}
-                  </div>
-                </div>
-                {flags[0].session_id && (
-                  <button className="inspect-btn"
-                          onClick={() => onOpenSession(flags[0].session_id!)}>
-                    Inspect
-                  </button>
-                )}
-              </div>
-            )}
 
             {subview === "cache" && (
               !audit ? (
@@ -852,23 +847,14 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
 
             {subview === "overview" && iterations.length > 0 && (
               <>
-                <div className="section-title">Cost per iteration</div>
-                <div className="iter-scale">tallest bar = {fmtUsd(maxCost)}/iteration</div>
-                <div className="ribbon">
-                  {iterations.map((it) => (
-                    <div
-                      key={String(it.iteration)}
-                      className={`bar ${it.error_calls ? "errored" : it.blocked_calls ? "blocked" : it.flagged_calls ? "flagged" : ""}`}
-                      style={{ height: `${Math.max((100 * (it.cost_usd || 0)) / maxCost, 3)}%` }}
-                      title={`iteration ${it.iteration}: ${fmtUsd(it.cost_usd)}, ${it.call_count} calls. Click to open its session`}
-                      onClick={() => it.session_id && onOpenSession(it.session_id)}
-                    />
-                  ))}
-                </div>
-                <div className="ribbon-labels">
-                  {iterations.map((it) => (
-                    <div key={String(it.iteration)}>{it.iteration ?? "?"}</div>
-                  ))}
+                <div className="run-overview-grid">
+                  <CostChart title="Cost per iteration" unit="Iteration" points={iterations.map((it) => ({
+                    id: String(it.iteration), label: it.iteration == null ? "—" : String(it.iteration),
+                    cost: it.cost_usd, detail: `${plural(it.call_count, "call")}${it.session_count > 1 ? ` · ${plural(it.session_count, "session")}` : ""}`,
+                    tone: it.error_calls ? "errored" : it.blocked_calls ? "blocked" : it.flagged_calls ? "flagged" : undefined,
+                    onOpen: it.session_id && it.session_count <= 1 ? () => onOpenSession(it.session_id!) : undefined,
+                  }))} />
+                  <RunTimeline run={detail} flags={flags} onOpenSession={onOpenSession} />
                 </div>
 
                 {flags.length > 0 && (

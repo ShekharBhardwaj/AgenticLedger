@@ -6,25 +6,25 @@
    red = breakage, purple = replay lineage, blue = interactive). */
 
 :root, :root[data-theme="dark"] {
-  --bg: #111315;
-  --bg-panel: #16191C;
-  --bg-card: #1B1F23;
+  --bg: #0A0C10;
+  --bg-panel: #101319;
+  --bg-card: #12161E;
   --bg-card-top: #1B1F23;      /* legacy alias: gradients are gone */
-  --bg-hover: #23282D;
-  --bg-input: #15181B;
-  --border: #30363C;
+  --bg-hover: #1B2230;
+  --bg-input: #101319;
+  --border: rgba(166, 184, 212, 0.13);
   --border-strong: #77828C;
   --border-control: #77828C;
-  --text: #EDF0F2;
-  --text-dim: #A0A9B1;
-  --accent: #87B5EF;
+  --text: #F1F3F7;
+  --text-dim: #929AA8;
+  --accent: #91B9FF;
   --accent-soft: rgba(135, 181, 239, 0.14);
   --green: #8BCEAC;
   --amber: #E6BB73;
   --red: #FF9393;
   --purple: #C7ACED;
   --warning-bg: #211E18;
-  --selected-bg: #1B2838;
+  --selected-bg: #142033;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.24);
   --shadow-1: none;            /* legacy alias: shadows are overlay-only */

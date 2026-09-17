@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-16
+
+### Changed
+- **The dashboard gets a visual facelift** matching agentic-ledger.dev: the
+  approved geometric raccoon, the charcoal and ice-blue palette, shared
+  navigation, metric strips, cost charts, and a recorded-event timeline in
+  Loop Lens. Sessions gain an Overview while keeping Calls, Flow, Trace, all
+  inspector tabs, and replay. Dark and light appearance and phone navigation
+  remain supported. It is a presentation change only: no API, capture,
+  pricing, or enforcement behavior moved, and the honest-state labels, the
+  detail-fetch loop guards, and the accessibility landmarks are preserved.
+  Covered by an expanded dashboard smoke suite (16 end-to-end tests,
+  including a request-storm regression, ceiling save/block/allow against a
+  real ledger, unknown-price handling, light-theme persistence, and mobile
+  layouts at 320, 390, and 768px).
+
+### Fixed
+- **Run detail reflects a confirmed ceiling, label, or status change even
+  when no new call arrives.** It merges the refreshed run summary into the
+  open detail without reintroducing the detail-fetch loop.
+
 ## [0.13.1] - 2026-09-16
 
 ### Fixed
@@ -1592,7 +1613,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.11.0...v0.12.0

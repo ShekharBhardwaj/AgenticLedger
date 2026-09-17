@@ -7,6 +7,7 @@ import {
 import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, RUN_PREFIX, TimeSortToggle, timeSorted } from "./LabelBits";
 import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
+import { Breadcrumb, CostChart, Icon, SessionMetrics } from "../LedgerVisuals";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
   const parts: string[] = [];
@@ -138,7 +139,7 @@ import TraceView from "./TraceView";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
 
-type Mode = "calls" | "flow" | "trace";
+type Mode = "overview" | "calls" | "flow" | "trace";
 
 /** Zero-state that diagnoses instead of shrugging: wrong wiring produces
  *  silence, so the silence itself must say what to check. The dashboard's
@@ -185,8 +186,8 @@ function WiringGuide() {
 
 /** #62 — the call list says what it is: name, the id (always visible and
  *  copyable, even after a rename), chips, and totals that update live. */
-function SessionHeader({ session, sessionId, calls, onOpenSession }: {
-  session: Session | null; sessionId: string; calls: Call[];
+function SessionHeader({ session, sessionId, onOpenSession }: {
+  session: Session | null; sessionId: string;
   onOpenSession?: (sid: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -198,17 +199,15 @@ function SessionHeader({ session, sessionId, calls, onOpenSession }: {
       .then((r) => setSourceJob(r.jobs[r.jobs.length - 1] ?? null))
       .catch(() => {});
   }, [sessionId]);
-  const cost = calls.reduce((a, c) => a + (c.cost_usd ?? 0), 0);
-  const tokIn = calls.reduce((a, c) => a + (c.tokens_in ?? 0)
-    + (c.cache_read_tokens ?? 0) + (c.cache_write_tokens ?? 0), 0);
-  const tokOut = calls.reduce((a, c) => a + (c.tokens_out ?? 0), 0);
   return (
     <div className="session-header">
-      <div className="session-header-title">
+      <Breadcrumb area="Sessions" project={session?.project} name={session?.label ?? sessionId} />
+      <div className="eyebrow detail-eyebrow">{session?.agent_name || "Agent session"} · Session overview</div>
+      <h2 className="session-header-title">
         {session?.label ?? sessionId}
         {session?.team && <span className="badge team">{session.team}</span>}
         {session?.project && <span className="badge fw">{session.project}</span>}
-      </div>
+      </h2>
       {sourceJob && (
         <div className="replay-signpost">
           This is {sourceJob.model}'s answer sheet: nothing here was executed.
@@ -238,9 +237,7 @@ function SessionHeader({ session, sessionId, calls, onOpenSession }: {
         >
           {sessionId} {copied ? "✓ copied" : "⧉"}
         </button>
-        <span>{calls.length} calls</span>
-        <span>{fmtNum(tokIn)} → {fmtNum(tokOut)} tok</span>
-        <span>{fmtUsd(cost)}</span>
+        {session?.started_at && <span>Started {fmtTime(session.started_at)}</span>}
       </div>
     </div>
   );
@@ -434,7 +431,7 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   const [results, setResults] = useState<Call[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);   // sessions fetch failed
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>("calls");
+  const [mode, setMode] = useState<Mode>("overview");
   const [projects, setProjects] = useState<string[]>([]);
   const [projectFilter, setProjectFilter] = useState("");
   const [oldestFirst, setOldestFirst] = useState(false);
@@ -513,8 +510,11 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   return (
     <div className={`layout ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
+        <div className="sidebar-heading"><Icon name="sessions" /><h2>Sessions</h2><span className="sidebar-count">{sessions.length}</span></div>
+        <p className="sidebar-caption">Follow every call, from prompt to response.</p>
         <input
           className="search"
+          aria-label="Search captured calls"
           placeholder="Search prompts, outputs, agents…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -547,6 +547,8 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
             key={s.session_id}
             className={`card ${selected === s.session_id ? "selected" : ""} ${s.session_id.startsWith("replay-") ? "replay" : ""} ${(s.error_count ?? 0) > 0 ? "has-errors" : ""}`}
             onClick={() => { setQuery(""); setSelected(s.session_id); }}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setQuery(""); setSelected(s.session_id); } }}
           >
             <PinButton scope="session" refId={s.session_id} pinned={s.pinned}
                        onSaved={refresh} />
@@ -665,9 +667,10 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
             <SessionHeader
               session={sessions.find((x) => x.session_id === selected) ?? null}
               sessionId={selected}
-              calls={calls}
               onOpenSession={(sid) => { setQuery(""); setSelected(sid); }}
             />
+            <details className="session-tools">
+              <summary>What-if / Replay</summary>
             <WhatIf params={`session_id=${encodeURIComponent(selected)}`} />
             <BatchReplay scope="session" refId={selected}
                          numberOf={(aid) => {
@@ -675,19 +678,31 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
                            return i >= 0 ? i + 1 : null;
                          }}
                          onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />
+            </details>
           </>
         )}
         {results !== null && (
           <div className="section-title">{results.length} search results</div>
         )}
         {results === null && selected && shown.length > 0 && (
-          <div className="seg">
-            {(["calls", "flow", "trace"] as Mode[]).map((m) => (
-              <button key={m} className={mode === m ? "active" : ""} onClick={() => setMode(m)}>
-                {m === "calls" ? "Calls" : m === "flow" ? "Flow" : "Trace"}
+          <div className="subview-row session-views"><div className="subtabs" role="tablist" aria-label="Session views">
+            {(["overview", "calls", "flow", "trace"] as Mode[]).map((m) => (
+              <button key={m} role="tab" aria-selected={mode === m} className={`subtab ${mode === m ? "active" : ""}`} onClick={() => setMode(m)}>
+                {m === "overview" ? "Overview" : m === "calls" ? "Calls" : m === "flow" ? "Flow" : "Trace"}
               </button>
             ))}
-          </div>
+          </div><span className="view-count">{shown.length} captured calls</span></div>
+        )}
+        {results === null && selected && shown.length > 0 && <SessionMetrics calls={calls} />}
+        {results === null && selected && mode === "overview" && calls.length > 0 && (
+          <>
+            <CostChart title="Cost per call" unit="Call" points={calls.map((c, i) => ({
+              id: c.action_id, label: String(i + 1), cost: c.cost_usd,
+              detail: c.model_id,
+              tone: c.error_detail?.startsWith("blocked:") ? "blocked" : undefined,
+            }))} />
+            <div className="section-heading"><h3>Captured calls</h3><span>Most recent first</span></div>
+          </>
         )}
         {searchError ? (
           <div className="empty">Search failed: {searchError} <button className="link-btn" onClick={() => setQuery((q) => q + " ")}>Retry</button></div>
@@ -699,7 +714,7 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
           <div className="empty">
             {results !== null ? "No matches." : "Select a session to inspect its calls."}
           </div>
-        ) : results !== null || mode === "calls" ? (
+        ) : results !== null || mode === "calls" || mode === "overview" ? (
           // Latest call on top for live watching. Search results already
           // arrive newest-first; session calls arrive in conversation order,
           // so flip them for display only — Flow, Trace, and replay keep
