@@ -497,7 +497,8 @@ Every LLM call is stored with:
 | `GET` | `/health` | Liveness - `{"status":"ok","version":"..."}`. No auth, never touches the store. |
 | `GET` | `/readyz` | Readiness - pings the store; `503` when unreachable. Also reports `capture_dropped`. |
 | `GET` | `/metrics` | Prometheus metrics (captures persisted/dropped, queue depth). |
-| `GET` | `/api/audit` | Audit trail of sensitive actions (admin). |
+| `GET` | `/api/audit` | Audit trail of sensitive actions, newest first, hash-chained; filter by `action`, `actor`, `target`, `since`, `until`, page with `before_seq` (admin). |
+| `GET` | `/api/audit/verify` | Walk the audit hash chain and name the first break, if any (admin). |
 | `DELETE` | `/api/users/{user_id}` | Right-to-erasure: delete all of a user's captured calls (admin). |
 | `GET` | `/` | Live dashboard |
 | `WS` | `/ws` | WebSocket stream - powers live dashboard updates |
@@ -637,7 +638,10 @@ env-always-wins rule.
 | `AGENTICLEDGER_REDACT` | No | _(off)_ | Redact PII/secrets in stored data: `all`, or a comma list of `email,ssn,credit_card,ip,api_key`. Replaces matches with `[REDACTED:<label>]`. Only the stored copy is affected - the agent's response is untouched. |
 | `AGENTICLEDGER_REDACT_PATTERNS` | No | _(none)_ | Extra redaction regexes as JSON: `{"label": "regex", ...}` or `["regex", ...]`. |
 | `AGENTICLEDGER_RETENTION_DAYS` | No | _(keep forever)_ | Delete captured calls older than N days via a background purge worker. |
-| `AGENTICLEDGER_AUDIT_LOG` | No | `on` | Record an audit trail of who viewed/exported/deleted what plus token/erasure actions. Set `0` to disable. |
+| `AGENTICLEDGER_AUDIT_LOG` | No | `on` | Record an audit trail of who viewed/exported/deleted what plus token/erasure actions, failed logins, rejected ingest credentials and MCP reads. Set `0` to disable. |
+| `AGENTICLEDGER_AUDIT_STRICT` | No | `off` | Refuse (HTTP 503) any audited action the log cannot record. Off, the failed write is counted (`agenticledger_audit_dropped_total`) and logged, and the action proceeds. |
+| `AGENTICLEDGER_AUDIT_HMAC_KEY` | No | _(none)_ | Key the audit hash chain with HMAC-SHA256. Without it the chain is plain SHA-256: it catches edits, but a writer with database access can re-chain. `_FILE` variant accepted. |
+| `AGENTICLEDGER_AUDIT_STDOUT` | No | `off` | Also print each audit row as one JSON line on stdout, for log scrapers and SIEM agents. With OTel export configured, rows are also sent as OTLP log records. |
 
 **Cost budgets** - block calls that exceed a spend limit (returns HTTP 429):
 

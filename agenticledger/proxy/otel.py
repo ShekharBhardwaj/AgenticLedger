@@ -75,6 +75,52 @@ def init_otel(
     trace.set_tracer_provider(provider)
     _tracer = trace.get_tracer("agenticledger", schema_url="https://opentelemetry.io/schemas/1.24.0")
     logger.info("Agentic Ledger OTel export enabled → %s", endpoint)
+    _init_audit_logs(endpoint, resource, headers or {})
+
+
+# Audit rows leave the box as OTLP log records on the same endpoint, so a
+# collector can land them in Datadog, Splunk or Sentinel. None until
+# init_otel() succeeds; emit_audit_log() is a no-op before that.
+_audit_logger = None
+
+
+def _init_audit_logs(endpoint: str, resource, headers: dict) -> None:
+    global _audit_logger
+    if _audit_logger is not None:
+        return
+    try:
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+        from opentelemetry.sdk._logs import LoggerProvider
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+    except ImportError:
+        logger.warning("OTel SDK has no log export in this install; audit rows stay local")
+        return
+    provider = LoggerProvider(resource=resource)
+    provider.add_log_record_processor(BatchLogRecordProcessor(
+        OTLPLogExporter(endpoint=f"{endpoint.rstrip('/')}/v1/logs", headers=headers)))
+    _audit_logger = provider.get_logger("agenticledger.audit")
+    logger.info("Agentic Ledger audit rows also exported as OTLP logs")
+
+
+def emit_audit_log(entry: dict) -> None:
+    """One audit row as an OTLP log record with the row's fields as
+    attributes; the row_hash rides along so the copy is an external anchor."""
+    if _audit_logger is None:
+        return
+    try:
+        from opentelemetry._logs import SeverityNumber
+        from opentelemetry.sdk._logs import LogRecord
+        attrs = {f"agenticledger.audit.{k}": v for k, v in entry.items() if v is not None}
+        record = LogRecord(
+            timestamp=int(float(entry.get("timestamp") or 0) * 1e9),
+            severity_number=SeverityNumber.INFO,
+            severity_text="INFO",
+            body=f"{entry.get('action')} {entry.get('target') or ''}".strip(),
+            attributes=attrs,
+        )
+        _audit_logger.emit(record)
+    except Exception:
+        logger.debug("audit log export skipped", exc_info=True)
 
 
 def emit_span(

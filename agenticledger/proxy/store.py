@@ -10,6 +10,7 @@ Schema is created automatically on first connect. New columns are added
 non-destructively so existing databases survive upgrades.
 """
 
+import asyncio
 import contextlib
 import datetime
 import datetime as _dt
@@ -415,15 +416,50 @@ class Store(ABC):
 
     # ── Audit log ────────────────────────────────────────────────────────────
 
+    # ── Audit log: an append-only, hash-chained record ──────────────────────
+    # The chain state (lock and key) is created lazily so both backends share
+    # it without touching their constructors; create_app sets audit_hmac_key
+    # after connect. One process, one lock: the chain cannot fork in-process.
+    # Chain integrity across replicas is the platform cycle's job.
+
+    def _chain_lock(self) -> asyncio.Lock:
+        if not hasattr(self, "_audit_lock"):
+            self._audit_lock = asyncio.Lock()
+        if not hasattr(self, "audit_hmac_key"):
+            self.audit_hmac_key = None
+        return self._audit_lock
+
     @abstractmethod
-    async def add_audit(self, entry: dict[str, Any]) -> None:
-        """Append an audit entry (who did what to which target, when)."""
+    async def add_audit(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """Append an audit entry (who did what to which target, when), chained
+        to the row before it. Returns the entry with seq, prev_hash, row_hash."""
         ...
 
     @abstractmethod
-    async def list_audit(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Return recent audit entries, newest first."""
+    async def list_audit(self, limit: int = 100, *, action: Optional[str] = None,
+                         actor: Optional[str] = None, target: Optional[str] = None,
+                         since: Optional[float] = None, until: Optional[float] = None,
+                         before_seq: Optional[int] = None) -> list[dict[str, Any]]:
+        """Recent audit entries, newest first, optionally filtered; page with
+        before_seq (the smallest seq already seen)."""
         ...
+
+    @abstractmethod
+    async def audit_rows_ascending(self) -> list[dict[str, Any]]:
+        """Every chained row (seq not null), raw timestamps, ascending seq."""
+        ...
+
+    @abstractmethod
+    async def count_pre_chain_audit(self) -> int:
+        """Rows written before the chain existed (no seq)."""
+        ...
+
+    async def verify_audit_chain(self) -> dict[str, Any]:
+        from .auditchain import verify
+        self._chain_lock()
+        rows = await self.audit_rows_ascending()
+        pre = await self.count_pre_chain_audit()
+        return verify(rows, self.audit_hmac_key, pre_chain=pre)
 
     @abstractmethod
     async def close(self) -> None: ...
@@ -496,6 +532,10 @@ class _SqliteStore(Store):
                 client       TEXT
             )
         """)
+        for col, col_type in (("seq", "INTEGER"), ("prev_hash", "TEXT"), ("row_hash", "TEXT")):
+            # The hash chain's columns; already present on an upgraded DB.
+            with contextlib.suppress(Exception):
+                await db.execute(f"ALTER TABLE audit_log ADD COLUMN {col} {col_type}")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS tool_executions (
                 tool_call_id          TEXT,
@@ -1144,20 +1184,37 @@ class _SqliteStore(Store):
         await self._db.commit()
         return deleted
 
-    async def add_audit(self, entry: dict[str, Any]) -> None:
-        await self._db.execute(
-            "INSERT INTO audit_log "
-            "(id, timestamp, actor_role, actor_source, actor, action, target, details, client) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
-            (entry["id"], entry["timestamp"], entry.get("actor_role"), entry.get("actor_source"),
-             entry.get("actor"), entry["action"], entry.get("target"), entry.get("details"),
-             entry.get("client")),
-        )
-        await self._db.commit()
+    async def add_audit(self, entry: dict[str, Any]) -> dict[str, Any]:
+        from .auditchain import GENESIS, row_hash
+        async with self._chain_lock():
+            async with self._db.execute(
+                "SELECT seq, row_hash FROM audit_log WHERE seq IS NOT NULL "
+                "ORDER BY seq DESC LIMIT 1"
+            ) as cur:
+                last = await cur.fetchone()
+            seq = (last["seq"] + 1) if last else 1
+            prev = last["row_hash"] if last else GENESIS
+            entry = {**entry, "seq": seq, "prev_hash": prev}
+            entry["row_hash"] = row_hash(prev, entry, self.audit_hmac_key)
+            await self._db.execute(
+                "INSERT INTO audit_log "
+                "(id, timestamp, actor_role, actor_source, actor, action, target, details, "
+                "client, seq, prev_hash, row_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (entry["id"], entry["timestamp"], entry.get("actor_role"), entry.get("actor_source"),
+                 entry.get("actor"), entry["action"], entry.get("target"), entry.get("details"),
+                 entry.get("client"), seq, prev, entry["row_hash"]),
+            )
+            await self._db.commit()
+        return entry
 
-    async def list_audit(self, limit: int = 100) -> list[dict[str, Any]]:
+    async def list_audit(self, limit: int = 100, *, action: Optional[str] = None,
+                         actor: Optional[str] = None, target: Optional[str] = None,
+                         since: Optional[float] = None, until: Optional[float] = None,
+                         before_seq: Optional[int] = None) -> list[dict[str, Any]]:
+        where, params = _audit_filters(action, actor, target, since, until, before_seq, "?")
         async with self._db.execute(
-            "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?", (limit,)
+            f"SELECT * FROM audit_log{where} ORDER BY timestamp DESC, seq DESC LIMIT ?",
+            (*params, limit),
         ) as cur:
             rows = await cur.fetchall()
         out = []
@@ -1167,8 +1224,45 @@ class _SqliteStore(Store):
             out.append(d)
         return out
 
+    async def audit_rows_ascending(self) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT * FROM audit_log WHERE seq IS NOT NULL ORDER BY seq ASC"
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+    async def count_pre_chain_audit(self) -> int:
+        async with self._db.execute(
+            "SELECT COUNT(*) AS n FROM audit_log WHERE seq IS NULL"
+        ) as cur:
+            row = await cur.fetchone()
+        return int(row["n"] if row else 0)
+
     async def close(self) -> None:
         await self._db.close()
+
+
+def _audit_filters(action, actor, target, since, until, before_seq, ph: str):
+    """WHERE clause and params for list_audit on either backend; `ph` is the
+    placeholder style ("?" for SQLite, "$" for Postgres, numbered)."""
+    clauses: list[str] = []
+    params: list[Any] = []
+
+    def p() -> str:
+        return "?" if ph == "?" else f"${len(params)}"
+
+    for value, clause in (
+        (action, "action = {}"),
+        (actor, "actor = {}"),
+        (f"%{target}%" if target else None, "target LIKE {}"),
+        (float(since) if since is not None else None, "timestamp >= {}"),
+        (float(until) if until is not None else None, "timestamp <= {}"),
+        (int(before_seq) if before_seq is not None else None, "seq < {}"),
+    ):
+        if value is None or value == "":
+            continue
+        params.append(value)
+        clauses.append(clause.format(p()))
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
 
 
 def _sqlite_row(row) -> dict[str, Any]:
@@ -1302,6 +1396,9 @@ class _PostgresStore(Store):
                     client       TEXT
                 )
             """)
+            for col, pg_type in (("seq", "BIGINT"), ("prev_hash", "TEXT"), ("row_hash", "TEXT")):
+                # The hash chain's columns (0.15); no-op on an upgraded DB.
+                await conn.execute(f"ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS {col} {pg_type}")
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS tool_executions (
                     tool_call_id          TEXT,
@@ -1964,21 +2061,38 @@ class _PostgresStore(Store):
             )
         return int(result.split()[-1])  # "DELETE N"
 
-    async def add_audit(self, entry: dict[str, Any]) -> None:
-        async with self._pool.acquire() as conn:
+    async def add_audit(self, entry: dict[str, Any]) -> dict[str, Any]:
+        from .auditchain import GENESIS, row_hash
+        async with self._chain_lock(), self._pool.acquire() as conn:
+            last = await conn.fetchrow(
+                "SELECT seq, row_hash FROM audit_log WHERE seq IS NOT NULL "
+                "ORDER BY seq DESC LIMIT 1"
+            )
+            seq = (int(last["seq"]) + 1) if last else 1
+            prev = last["row_hash"] if last else GENESIS
+            entry = {**entry, "seq": seq, "prev_hash": prev}
+            entry["row_hash"] = row_hash(prev, entry, self.audit_hmac_key)
             await conn.execute(
                 "INSERT INTO audit_log "
-                "(id, timestamp, actor_role, actor_source, actor, action, target, details, client) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+                "(id, timestamp, actor_role, actor_source, actor, action, target, details, "
+                "client, seq, prev_hash, row_hash) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
                 entry["id"], entry["timestamp"], entry.get("actor_role"), entry.get("actor_source"),
                 entry.get("actor"), entry["action"], entry.get("target"), entry.get("details"),
-                entry.get("client"),
+                entry.get("client"), seq, prev, entry["row_hash"],
             )
+        return entry
 
-    async def list_audit(self, limit: int = 100) -> list[dict[str, Any]]:
+    async def list_audit(self, limit: int = 100, *, action: Optional[str] = None,
+                         actor: Optional[str] = None, target: Optional[str] = None,
+                         since: Optional[float] = None, until: Optional[float] = None,
+                         before_seq: Optional[int] = None) -> list[dict[str, Any]]:
+        where, params = _audit_filters(action, actor, target, since, until, before_seq, "$")
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT $1", limit
+                f"SELECT * FROM audit_log{where} ORDER BY timestamp DESC, seq DESC "
+                f"LIMIT ${len(params) + 1}",
+                *params, limit,
             )
         out = []
         for r in rows:
@@ -1986,6 +2100,18 @@ class _PostgresStore(Store):
             d["timestamp"] = _unix_to_iso(d["timestamp"])
             out.append(d)
         return out
+
+    async def audit_rows_ascending(self) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM audit_log WHERE seq IS NOT NULL ORDER BY seq ASC"
+            )
+        return [_pg_plain(r) for r in rows]
+
+    async def count_pre_chain_audit(self) -> int:
+        async with self._pool.acquire() as conn:
+            return int(await conn.fetchval(
+                "SELECT COUNT(*) FROM audit_log WHERE seq IS NULL") or 0)
 
     async def close(self) -> None:
         await self._pool.close()

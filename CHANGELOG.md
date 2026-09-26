@@ -21,6 +21,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three admit exactly three.
 
 ### Added
+- **An audit trail a security team can accept.** Rows are hash-chained
+  (prev_hash, row_hash, seq), keyed with HMAC-SHA256 when
+  AGENTICLEDGER_AUDIT_HMAC_KEY is set and plain sha256 otherwise, with
+  the difference stated plainly in SECURITY.md; GET /api/audit/verify
+  walks the chain and names the first break. Coverage now includes what
+  was silently missing: failed logins and forbidden attempts on every
+  gate, rejected ingest credentials on the proxy path, MCP tool reads
+  (naming the tool), and reports views. The recorded client address is
+  the forwarded one, so visitors through nginx or a tunnel no longer all
+  read as 127.0.0.1. GET /api/audit filters by action, actor, target,
+  since and until and pages with before_seq. Writes fail open by default
+  and are counted (agenticledger_audit_dropped_total) and logged;
+  AGENTICLEDGER_AUDIT_STRICT=1 refuses any audited action the log
+  cannot record, and mutations now record before they act so that
+  refusal is real. Rows leave the box as JSON lines on stdout
+  (AGENTICLEDGER_AUDIT_STDOUT) and as OTLP log records whenever OTel
+  export is configured, the external anchor for the chain.
 - **The unpriced-model budget policy is explicit.** A model with no
   price cannot be counted. It passes uncounted by default, stated on the
   settings page and in the docs, and `AGENTICLEDGER_BUDGET_UNPRICED=refuse`

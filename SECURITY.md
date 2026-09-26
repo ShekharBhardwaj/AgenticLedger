@@ -34,6 +34,17 @@ Recommendations for any non-local deployment:
 - **Secure the database.** Captured traffic is stored in SQLite or Postgres. Apply
   the same access controls, encryption-at-rest, and retention policy you would to any
   store of sensitive prompt data.
+- **The audit log is hash-chained, and its strength depends on a key.** Every
+  audit row carries the hash of the row before it; `GET /api/audit/verify`
+  walks the chain and names the first break. Without `AGENTICLEDGER_AUDIT_HMAC_KEY`
+  the chain is plain SHA-256: it catches accidental edits and unsophisticated
+  tampering, but a writer with database access can recompute every later hash.
+  With the key the chain is HMAC-SHA256 and a database writer without the key
+  cannot re-chain. Forwarding rows off the box (`AGENTICLEDGER_AUDIT_STDOUT`
+  JSON lines, or OTLP logs when OTel export is on) is the external anchor that
+  closes the remaining gap. Audit writes fail open by default so a store hiccup
+  never takes the dashboard down; `AGENTICLEDGER_AUDIT_STRICT=1` refuses any
+  audited action the log cannot record.
 - **Compliance exports are integrity tagged, not encrypted.** By default the JSON
   export carries a SHA-256 checksum over the calls array, which catches accidental
   corruption but is not a signature (anyone who edits the calls can recompute it).

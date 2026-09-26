@@ -40,6 +40,13 @@ Reads config from environment variables:
                                       unset = keep forever (default: none)
     AGENTICLEDGER_AUDIT_LOG             Record an audit trail of who viewed/exported/deleted what and
                                       token/erasure actions; set 0 to disable (default: on)
+    AGENTICLEDGER_AUDIT_STRICT          Refuse (503) any audited action the log cannot record
+                                      (default: off, the write is counted and logged instead)
+    AGENTICLEDGER_AUDIT_HMAC_KEY        Key the audit hash chain with HMAC-SHA256 so a database
+                                      writer without the key cannot re-chain (default: none,
+                                      plain sha256 chain); _FILE variant accepted
+    AGENTICLEDGER_AUDIT_STDOUT          Also print each audit row as one JSON line on stdout for
+                                      log scrapers and SIEM agents (default: off)
 
   Budgets (returns HTTP 429 when exceeded, or warns; see AGENTICLEDGER_BUDGET_ACTION):
     AGENTICLEDGER_BUDGET_SESSION        Max USD per session_id (default: none)
@@ -183,6 +190,9 @@ app = create_app(
     ),
     retention_days=_float_env("AGENTICLEDGER_RETENTION_DAYS"),
     audit_enabled=os.environ.get("AGENTICLEDGER_AUDIT_LOG", "1").lower() not in ("0", "false", "no", "off"),
+    audit_strict=os.environ.get("AGENTICLEDGER_AUDIT_STRICT", "").lower() in ("1", "true", "yes", "on"),
+    audit_hmac_key=_secret_env("AGENTICLEDGER_AUDIT_HMAC_KEY"),
+    audit_stdout=os.environ.get("AGENTICLEDGER_AUDIT_STDOUT", "").lower() in ("1", "true", "yes", "on"),
     loop_action=os.environ.get("AGENTICLEDGER_LOOP_ACTION", "warn"),
     loop_max_steps=int(os.environ["AGENTICLEDGER_LOOP_MAX_STEPS"]) if os.environ.get("AGENTICLEDGER_LOOP_MAX_STEPS") else None,
     loop_repeat_threshold=int(os.environ.get("AGENTICLEDGER_LOOP_REPEAT_THRESHOLD", "3")),

@@ -65,6 +65,13 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "status": "AGENTICLEDGER_BUDGET_STATUS",
         "unpriced": "AGENTICLEDGER_BUDGET_UNPRICED",
     },
+    "audit": {
+        "enabled": "AGENTICLEDGER_AUDIT_LOG",
+        "strict": "AGENTICLEDGER_AUDIT_STRICT",
+        "hmac_key": "AGENTICLEDGER_AUDIT_HMAC_KEY",
+        "hmac_key_file": "AGENTICLEDGER_AUDIT_HMAC_KEY_FILE",
+        "stdout": "AGENTICLEDGER_AUDIT_STDOUT",
+    },
     "replay": {
         "api_key": "AGENTICLEDGER_REPLAY_API_KEY",
         "api_key_file": "AGENTICLEDGER_REPLAY_API_KEY_FILE",
@@ -102,6 +109,13 @@ TEMPLATE = '''\
 # user = 10.0         # per-user daily ceiling
 # status = 429        # or 402 — HTTP answer when a wall blocks a call
 # unpriced = "allow"  # or "refuse": a model with no price cannot be counted
+
+[audit]
+# The trail of who viewed, exported, deleted or changed what. Rows are
+# hash-chained; GET /api/audit/verify names the first break.
+# strict = false                                  # true: refuse what cannot be recorded
+# hmac_key_file = "~/.agenticledger/audit.key"    # keys the chain (HMAC-SHA256)
+# stdout = false                                  # one JSON line per row for log scrapers
 
 [replay]
 # Same-provider replay through the proxy's own upstream:

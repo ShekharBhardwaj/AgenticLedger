@@ -47,6 +47,7 @@ import json
 import logging
 import os
 import secrets
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -97,7 +98,7 @@ from .normalize import (
     normalize_request,
     normalize_response,
 )
-from .otel import emit_span
+from .otel import emit_audit_log, emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
@@ -261,6 +262,9 @@ def create_app(
     retention_days: Optional[float] = None,
     retention_interval_seconds: float = 3600.0,
     audit_enabled: bool = True,
+    audit_strict: bool = False,   # refuse an audited action the log cannot record (503)
+    audit_hmac_key: Optional[str] = None,   # keys the hash chain; plain sha256 otherwise
+    audit_stdout: bool = False,   # one JSON line per audit row on stdout, for log scrapers
     loop_action: str = "warn",   # "warn" | "block" | "off"
     loop_max_steps: Optional[int] = None,
     loop_repeat_threshold: int = DEFAULT_REPEAT_THRESHOLD,
@@ -307,10 +311,25 @@ def create_app(
     _retention_days = retention_days
     _retention_interval = retention_interval_seconds
     _audit_enabled = audit_enabled
+    _audit_strict = bool(audit_strict)
+    _audit_hmac_key = audit_hmac_key or None
+    _audit_stdout = bool(audit_stdout)
+    # Forwarding: a dedicated logger with a bare JSON formatter on stdout, so
+    # a Kubernetes log pipeline or any SIEM agent scrapes the trail as-is.
+    _audit_logger = logging.getLogger("agenticledger.audit")
+    if _audit_stdout and not any(getattr(h, "_agenticledger_audit", False)
+                                 for h in _audit_logger.handlers):
+        _h = logging.StreamHandler(sys.stdout)
+        _h.setFormatter(logging.Formatter("%(message)s"))
+        _h._agenticledger_audit = True  # type: ignore[attr-defined]
+        _audit_logger.addHandler(_h)
+        _audit_logger.setLevel(logging.INFO)
+        _audit_logger.propagate = False
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.store = await Store.connect(dsn)
+        app.state.store.audit_hmac_key = _audit_hmac_key
         app.state.reservations = _reservations
         # Operator kill switch: run ids whose calls are refused at the wall.
         # Loaded once, kept in memory (the hot path must not pay a query),
@@ -418,6 +437,7 @@ def create_app(
     # silent data loss is observable instead of invisible. Surfaced via /readyz.
     app.state.capture_dropped = 0
     app.state.capture_persisted = 0
+    app.state.audit_dropped = 0
 
     async def _run_spent(app_obj, run_id: str) -> float:
         """The run's spend so far, for ceiling checks: seeded from the
@@ -700,40 +720,73 @@ def create_app(
         return None
 
     async def _require(request: Request, role: str) -> Principal:
-        """Enforce that the request carries a credential satisfying ``role``."""
+        """Enforce that the request carries a credential satisfying ``role``.
+        A refusal is itself an audit event: failed logins and forbidden
+        attempts are what a security team looks for first."""
         if not _auth_enabled:
             if _open_access_allowed(request):
                 return Principal(ROLE_ADMIN, "open")
+            await _audit(None, request, "auth_failed", request.url.path,
+                         "401: remote access without the pairing key",
+                         actor_source="rejected")
             raise HTTPException(
                 status_code=401,
                 detail="Remote access needs the key. On the machine running the "
                        "ledger: agenticledger share prints the pairing link.")
         principal = await _authenticate(request)
         if principal is None:
+            await _audit(None, request, "auth_failed", request.url.path,
+                         "401: no valid credential", actor_source="rejected")
             raise HTTPException(status_code=401, detail="Unauthorized")
         if not role_satisfies(principal.role, role):
+            await _audit(principal, request, "auth_failed", request.url.path,
+                         f"403: requires '{role}' role")
             raise HTTPException(status_code=403, detail=f"Forbidden: requires '{role}' role")
         return principal
 
     async def _audit(
         principal: Optional[Principal], request: Request,
         action: str, target: Optional[str] = None, details: Optional[str] = None,
+        actor_source: Optional[str] = None,
     ) -> None:
-        """Record a sensitive access/mutation. Best-effort — never breaks the request."""
+        """Record a sensitive access or mutation as a chained audit row.
+
+        Fail-open by default: a write that fails is counted, logged loudly,
+        and the request proceeds (an audit-store hiccup must not take a
+        laptop's dashboard down). With AGENTICLEDGER_AUDIT_STRICT on, an
+        action the log cannot record is refused with 503, so a callsite
+        must audit BEFORE the effect it records. Each stored row is then
+        forwarded (stdout JSON lines, OTLP logs) as the external anchor.
+        """
         if not _audit_enabled:
             return
+        entry = {
+            "id": str(uuid.uuid4()),
+            "timestamp": time.time(),
+            "actor_role": principal.role if principal else None,
+            "actor_source": actor_source or (principal.source if principal else "open"),
+            "actor": (principal.name or principal.token_id) if principal else None,
+            "action": action,
+            "target": target,
+            "details": details,
+            "client": _effective_client_host(request),
+        }
+        try:
+            stored = await app.state.store.add_audit(entry)
+        except Exception:
+            app.state.audit_dropped += 1
+            logger.warning("Audit write failed for %s %s", action, target, exc_info=True)
+            if _audit_strict:
+                raise HTTPException(
+                    status_code=503,
+                    detail="The audit log is unavailable and AGENTICLEDGER_AUDIT_STRICT "
+                           "is on, so this action was refused.") from None
+            return
+        if _audit_stdout:
+            with suppress(Exception):
+                _audit_logger.info(json.dumps(stored, default=str, separators=(",", ":")))
         with suppress(Exception):
-            await app.state.store.add_audit({
-                "id": str(uuid.uuid4()),
-                "timestamp": time.time(),
-                "actor_role": principal.role if principal else None,
-                "actor_source": principal.source if principal else "open",
-                "actor": (principal.name or principal.token_id) if principal else None,
-                "action": action,
-                "target": target,
-                "details": details,
-                "client": request.client.host if request.client else None,
-            })
+            emit_audit_log(stored)
 
     # ── Health ───────────────────────────────────────────────────────────────
 
@@ -796,6 +849,12 @@ def create_app(
             "# HELP agenticledger_capture_async Whether async capture is enabled (1) or not (0).",
             "# TYPE agenticledger_capture_async gauge",
             f"agenticledger_capture_async {1 if _async_capture else 0}",
+            "# HELP agenticledger_audit_dropped_total Audit rows that could not be written.",
+            "# TYPE agenticledger_audit_dropped_total counter",
+            f"agenticledger_audit_dropped_total {getattr(app.state, 'audit_dropped', 0)}",
+            "# HELP agenticledger_audit_strict Whether an unrecordable action is refused (1) or allowed (0).",
+            "# TYPE agenticledger_audit_strict gauge",
+            f"agenticledger_audit_strict {1 if _audit_strict else 0}",
         ]
         return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
@@ -964,8 +1023,8 @@ def create_app(
         store = request.app.state.store
         if await store.get_run(run_id) is None:
             raise HTTPException(status_code=404, detail="run_id not found")
-        await store.mark_run_ended(run_id, time.time())
         await _audit(principal, request, "run_end", run_id, "runner exit signal")
+        await store.mark_run_ended(run_id, time.time())
         return JSONResponse({"run_id": run_id, "status": "ended"})
 
     @app.post("/api/runs/{run_id}/stop")
@@ -976,20 +1035,20 @@ def create_app(
         store = request.app.state.store
         if await store.get_run(run_id) is None:
             raise HTTPException(status_code=404, detail="run_id not found")
-        await store.set_label("stopped", run_id, name="operator")
-        request.app.state.stopped_runs.add(run_id)
         await _audit(principal, request, "run_stop", run_id,
                      "operator kill switch engaged")
+        await store.set_label("stopped", run_id, name="operator")
+        request.app.state.stopped_runs.add(run_id)
         return JSONResponse({"run_id": run_id, "status": "stopped"})
 
     @app.delete("/api/runs/{run_id}/stop")
     async def api_run_resume(run_id: str, request: Request) -> JSONResponse:
         """Lift the kill switch. Idempotent."""
         principal = await _require(request, ROLE_EDITOR)
-        await request.app.state.store.delete_label("stopped", run_id)
-        request.app.state.stopped_runs.discard(run_id)
         await _audit(principal, request, "run_resume", run_id,
                      "operator kill switch lifted")
+        await request.app.state.store.delete_label("stopped", run_id)
+        request.app.state.stopped_runs.discard(run_id)
         return JSONResponse({"run_id": run_id, "status": "resumed"})
 
     @app.post("/api/redetect")
@@ -1057,6 +1116,11 @@ def create_app(
             if scope != "run":
                 raise HTTPException(status_code=400,
                                     detail="budget_usd applies to runs only")
+        # Record before the effect: strict mode refuses what it cannot record.
+        await _audit(principal, request, "set_label", f"{scope}:{ref_id}",
+                     json.dumps({k: payload[k]
+                                 for k in ("name", "pinned", "project", "budget_usd")
+                                 if k in payload}))
         row = await request.app.state.store.set_label(
             scope, ref_id,
             name=payload.get("name"),
@@ -1074,10 +1138,6 @@ def create_app(
             else:
                 request.app.state.run_ceilings.pop(ref_id, None)
                 request.app.state.ceiling_alerted.discard(ref_id)
-        await _audit(principal, request, "set_label", f"{scope}:{ref_id}",
-                     json.dumps({k: payload[k]
-                                 for k in ("name", "pinned", "project", "budget_usd")
-                                 if k in payload}))
         return JSONResponse(row)
 
     @app.get("/api/projects")
@@ -1107,10 +1167,10 @@ def create_app(
         app_id = payload.get("app_id")
         if app_id is not None and (not isinstance(app_id, str) or len(app_id) > 120):
             raise HTTPException(status_code=400, detail="app_id must be a short string")
+        await _audit(principal, request, "create_project", name,
+                     f"app_id={app_id or '-'}")
         await request.app.state.store.set_label(
             "project", name, name=(app_id.strip() if app_id else None))
-        await _audit(principal, request, "create_project", name,
-                     f"app_id={app_id or '—'}")
         return JSONResponse({"project": name, "app_id": app_id or None},
                             status_code=201)
 
@@ -1147,8 +1207,8 @@ def create_app(
         store = request.app.state.store
         if name not in await store.list_projects():
             raise HTTPException(status_code=404, detail="project not found")
-        moved = await store.rename_project(name, new)
         await _audit(principal, request, "rename_project", name, f"→ {new}")
+        moved = await store.rename_project(name, new)
         return JSONResponse({"project": new, "moved_labels": moved})
 
     @app.delete("/api/projects/{name}")
@@ -1164,14 +1224,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="project not found")
         deleted_sessions = 0
         deleted_calls = 0
+        # Record before the effect (strict mode refuses what it cannot
+        # record); the counts land in the reply.
+        await _audit(principal, request, "delete_project", name,
+                     f"requested purge={purge}")
         if purge:
             for sid in await _project_sessions(store, name):
                 deleted_calls += await store.delete_session(sid)
                 deleted_sessions += 1
         unfiled = await store.unfile_project(name)
-        await _audit(principal, request, "delete_project", name,
-                     f"purge={purge} sessions_deleted={deleted_sessions} "
-                     f"calls_deleted={deleted_calls} unfiled={unfiled}")
         return JSONResponse({"project": name, "purged": purge,
                              "sessions_deleted": deleted_sessions,
                              "calls_deleted": deleted_calls,
@@ -1271,9 +1332,17 @@ def create_app(
                       "relay means anyone who can reach this port can spend your "
                       "provider credit. Team cards work here too.",
                 key="[keys] ingest_key / ingest_key_file"),
-            row("Access", "audit log", "on" if _audit_enabled else "off",
+            row("Access", "audit log",
+                ("off" if not _audit_enabled else
+                 "on, " + ("strict" if _audit_strict else "fail-open")
+                 + (", keyed chain" if _audit_hmac_key else ", sha256 chain")
+                 + (", stdout" if _audit_stdout else "")),
                 "AGENTICLEDGER_AUDIT_LOG",
-                means="Records who viewed, exported, or deleted what."),
+                means="Records who viewed, exported, deleted or changed what, plus "
+                      "failed logins. Rows are hash-chained (keyed with HMAC when "
+                      "AGENTICLEDGER_AUDIT_HMAC_KEY is set); strict refuses what "
+                      "cannot be recorded; stdout and OTLP forward each row.",
+                key="[audit] strict / hmac_key_file / stdout"),
             row("Budgets", "daily (whole ledger)", budget_daily,
                 "AGENTICLEDGER_BUDGET_DAILY",
                 means="Hard ceiling across everything, per UTC day. Enforced "
@@ -1806,7 +1875,9 @@ def create_app(
         viewer's local day; budgets and the digest remain UTC. `project`
         scopes every number to one project (or "run:<id>" for a run-default
         group), resolved the same way the sidebar files sessions (#107)."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        await _audit(principal, request, "view_reports",
+                     details=f"days={days} project={project or '-'}")
         days = max(1, min(days, 365))
         tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
         _since = time.time() - days * 86400
@@ -1859,7 +1930,9 @@ def create_app(
     async def api_reports_csv(request: Request, days: int = 30,
                               tz_offset_minutes: int = 0,
                               project: str = "") -> Response:
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        await _audit(principal, request, "export_reports_csv",
+                     details=f"days={days} project={project or '-'}")
         days = max(1, min(days, 365))
         tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
         _since = time.time() - days * 86400
@@ -1965,25 +2038,48 @@ def create_app(
     @app.delete("/api/sessions/{session_id}")
     async def delete_session(session_id: str, request: Request) -> JSONResponse:
         principal = await _require(request, ROLE_EDITOR)
+        # Record before the effect: under AGENTICLEDGER_AUDIT_STRICT an
+        # unrecordable deletion must not happen. The count is in the reply.
+        await _audit(principal, request, "delete_session", session_id, "requested")
         deleted = await request.app.state.store.delete_session(session_id)
         if deleted == 0:
             raise HTTPException(status_code=404, detail="session_id not found")
-        await _audit(principal, request, "delete_session", session_id, f"deleted {deleted} calls")
         return JSONResponse({"deleted": deleted})
 
     @app.delete("/api/users/{user_id}")
     async def erase_user(user_id: str, request: Request) -> JSONResponse:
         """Right-to-erasure: delete all captured calls for a user_id."""
         principal = await _require(request, ROLE_ADMIN)
+        await _audit(principal, request, "erase_user", user_id, "requested")
         deleted = await request.app.state.store.delete_user(user_id)
-        await _audit(principal, request, "erase_user", user_id, f"deleted {deleted} calls")
         return JSONResponse({"deleted": deleted})
 
     @app.get("/api/audit")
-    async def get_audit(request: Request, limit: int = 100) -> JSONResponse:
+    async def get_audit(request: Request, limit: int = 100, action: str = "",
+                        actor: str = "", target: str = "",
+                        since: Optional[float] = None, until: Optional[float] = None,
+                        before_seq: Optional[int] = None) -> JSONResponse:
+        """The audit trail, newest first. Filter by action, actor, target
+        (substring), since/until (unix seconds); page with before_seq (the
+        smallest seq already seen). Rows carry seq, prev_hash, row_hash."""
         await _require(request, ROLE_ADMIN)
-        entries = await request.app.state.store.list_audit(limit=max(1, min(limit, 1000)))
+        entries = await request.app.state.store.list_audit(
+            limit=max(1, min(limit, 1000)), action=action or None,
+            actor=actor or None, target=target or None,
+            since=since, until=until, before_seq=before_seq)
         return JSONResponse(entries)
+
+    @app.get("/api/audit/verify")
+    async def verify_audit(request: Request) -> JSONResponse:
+        """Walk the hash chain and name the first break, if any. `keyed`
+        says whether the chain is HMAC-keyed (a database writer without the
+        key cannot re-chain) or a plain sha256 chain (catches edits, not a
+        determined writer with database access)."""
+        principal = await _require(request, ROLE_ADMIN)
+        result = await request.app.state.store.verify_audit_chain()
+        await _audit(principal, request, "verify_audit",
+                     details=("ok" if result["ok"] else f"break at seq {result['first_break']}"))
+        return JSONResponse(result)
 
     @app.get("/api/share")
     async def api_share(request: Request) -> JSONResponse:
@@ -2040,6 +2136,9 @@ def create_app(
             # The remote guard applies here too — otherwise a keyless remote
             # caller is TOLD "all open" while every data endpoint refuses it.
             if not _open_access_allowed(request):
+                await _audit(None, request, "auth_failed", request.url.path,
+                             "401: remote access without the pairing key",
+                             actor_source="rejected")
                 raise HTTPException(
                     status_code=401,
                     detail="Remote access needs the key. On the machine running "
@@ -2050,6 +2149,8 @@ def create_app(
                                  "name": None, "team": None, "dashboard": True})
         principal = await _authenticate(request)
         if principal is None:
+            await _audit(None, request, "auth_failed", request.url.path,
+                         "401: no valid credential", actor_source="rejected")
             raise HTTPException(status_code=401, detail="Unauthorized")
         is_card = principal.role == ROLE_INGEST
         return JSONResponse({
@@ -2092,10 +2193,10 @@ def create_app(
         expires_at = created_at + float(expires_in_days) * 86400 if expires_in_days else None
         raw, token_hash = generate_token()
         token_id = str(uuid.uuid4())
+        await _audit(principal, request, "create_token", token_id, f"role={role} name={name}")
         await request.app.state.store.create_token(
             token_id, name, token_hash, role, created_at, expires_at, budget_daily
         )
-        await _audit(principal, request, "create_token", token_id, f"role={role} name={name}")
         # The raw token is returned exactly once; only its hash is stored.
         return JSONResponse({
             "token_id": token_id, "name": name, "role": role,
@@ -2111,10 +2212,10 @@ def create_app(
     @app.delete("/api/tokens/{token_id}")
     async def revoke_api_token(token_id: str, request: Request) -> JSONResponse:
         principal = await _require(request, ROLE_ADMIN)
+        await _audit(principal, request, "revoke_token", token_id)
         revoked = await request.app.state.store.revoke_token(token_id, time.time())
         if not revoked:
             raise HTTPException(status_code=404, detail="token_id not found or already revoked")
-        await _audit(principal, request, "revoke_token", token_id)
         return JSONResponse({"revoked": True})
 
     @app.get("/api/search")
@@ -2175,7 +2276,18 @@ def create_app(
 
     @app.post("/mcp")
     async def mcp(request: Request) -> JSONResponse:
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        # A model reading the ledger through MCP is a read like any other;
+        # name the tool so the trail says what was asked, not just that
+        # something was. The body is cached, so handle_mcp reads it again.
+        target = None
+        with suppress(Exception):
+            body = await request.json()
+            method = body.get("method") if isinstance(body, dict) else None
+            params = body.get("params") if isinstance(body, dict) else None
+            target = (params.get("name") if method == "tools/call" and isinstance(params, dict)
+                      else method)
+        await _audit(principal, request, "mcp_call", target)
         return await handle_mcp(request)
 
     # ── OTLP ingest (OTel-native frameworks) ─────────────────────────────────
@@ -2193,6 +2305,9 @@ def create_app(
                 return None
             # Same rule as the relay: a presented-but-dead credential gets a
             # final 403 (401 invites credential-refresh retry bursts).
+            await _audit(None, request, "ingest_rejected", request.url.path,
+                         "403: dead or unknown ingest key or team card",
+                         actor_source="rejected")
             return JSONResponse(
                 {"error": {"type": "permission_error",
                            "message": "This Agentic Ledger ingest key or team card "
@@ -2327,6 +2442,9 @@ def create_app(
                 # sends agents into credential-refresh retry bursts; 403 is
                 # final. Enforced even when the relay is otherwise open — a
                 # revoked card must not silently pass as anonymous traffic.
+                await _audit(None, request, "ingest_rejected", f"/{path}",
+                             "403: dead or unknown ingest key or team card",
+                             actor_source="rejected")
                 return JSONResponse(
                     {"error": {
                         "type": "permission_error",
