@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (naming the tool), and reports views. The recorded client address is
   the forwarded one, so visitors through nginx or a tunnel no longer all
   read as 127.0.0.1. GET /api/audit filters by action, actor, target,
-  since and until and pages with before_seq. Writes fail open by default
+  since and until and pages with before_seq, and the Settings page shows
+  the trail with filters, paging and a verify button. Writes fail open by default
   and are counted (agenticledger_audit_dropped_total) and logged;
   AGENTICLEDGER_AUDIT_STRICT=1 refuses any audited action the log
   cannot record, and mutations now record before they act so that

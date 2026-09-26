@@ -104,7 +104,152 @@ export default function SettingsView() {
         </div>
       ))}
       <Maintenance />
+      <AuditTrail />
     </div>
+  );
+}
+
+interface AuditRow {
+  id: string; timestamp: string; actor_role: string | null; actor_source: string | null;
+  actor: string | null; action: string; target: string | null; details: string | null;
+  client: string | null; seq: number | null; prev_hash: string | null; row_hash: string | null;
+}
+
+interface ChainCheck {
+  ok: boolean; checked: number; pre_chain: number; keyed: boolean;
+  first_break: { seq: number | null; id: string; action?: string } | null;
+}
+
+type AuditFilters = { action: string; actor: string; target: string };
+const AUDIT_PAGE = 50;
+
+function fetchAuditPage(f: AuditFilters, beforeSeq?: number): Promise<AuditRow[]> {
+  const q = new URLSearchParams({ limit: String(AUDIT_PAGE) });
+  for (const [k, v] of Object.entries(f)) if (v.trim()) q.set(k, v.trim());
+  if (beforeSeq != null) q.set("before_seq", String(beforeSeq));
+  return get<AuditRow[]>(`/api/audit?${q.toString()}`);
+}
+
+/** The audit trail, read from the chained log: who did what, filtered and
+ *  paged, with the chain check one click away. Admin only; a viewer sees a
+ *  plain note instead of a broken table. */
+function AuditTrail() {
+  const [rows, setRows] = useState<AuditRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<AuditFilters>({ action: "", actor: "", target: "" });
+  const [applied, setApplied] = useState<AuditFilters>(filters);
+  const [more, setMore] = useState(false);
+  const [check, setCheck] = useState<ChainCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetchAuditPage(applied)
+      .then((page) => {
+        if (!alive) return;
+        setRows(page); setMore(page.length === AUDIT_PAGE); setError(null);
+      })
+      .catch((e) => { if (alive) setError(e.message); });
+    return () => { alive = false; };
+  }, [applied]);
+
+  const loadOlder = () => {
+    const seqs = (rows ?? []).map((r) => r.seq).filter((s): s is number => s != null);
+    if (!seqs.length) return;
+    fetchAuditPage(applied, Math.min(...seqs))
+      .then((page) => {
+        setRows((prev) => [...(prev ?? []), ...page]);
+        setMore(page.length === AUDIT_PAGE);
+      })
+      .catch((e) => setError(e.message));
+  };
+
+  const verify = () => {
+    setChecking(true); setCheck(null);
+    get<ChainCheck>("/api/audit/verify")
+      .then(setCheck)
+      .catch((e) => setError(e.message))
+      .finally(() => setChecking(false));
+  };
+
+  return (
+    <section className="settings-section" aria-label="Audit trail">
+      <div className="section-title">Audit trail</div>
+      <div className="muted" style={{ maxWidth: 760, marginBottom: 8 }}>
+        Who viewed, exported, deleted or changed what, plus failed logins. Rows
+        are hash-chained; verifying walks the chain and names the first break.
+        A keyed chain (AGENTICLEDGER_AUDIT_HMAC_KEY) resists a database writer
+        without the key; a plain sha256 chain catches edits, not a determined
+        writer with database access.
+      </div>
+      {error ? (
+        <div className="empty">The audit trail needs an admin key. ({error})</div>
+      ) : (
+        <>
+          <form className="key-actions"
+                onSubmit={(e) => { e.preventDefault(); setApplied({ ...filters }); }}>
+            <input className="search" aria-label="Filter by action"
+                   placeholder="action, e.g. view_session" value={filters.action}
+                   onChange={(e) => setFilters({ ...filters, action: e.target.value })} />
+            <input className="search" aria-label="Filter by actor" placeholder="actor"
+                   value={filters.actor}
+                   onChange={(e) => setFilters({ ...filters, actor: e.target.value })} />
+            <input className="search" aria-label="Filter by target" placeholder="target contains"
+                   value={filters.target}
+                   onChange={(e) => setFilters({ ...filters, target: e.target.value })} />
+            <button className="link-btn" type="submit" style={{ whiteSpace: "nowrap" }}>
+              Apply filters
+            </button>
+            <button className="link-btn" type="button" disabled={checking} onClick={verify}
+                    style={{ whiteSpace: "nowrap" }}>
+              {checking ? "verifying…" : "Verify chain"}
+            </button>
+          </form>
+          {check && (
+            <div role="status" className="muted" style={{ margin: "6px 0" }}>
+              {check.ok
+                ? `Chain intact: ${check.checked} rows verified` +
+                  (check.pre_chain ? `, ${check.pre_chain} pre-chain` : "") +
+                  ` (${check.keyed ? "keyed HMAC" : "plain sha256"}).`
+                : `Chain broken at seq ${check.first_break?.seq ?? "?"}` +
+                  ` (${check.first_break?.action ?? "row"} ${check.first_break?.id ?? ""});` +
+                  ` ${check.checked} rows verified before it.`}
+            </div>
+          )}
+          {!rows ? (
+            <div className="empty">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="empty">No audit rows match.</div>
+          ) : (
+            <table className="rtable">
+              <thead>
+                <tr><th>when</th><th>actor</th><th>action</th><th>target</th>
+                    <th>details</th><th>client</th><th>seq</th></tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="mono">{new Date(r.timestamp).toLocaleString()}</td>
+                    <td>
+                      {r.actor || r.actor_source || "-"}
+                      {r.actor_role && <span className="muted"> ({r.actor_role})</span>}
+                    </td>
+                    <td className="mono">{r.action}</td>
+                    <td className="mono">{r.target || "-"}</td>
+                    <td>{r.details || ""}</td>
+                    <td className="mono">{r.client || "-"}</td>
+                    <td className="mono" title={r.row_hash || ""}>{r.seq ?? "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {more && rows && (
+            <button className="link-btn" type="button" onClick={loadOlder}>Load older</button>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

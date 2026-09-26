@@ -184,6 +184,24 @@ test("search, cache, live activity and what-if tools remain usable", async ({ pa
   await expect(page.locator(".whatif-result")).toBeVisible();
 });
 
+test("the audit trail lists actions, filters, and verifies its chain", async ({ page }) => {
+  // Viewing a session is an audited read, so the trail has a row to show.
+  await page.goto("/app#/sessions/smoke-loop-s1");
+  await expect(page.locator(".session-header-title")).toContainText("smoke-loop-s1");
+  await page.goto("/app#/settings");
+  const trail = page.getByRole("region", { name: "Audit trail" });
+  await expect(trail.locator("table.rtable tbody tr").first()).toBeVisible();
+  await expect(trail).toContainText("view_session");
+  await trail.getByRole("button", { name: "Verify chain", exact: true }).click();
+  await expect(trail.getByRole("status")).toContainText("Chain intact");
+  await trail.getByLabel("Filter by action").fill("view_session");
+  await trail.getByRole("button", { name: "Apply filters", exact: true }).click();
+  await expect(trail.locator("table.rtable tbody tr").first()).toContainText("view_session");
+  await trail.getByLabel("Filter by action").fill("no_such_action");
+  await trail.getByRole("button", { name: "Apply filters", exact: true }).click();
+  await expect(trail).toContainText("No audit rows match");
+});
+
 test("light appearance persists across reload and navigation", async ({ page }) => {
   await page.goto("/app#/settings");
   await page.getByRole("radio", { name: "Light", exact: true }).click();
