@@ -5,6 +5,7 @@ import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
 import SettingsView from "./views/SettingsView";
 import { Icon } from "./LedgerVisuals";
+import { StopBanner } from "./StopControls";
 
 type Tab = "runs" | "sessions" | "reports" | "settings";
 
@@ -339,6 +340,7 @@ export default function App() {
           title={live ? "Live updates connected" : "Reconnecting"}
         ><span className="sr-only">{live ? "Live updates connected" : "Reconnecting"}</span></span>
       </header>
+      <StopBanner />
       <main id="main-content">
       {tab === "runs" ? (
         <RunsView onOpenSession={openSession} focusRun={focusRun}

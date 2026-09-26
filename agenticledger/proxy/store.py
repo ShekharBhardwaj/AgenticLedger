@@ -146,6 +146,19 @@ def _iteration_row(d: dict) -> dict:
     return d
 
 
+def _policy_columns(policy: Optional[dict]) -> tuple[Optional[str], ...]:
+    """A team card's four lists as the column values the INSERT expects:
+    comma-joined pattern strings, None for a list the card does not set."""
+    policy = policy or {}
+    out: list[Optional[str]] = []
+    for field in ("allow_models", "deny_models", "allow_providers", "deny_providers"):
+        value = policy.get(field)
+        if isinstance(value, (list, tuple)):
+            value = ",".join(str(v).strip() for v in value if str(v).strip())
+        out.append(value or None)
+    return tuple(out)
+
+
 class Store(ABC):
     """Common interface — use Store.connect(), not the subclasses directly."""
 
@@ -387,7 +400,12 @@ class Store(ABC):
         self, token_id: str, name: str, token_hash: str, role: str,
         created_at: float, expires_at: Optional[float],
         budget_daily: Optional[float] = None,
-    ) -> None: ...
+        policy: Optional[dict[str, Optional[str]]] = None,
+    ) -> None:
+        """``policy`` holds a team card's own allow and deny lists
+        (allow_models, deny_models, allow_providers, deny_providers) as
+        comma-separated pattern strings, or None for a card without."""
+        ...
 
     @abstractmethod
     async def get_token_by_hash(self, token_hash: str) -> Optional[dict[str, Any]]:
@@ -516,7 +534,11 @@ class _SqliteStore(Store):
                 created_at REAL NOT NULL,
                 expires_at REAL,
                 budget_daily REAL,
-                revoked_at REAL
+                revoked_at REAL,
+                allow_models TEXT,
+                deny_models TEXT,
+                allow_providers TEXT,
+                deny_providers TEXT
             )
         """)
         await db.execute("""
@@ -583,6 +605,10 @@ class _SqliteStore(Store):
         """)
         with contextlib.suppress(Exception):
             await db.execute("ALTER TABLE api_tokens ADD COLUMN budget_daily REAL")
+        # 0.15 fleet refusal controls: a team card's own allow and deny lists.
+        for col in ("allow_models", "deny_models", "allow_providers", "deny_providers"):
+            with contextlib.suppress(Exception):
+                await db.execute(f"ALTER TABLE api_tokens ADD COLUMN {col} TEXT")
         # 0.11 spend meter: a run's cost ceiling rides its label row.
         with contextlib.suppress(Exception):
             await db.execute("ALTER TABLE labels ADD COLUMN budget_usd REAL")
@@ -895,13 +921,15 @@ class _SqliteStore(Store):
 
     async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
         async with self._db.execute(
-            "SELECT ref_id, name, pinned, project, budget_usd FROM labels WHERE scope = ?",
+            "SELECT ref_id, name, pinned, project, budget_usd, updated_at "
+            "FROM labels WHERE scope = ?",
             (scope,),
         ) as cur:
             rows = await cur.fetchall()
         return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
                               "budget_usd": r["budget_usd"],
-                              "project": r["project"]} for r in rows}
+                              "project": r["project"],
+                              "updated_at": r["updated_at"]} for r in rows}
 
     async def delete_label(self, scope: str, ref_id: str) -> int:
         cur = await self._db.execute(
@@ -1136,11 +1164,14 @@ class _SqliteStore(Store):
     async def ping(self) -> None:
         await self._db.execute("SELECT 1")
 
-    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at, budget_daily=None) -> None:
+    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at,
+                           budget_daily=None, policy=None) -> None:
+        lists = _policy_columns(policy)
         await self._db.execute(
-            "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at, budget_daily) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (token_id, name, token_hash, role, created_at, expires_at, budget_daily),
+            "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at, "
+            "budget_daily, allow_models, deny_models, allow_providers, deny_providers) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (token_id, name, token_hash, role, created_at, expires_at, budget_daily, *lists),
         )
         await self._db.commit()
 
@@ -1153,7 +1184,8 @@ class _SqliteStore(Store):
 
     async def list_tokens(self) -> list[dict[str, Any]]:
         async with self._db.execute(
-            "SELECT token_id, name, role, created_at, expires_at, revoked_at "
+            "SELECT token_id, name, role, created_at, expires_at, revoked_at, budget_daily, "
+            "allow_models, deny_models, allow_providers, deny_providers "
             "FROM api_tokens ORDER BY created_at DESC"
         ) as cur:
             rows = await cur.fetchall()
@@ -1380,7 +1412,11 @@ class _PostgresStore(Store):
                     created_at DOUBLE PRECISION NOT NULL,
                     expires_at DOUBLE PRECISION,
                     budget_daily DOUBLE PRECISION,
-                    revoked_at DOUBLE PRECISION
+                    revoked_at DOUBLE PRECISION,
+                    allow_models TEXT,
+                    deny_models TEXT,
+                    allow_providers TEXT,
+                    deny_providers TEXT
                 )
             """)
             await conn.execute("""
@@ -1446,6 +1482,8 @@ class _PostgresStore(Store):
             """)
             await conn.execute(
                 "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS budget_daily DOUBLE PRECISION")
+            for col in ("allow_models", "deny_models", "allow_providers", "deny_providers"):
+                await conn.execute(f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col} TEXT")
             await conn.execute(
                 "ALTER TABLE labels ADD COLUMN IF NOT EXISTS budget_usd DOUBLE PRECISION")
             await conn.execute("ALTER TABLE llm_calls ALTER COLUMN temperature TYPE DOUBLE PRECISION")
@@ -1778,11 +1816,12 @@ class _PostgresStore(Store):
     async def get_labels(self, scope: str) -> dict[str, dict[str, Any]]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT ref_id, name, pinned, project, budget_usd "
+                "SELECT ref_id, name, pinned, project, budget_usd, updated_at "
                 "FROM labels WHERE scope = $1", scope)
         return {r["ref_id"]: {"name": r["name"], "pinned": bool(r["pinned"]),
                               "project": r["project"],
-                              "budget_usd": r["budget_usd"]} for r in rows}
+                              "budget_usd": r["budget_usd"],
+                              "updated_at": r["updated_at"]} for r in rows}
 
     async def delete_label(self, scope: str, ref_id: str) -> int:
         async with self._pool.acquire() as conn:
@@ -2016,12 +2055,15 @@ class _PostgresStore(Store):
         async with self._pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
 
-    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at, budget_daily=None) -> None:
+    async def create_token(self, token_id, name, token_hash, role, created_at, expires_at,
+                           budget_daily=None, policy=None) -> None:
+        lists = _policy_columns(policy)
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at, budget_daily) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7)",
-                token_id, name, token_hash, role, created_at, expires_at, budget_daily,
+                "INSERT INTO api_tokens (token_id, name, token_hash, role, created_at, expires_at, "
+                "budget_daily, allow_models, deny_models, allow_providers, deny_providers) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+                token_id, name, token_hash, role, created_at, expires_at, budget_daily, *lists,
             )
 
     async def get_token_by_hash(self, token_hash: str) -> Optional[dict[str, Any]]:
@@ -2034,7 +2076,8 @@ class _PostgresStore(Store):
     async def list_tokens(self) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT token_id, name, role, created_at, expires_at, revoked_at "
+                "SELECT token_id, name, role, created_at, expires_at, revoked_at, budget_daily, "
+                "allow_models, deny_models, allow_providers, deny_providers "
                 "FROM api_tokens ORDER BY created_at DESC"
             )
         return [_pg_plain(r) for r in rows]

@@ -1,7 +1,8 @@
 import { useRef, useCallback, useEffect, useState } from "react";
 import {
   Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  getCall, interactionTags, listProjects, liveUpdates, post, ReplayResult,
+  getCall, interactionTags, liftLoopBlock, listProjects, liveUpdates, LoopBlock,
+  loopBlockState, post, ReplayResult,
   replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
 import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, RUN_PREFIX, TimeSortToggle, timeSorted } from "./LabelBits";
@@ -192,6 +193,14 @@ function SessionHeader({ session, sessionId, onOpenSession }: {
 }) {
   const [copied, setCopied] = useState(false);
   const [sourceJob, setSourceJob] = useState<JobSummary | null>(null);
+  // The loop circuit breaker's live hold on this session: re-read whenever
+  // the session gains calls, so a lift and a re-trip both show promptly.
+  const [loopBlock, setLoopBlock] = useState<LoopBlock | null>(null);
+  const [lifting, setLifting] = useState<string | null>(null);
+  const callCount = session?.call_count ?? 0;
+  useEffect(() => {
+    loopBlockState(sessionId).then(setLoopBlock).catch(() => setLoopBlock(null));
+  }, [sessionId, callCount]);
   useEffect(() => {
     setSourceJob(null);
     if (!sessionId.startsWith("replay-sess-") && !sessionId.startsWith("replay-run-")) return;
@@ -208,6 +217,27 @@ function SessionHeader({ session, sessionId, onOpenSession }: {
         {session?.team && <span className="badge team">{session.team}</span>}
         {session?.project && <span className="badge fw">{session.project}</span>}
       </h2>
+      {loopBlock?.blocked && (
+        <div className="loop-block-row" role="status">
+          <span>
+            <b>Loop guard holding this session.</b> {loopBlock.reason} Its calls
+            are refused at the wall and recorded until the block is lifted.
+          </span>
+          <button className="link-btn" disabled={lifting === "working"}
+                  title="Lifts the block without a restart. The guards re-arm from now: the same loop trips the wall again only by repeating itself again."
+                  onClick={() => {
+                    setLifting("working");
+                    liftLoopBlock(sessionId)
+                      .then(() => loopBlockState(sessionId))
+                      .then((b) => { setLoopBlock(b); setLifting(null); })
+                      .catch((e) => setLifting(
+                        `could not lift it: ${e?.message || "request failed"}. The block may still hold.`));
+                  }}>
+            {lifting === "working" ? "lifting…" : "lift the loop block"}
+          </button>
+          {lifting && lifting !== "working" && <span className="stop-note">{lifting}</span>}
+        </div>
+      )}
       {sourceJob && (
         <div className="replay-signpost">
           This is {sourceJob.model}'s answer sheet: nothing here was executed.

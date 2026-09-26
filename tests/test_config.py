@@ -46,11 +46,18 @@ api_key = "from-file"
 openai_url = "http://localhost:1234"
 openai_key = "lm-studio"
 
+[policy]
+allow_models = ["claude-*", "gpt-4o"]
+deny_providers = "bedrock"
+
 [env]
 AGENTICLEDGER_RETENTION_DAYS = "30"
 """)
     used = apply_config()
     assert used is not None and used.name == "agenticledger.toml"
+    # A TOML list becomes the comma form the env has always taken.
+    assert os.environ["AGENTICLEDGER_ALLOW_MODELS"] == "claude-*,gpt-4o"
+    assert os.environ["AGENTICLEDGER_DENY_PROVIDERS"] == "bedrock"
     assert os.environ["AGENTICLEDGER_PORT"] == "8123"
     assert os.environ["AGENTICLEDGER_UPSTREAM_URL"] == "https://api.anthropic.com"
     assert os.environ["AGENTICLEDGER_BUDGET_DAILY"] == "25.0"

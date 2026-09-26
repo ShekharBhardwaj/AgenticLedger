@@ -202,6 +202,25 @@ test("the audit trail lists actions, filters, and verifies its chain", async ({ 
   await expect(trail).toContainText("No audit rows match");
 });
 
+test("stop all calls engages from Loop Lens, banners every page, and lifts", async ({ page, request }) => {
+  await page.goto("/app#/runs");
+  try {
+    await page.getByRole("button", { name: "Stop all calls", exact: true }).click();
+    await page.getByRole("button", { name: "stop every agent's calls now", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("All calls are stopped");
+    expect((await (await request.get("/health")).json()).calls_stopped).toBe(true);
+    // The stop is state, not a page: it follows the operator everywhere.
+    await page.goto("/app#/sessions");
+    await expect(page.getByRole("alert")).toContainText("All calls are stopped");
+    await expect(page.getByRole("button", { name: "Stop all calls", exact: true })).toHaveCount(0);
+    await page.getByRole("alert").getByRole("button", { name: "allow calls again", exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect((await (await request.get("/health")).json()).calls_stopped).toBe(false);
+  } finally {
+    await request.delete("/api/stop");
+  }
+});
+
 test("light appearance persists across reload and navigation", async ({ page }) => {
   await page.goto("/app#/settings");
   await page.getByRole("radio", { name: "Light", exact: true }).click();

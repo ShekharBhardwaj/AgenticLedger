@@ -187,7 +187,8 @@ The web app updates live via WebSocket as calls come in. No refresh needed.
 - **Loop Lens** - every loop run with its observed status (Running / Flagged / Completion declared / Ended / Calls blocked), one open metric strip (recorded spend, the run ceiling with an honest accounting track, model calls), Overview / Activity / Cache views, a recorded-event timeline that jumps straight to the evidence, a **Block calls** action that refuses a running loop's further calls at the wall (and Allow calls again to lift it; the agent being blocked cannot), per-iteration breakdowns, and plain-English explanations of every flag. Pick any two runs with **⇆** to diff them side by side - cost, iterations, calls, flags, duration with signed deltas, plus a **prompt drift** diff showing exactly what changed in the system prompt and opening instruction between the runs.
 - **Sessions** - flat, scannable rows and three views: call rows (time, model, one status, latency, cost) that expand into a four-tab inspector (Response, Tools, Prompt, Raw), a **Flow** DAG of agent handoffs, and a **Trace** waterfall with real parent links from the loop engine. Rows say whose they are at a glance: team badge, red for real failures, amber for deliberate refusals, purple for replays, and a run chip linking each session to its loop.
 - **Replay the whole run** - the question that decides a model switch isn't "how did it handle one call?" but "would my loop have survived?" Pick a run or session, pick a destination (a local model is free), and every step re-runs with its original inputs. You get a report card, not homework: **"34 / 40 moments matched"**, the fumbles named ("dropped the tools"), and the cost both ways. Each step is a real captured moment replayed honestly - after step one a different model would have steered a different conversation, so the ledger compares moments, not fairy tales.
-- **In your pocket** - `agenticledger share` opens an https tunnel you own (via cloudflared, no account), prints the pairing link, and draws a QR in the terminal: point your phone's camera and the dashboard is in your hand, kill switch and ceilings included. `--wifi` for a same-network link, `--rotate` to un-pair every device, or press **Pair a device** in the dashboard's ⚿ panel. Local machines never need a key; everyone else meets the auto-generated pairing key. The dashboard fits a phone: one pane at a time, a back button, prev/next arrows to flip between runs.
+- **In your pocket** - `agenticledger share` opens an https tunnel you own (via cloudflared, no account), prints the pairing link, and draws a QR in the terminal: point your phone's camera and the dashboard is in your hand, kill switch, stop all calls, and ceilings included. `--wifi` for a same-network link, `--rotate` to un-pair every device, or press **Pair a device** in the dashboard's ⚿ panel. Local machines never need a key; everyone else meets the auto-generated pairing key. The dashboard fits a phone: one pane at a time, a back button, prev/next arrows to flip between runs.
+- **The wall, fleet-wide** - **Stop all calls** is the emergency stop for every agent at once: one button in Loop Lens (with a confirm), a banner on every page while it is on, and it survives a restart until someone lifts it. Allow and deny lists for models and providers (`AGENTICLEDGER_ALLOW_MODELS`, `AGENTICLEDGER_DENY_PROVIDERS`, and friends, globs welcome) turn the wrong model away with the rule named; a team card can carry its own lists and can only narrow the fleet's. Every refusal is on the record: rate limits, loop guards, budgets, ceilings, the kill switch and the stop all land as amber `blocked:` rows with the reason, counted in Reports and `/metrics`. A loop block is lifted from the session in the dashboard, no restart. The ledger only ever refuses or records; it never rewrites, reroutes, or substitutes a call.
 - **The cache audit** - every run answers "was I paying full price for repeated text?" Received discount is exact from the provider's own cache reports; the missed amount is a labeled estimate with its method shown; every verdict carries the reason and a one-line fix, including "nothing missed, you're fine". Also at `GET /api/runs/{id}/cache-audit`.
 - **Yours to keep** - dark, light, or system appearance (a browser-local choice), and URLs that hold the investigation: deep links to runs and sessions, working Back/Forward, no credentials ever in ordinary links.
 - **Named instances** - `agenticledger start --name demo --port 8003` runs a second ledger beside your everyday one: own state, own database, its dashboard wears an amber name chip so it can never pass for the real thing. `stop`, `status`, `logs`, `share`, and `run` all take `--name`.
@@ -505,11 +506,13 @@ Every LLM call is stored with:
 | `GET` | `/api/sessions` | List recent sessions with aggregated stats |
 | `GET` | `/api/runs` | List loop runs (explicit or auto-inferred) with iterations, cost, status, and flagged-call counts |
 | `GET` | `/api/runs/{run_id}` | One run's status (`running` / `flagged` / `complete` / `ended` / `stopped`) - poll this from loop scripts |
+| `POST` | `/api/stop` | Stop all calls: the fleet-wide emergency stop. Every LLM call, replays included, is refused at the wall and recorded until lifted; survives a restart (editor). `DELETE` lifts it, `GET` reports who engaged it and since when. |
 | `GET` | `/api/sessions/{session_id}/tools` | Derived tool executions - each tool call paired with its result, latency, and error status |
+| `GET` | `/api/sessions/{session_id}/loop-block` | Whether the loop circuit breaker is holding a session, and why. `DELETE` lifts it without a restart and re-arms the guards from now (editor). |
 | `DELETE` | `/api/sessions/{session_id}` | Delete a session and all its calls |
 | `GET` | `/api/reports?days=30` | Spend insights: daily trend, model mix with signed cache savings, latency percentiles, per-agent and per-team totals |
 | `GET` | `/api/whatif?model=...&run_id=...` | Reprice a run/session/call's captured tokens on another model - pure math, zero API calls |
-| `POST` | `/api/tokens` | Mint scoped API tokens - including `role: ingest` team cards with `budget_daily` |
+| `POST` | `/api/tokens` | Mint scoped API tokens - including `role: ingest` team cards with `budget_daily` and their own `allow_models` / `deny_models` / `allow_providers` / `deny_providers` lists |
 | `GET` | `/api/calls/{action_id}` | One call by id - follow a replay's parent back to its original |
 | `GET` | `/api/replay/targets` | Configured replay destinations (feeds the dashboard's dropdown) |
 | `GET` | `/api/replay/models` | Models a replay target actually serves (`?provider=`) |
@@ -657,7 +660,16 @@ env-always-wins rule.
 
 Budgets and run ceilings hold under concurrency. Each admitted call reserves an estimate (its text at four chars per token plus its `max_tokens`, priced like any call) until its real cost is recorded, so a burst of parallel calls cannot each pass the same remaining room. The single call that crosses the line still goes through, as one caller always did, so overshoot is bounded to one call's cost. A reservation is released the moment the call is recorded, fails, is dropped, or is refused.
 
-**Rate limits** - block calls that exceed request frequency (returns HTTP 429, sliding 60-second window):
+**Allow and deny lists** - refuse a model or provider before any quota is spent (returns HTTP 403 with the rule named, so agents stop rather than retry). Patterns are shell globs, matched case-insensitively. Deny wins over allow; an allow list that exists admits only what it names. Team cards can carry the same four lists (see [Team cards](#team-cards---one-proxy-many-teams)); the fleet lists always apply and a card can only narrow them.
+
+| Variable | Default | Description |
+|---|---|---|
+| `AGENTICLEDGER_ALLOW_MODELS` | _(none)_ | Comma-separated model patterns, e.g. `claude-*,gpt-4o`. When set, only matching models pass. |
+| `AGENTICLEDGER_DENY_MODELS` | _(none)_ | Model patterns refused outright, e.g. `*-preview`. |
+| `AGENTICLEDGER_ALLOW_PROVIDERS` | _(none)_ | Provider names or patterns (`openai`, `anthropic`, `bedrock`, `azure-openai`). When set, only these pass. |
+| `AGENTICLEDGER_DENY_PROVIDERS` | _(none)_ | Providers refused outright. |
+
+**Rate limits** - block calls that exceed request frequency (returns HTTP 429, sliding 60-second window). Every refusal is recorded as an amber `blocked:` row with the reason, counted per session and team in Reports and in `/metrics` (`agenticledger_refusals_total{reason=...}`), so a retry storm is visible instead of vanishing:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -670,7 +682,7 @@ Budgets and run ceilings hold under concurrency. Each admitted call reserves an 
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENTICLEDGER_LOOP_ACTION` | `warn` | `warn` records `loop_flags` and fires a `loop_flag` webhook alert; `block` additionally returns HTTP 429 (`loop_detected`) for a session that tripped a guard; `off` disables inference. |
+| `AGENTICLEDGER_LOOP_ACTION` | `warn` | `warn` records `loop_flags` and fires a `loop_flag` webhook alert; `block` additionally returns HTTP 429 (`loop_detected`) for a session that tripped a guard, records each refusal, and can be lifted without a restart from the session in the dashboard (`DELETE /api/sessions/{id}/loop-block`; the guards re-arm from that point); `off` disables inference. |
 | `AGENTICLEDGER_LOOP_REPEAT_THRESHOLD` | `3` | Consecutive identical tool calls (same tool, same arguments) before a thread is flagged stuck. |
 | `AGENTICLEDGER_LOOP_MAX_STEPS` | _(none)_ | Flag (and in block mode, stop) threads that exceed this many ReAct steps. |
 | `AGENTICLEDGER_LOOP_RUN_GAP_SECONDS` | `900` | Max gap between fresh-context spawns (same system prompt) that still count as iterations of one run. |
@@ -932,6 +944,19 @@ and only that team is affected - from that instant the card gets a final
 **403** ("the answer is no"), which agents accept without retry storms.
 Paste a card into the dashboard's ⚿ panel by mistake and it tells you, in
 plain words, that cards open the relay, not the dashboard.
+
+A card can also carry its own allow and deny lists for models and
+providers, on top of the fleet-wide `AGENTICLEDGER_ALLOW_MODELS` and
+friends. The fleet lists always apply; a card can only narrow them, never
+grant a model the fleet denies. Refusals name the rule and the team, and
+show up in the by-team table like any other block.
+
+```bash
+curl -X POST http://localhost:8000/api/tokens \
+  -H "x-agenticledger-api-key: $ADMIN_KEY" -H 'content-type: application/json' \
+  -d '{"name": "marketing", "role": "ingest", "budget_daily": 10.00,
+       "allow_models": ["gpt-4o", "claude-sonnet-*"], "deny_providers": ["bedrock"]}'
+```
 
 **Budgets vs alerts:**
 - **Budgets** (`AGENTICLEDGER_BUDGET_*`) - block the call before it reaches the LLM. Agent gets HTTP 429.

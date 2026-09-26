@@ -119,8 +119,31 @@ export function getCall(actionId: string): Promise<Call> {
 
 /** Version of the running proxy. /health needs no key, so this works even
  *  before one is pasted. */
-export function health(): Promise<{ status: string; version: string; instance?: string | null }> {
+export function health(): Promise<{
+  status: string; version: string; instance?: string | null; calls_stopped?: boolean;
+}> {
   return fetch("/health").then((r) => r.json());
+}
+
+/** Stop all calls: the fleet-wide emergency stop (POST engages, DELETE lifts). */
+export interface StopState { calls_stopped: boolean; by: string | null; since: string | null }
+export function stopState(): Promise<StopState> {
+  return get<StopState>("/api/stop");
+}
+export function stopAllCalls(): Promise<StopState> {
+  return post<StopState>("/api/stop", {});
+}
+export function resumeAllCalls(): Promise<void> {
+  return del("/api/stop");
+}
+
+/** The loop circuit breaker's live hold on a session, and the lift. */
+export interface LoopBlock { session_id: string; blocked: boolean; reason: string | null }
+export function loopBlockState(sessionId: string): Promise<LoopBlock> {
+  return get<LoopBlock>(`/api/sessions/${encodeURIComponent(sessionId)}/loop-block`);
+}
+export function liftLoopBlock(sessionId: string): Promise<void> {
+  return del(`/api/sessions/${encodeURIComponent(sessionId)}/loop-block`);
 }
 
 /** Ask the server what a key is — used by the ⚿ panel before saving. */

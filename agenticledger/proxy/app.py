@@ -102,6 +102,7 @@ from .otel import emit_audit_log, emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
+from .policy import LIST_FIELDS, Policy, check_policies, parse_list, refusal_type
 from .pricing import compute_cost, infer_provider
 from .ratelimit import RateLimitConfig, RateLimiter
 from .redact import (
@@ -208,6 +209,43 @@ def _token_is_valid(row: dict) -> bool:
     return valid_role(row.get("role", ""))
 
 
+# Every way the wall says no, for /metrics: a fixed set so the counter
+# stays low-cardinality and every reason exists at zero before it fires.
+_REFUSAL_REASONS = (
+    "calls_stopped", "provider_not_allowed", "model_not_allowed",
+    "rate_limit_exceeded", "loop_detected", "run_stopped",
+    "run_ceiling_reached", "budget_exceeded",
+)
+
+_STOP_HINT = "lift it from the dashboard banner or DELETE /api/stop"
+
+
+def _count_refusal(app: FastAPI, reason: str) -> None:
+    """One more refusal at the wall, by reason. Never raises."""
+    with suppress(Exception):
+        app.state.refusals[reason] = app.state.refusals.get(reason, 0) + 1
+
+
+def _stop_message(stop: Optional[dict]) -> str:
+    who = (stop or {}).get("by") or "the operator"
+    return f"all calls are stopped by {who} (stop all calls); {_STOP_HINT}"
+
+
+def _iso(ts: float) -> str:
+    return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).isoformat()
+
+
+def _operator_name(principal: Optional[Principal]) -> str:
+    """The operator's name for a marker row and the banner: a token's
+    name when it has one, else what kind of key was used."""
+    if principal is None:
+        return "the operator"
+    if principal.name:
+        return principal.name
+    return {"master": "the admin key", "token": "a token"}.get(
+        principal.source, "the operator")
+
+
 def _record_capture_drop(app: FastAPI, action_id: Optional[str]) -> None:
     """A call was served to the agent but could not be recorded. Never re-raise —
     observability must not break the proxy — but make the loss visible."""
@@ -253,6 +291,7 @@ def create_app(
     budget_action: str = "block",   # "block" | "warn" | "both"
     budget_status: int = 429,       # 429 (default) or 402 — 402 stops client retry storms
     budget_unpriced: str = "allow",  # "allow": an unpriced model passes uncounted | "refuse"
+    policy: Optional[Policy] = None,  # fleet-wide model and provider allow/deny lists
     alert_config: Optional[AlertConfig] = None,
     rate_limit_config: Optional[RateLimitConfig] = None,
     async_capture: bool = False,
@@ -284,6 +323,7 @@ def create_app(
     if _budget_unpriced not in ("allow", "refuse"):
         logger.warning("Unknown AGENTICLEDGER_BUDGET_UNPRICED %r, using 'allow'", budget_unpriced)
         _budget_unpriced = "allow"
+    _fleet_policy = policy or Policy()
     # Loop/run inference over the capture stream + optional in-path guard.
     _loop_action = loop_action if loop_action in ("warn", "block", "off") else "warn"
     _loop_tracker = LoopTracker(
@@ -345,6 +385,12 @@ def create_app(
             for rid, lab in (await app.state.store.get_labels("run")).items()
             if lab.get("budget_usd")}
         app.state.run_spend = {}
+        # 0.15 stop all calls: the fleet-wide emergency stop rides a marker
+        # row like the per-run kill switch, so a restart cannot lift it.
+        _stop_marker = (await app.state.store.get_labels("fleet")).get("stop")
+        app.state.calls_stopped = (
+            {"by": _stop_marker.get("name"), "since": _stop_marker.get("updated_at")}
+            if _stop_marker else None)
         app.state.ceiling_alerted = set()
         # Inferred-run identity survives restarts (#100): signatures still
         # inside the run gap are reloaded, so a loop's next iteration joins
@@ -437,6 +483,8 @@ def create_app(
     # silent data loss is observable instead of invisible. Surfaced via /readyz.
     app.state.capture_dropped = 0
     app.state.capture_persisted = 0
+    app.state.refusals = {}
+    app.state.calls_stopped = None
     app.state.audit_dropped = 0
 
     async def _run_spent(app_obj, run_id: str) -> float:
@@ -809,7 +857,8 @@ def create_app(
         else:
             bedrock = "off — no AWS credentials in the service's environment"
         return JSONResponse({"status": "ok", "version": _version, "bedrock": bedrock,
-                             "instance": os.environ.get("AGENTICLEDGER_INSTANCE") or None})
+                             "instance": os.environ.get("AGENTICLEDGER_INSTANCE") or None,
+                             "calls_stopped": bool(getattr(app.state, "calls_stopped", None))})
 
     @app.get("/readyz")
     async def readyz() -> JSONResponse:
@@ -855,7 +904,15 @@ def create_app(
             "# HELP agenticledger_audit_strict Whether an unrecordable action is refused (1) or allowed (0).",
             "# TYPE agenticledger_audit_strict gauge",
             f"agenticledger_audit_strict {1 if _audit_strict else 0}",
+            "# HELP agenticledger_calls_stopped Whether stop all calls is engaged (1) or not (0).",
+            "# TYPE agenticledger_calls_stopped gauge",
+            f"agenticledger_calls_stopped {1 if getattr(app.state, 'calls_stopped', None) else 0}",
+            "# HELP agenticledger_refusals_total Calls refused at the wall, by reason.",
+            "# TYPE agenticledger_refusals_total counter",
         ]
+        refusals = getattr(app.state, "refusals", {})
+        lines += [f'agenticledger_refusals_total{{reason="{r}"}} {refusals.get(r, 0)}'
+                  for r in _REFUSAL_REASONS]
         return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
     # ── Dashboard ────────────────────────────────────────────────────────────
@@ -1026,6 +1083,64 @@ def create_app(
         await _audit(principal, request, "run_end", run_id, "runner exit signal")
         await store.mark_run_ended(run_id, time.time())
         return JSONResponse({"run_id": run_id, "status": "ended"})
+
+    @app.get("/api/stop")
+    async def api_stop_state(request: Request) -> JSONResponse:
+        """Is stop all calls engaged, by whom, since when."""
+        await _require(request, ROLE_VIEWER)
+        stop = request.app.state.calls_stopped
+        return JSONResponse({
+            "calls_stopped": bool(stop),
+            "by": (stop or {}).get("by"),
+            "since": _iso(stop["since"]) if stop and stop.get("since") else None,
+        })
+
+    @app.post("/api/stop")
+    async def api_stop_all(request: Request) -> JSONResponse:
+        """Stop all calls: the fleet-wide emergency stop. Every LLM call is
+        refused at the wall until lifted, recorded, with the reason and
+        the lift named in the answer. Persisted, so a restart cannot lift
+        it quietly. Idempotent: the first operator's name and time stay."""
+        principal = await _require(request, ROLE_EDITOR)
+        await _audit(principal, request, "stop_all", None,
+                     "stop all calls engaged: every call refused at the wall")
+        if not request.app.state.calls_stopped:
+            who = _operator_name(principal)
+            await request.app.state.store.set_label("fleet", "stop", name=who)
+            request.app.state.calls_stopped = {"by": who, "since": time.time()}
+            with suppress(Exception):
+                await broadcaster.broadcast({"type": "calls_stopped", "calls_stopped": True})
+        return await api_stop_state(request)
+
+    @app.delete("/api/stop")
+    async def api_resume_all(request: Request) -> JSONResponse:
+        """Lift stop all calls. Idempotent."""
+        principal = await _require(request, ROLE_EDITOR)
+        await _audit(principal, request, "resume_all", None, "stop all calls lifted")
+        await request.app.state.store.delete_label("fleet", "stop")
+        request.app.state.calls_stopped = None
+        with suppress(Exception):
+            await broadcaster.broadcast({"type": "calls_stopped", "calls_stopped": False})
+        return await api_stop_state(request)
+
+    @app.get("/api/sessions/{session_id}/loop-block")
+    async def api_loop_block_state(session_id: str, request: Request) -> JSONResponse:
+        """Whether the loop circuit breaker is holding this session, and why.
+        Live tracker state: what the wall would do to the next call."""
+        await _require(request, ROLE_VIEWER)
+        reason = _loop_tracker.check_block(session_id) if _loop_action == "block" else None
+        return JSONResponse({"session_id": session_id, "blocked": bool(reason),
+                             "reason": reason})
+
+    @app.delete("/api/sessions/{session_id}/loop-block")
+    async def api_loop_block_lift(session_id: str, request: Request) -> JSONResponse:
+        """Lift a loop block without a restart: the guards re-arm from now,
+        so the same loop trips the wall again only by repeating itself."""
+        principal = await _require(request, ROLE_EDITOR)
+        await _audit(principal, request, "loop_block_lift", session_id,
+                     "loop guard lifted; guards re-armed from now")
+        lifted = _loop_tracker.lift_block(session_id)
+        return JSONResponse({"session_id": session_id, "lifted": lifted, "blocked": False})
 
     @app.post("/api/runs/{run_id}/stop")
     async def api_run_stop(run_id: str, request: Request) -> JSONResponse:
@@ -1402,6 +1517,26 @@ def create_app(
                 means="The phrase your loop prints to declare victory — what turns "
                       "a run 'complete' instead of merely 'ended'.",
                 key="[proxy] completion_promise"),
+            row("Policy", "allowed models", ", ".join(_fleet_policy.allow_models) or None,
+                "AGENTICLEDGER_ALLOW_MODELS",
+                means="When set, only models matching these patterns pass; any "
+                      "other model is refused with the rule named. Team cards can "
+                      "narrow this list, never widen it.",
+                key="[policy] allow_models"),
+            row("Policy", "denied models", ", ".join(_fleet_policy.deny_models) or None,
+                "AGENTICLEDGER_DENY_MODELS",
+                means="Models matching these patterns are refused, whatever else "
+                      "allows them. Deny always wins.",
+                key="[policy] deny_models"),
+            row("Policy", "allowed providers", ", ".join(_fleet_policy.allow_providers) or None,
+                "AGENTICLEDGER_ALLOW_PROVIDERS",
+                means="When set, only these providers pass (openai, anthropic, "
+                      "bedrock, azure-openai). Patterns allowed.",
+                key="[policy] allow_providers"),
+            row("Policy", "denied providers", ", ".join(_fleet_policy.deny_providers) or None,
+                "AGENTICLEDGER_DENY_PROVIDERS",
+                means="Providers refused outright, whatever the model.",
+                key="[policy] deny_providers"),
             row("Replay", "same-provider replay",
                 "on" if replay_api_key else "off", "AGENTICLEDGER_REPLAY_API_KEY",
                 means="Key for re-running a captured call on its own provider. The "
@@ -1599,6 +1734,13 @@ def create_app(
         principal = await _require(request, ROLE_EDITOR)
         if not replay_api_key and not (replay_targets or {}):
             return JSONResponse({"error": _REPLAY_UNCONFIGURED}, status_code=409)
+        if request.app.state.calls_stopped:
+            # A replay spends real tokens: it is a call like any other.
+            await _audit(principal, request, "replay_refused", None,
+                         "stop all calls is engaged")
+            return JSONResponse(
+                {"error": "Replay refused: " + _stop_message(request.app.state.calls_stopped)},
+                status_code=409)
         try:
             payload = await request.json()
         except Exception:
@@ -1642,6 +1784,13 @@ def create_app(
         principal = await _require(request, ROLE_EDITOR)
         if not replay_api_key and not (replay_targets or {}):
             return JSONResponse({"error": _REPLAY_UNCONFIGURED}, status_code=409)
+        if request.app.state.calls_stopped:
+            # A replay spends real tokens: it is a call like any other.
+            await _audit(principal, request, "replay_refused", None,
+                         "stop all calls is engaged")
+            return JSONResponse(
+                {"error": "Replay refused: " + _stop_message(request.app.state.calls_stopped)},
+                status_code=409)
         try:
             payload = await request.json()
         except Exception:
@@ -2188,6 +2337,21 @@ def create_app(
                 raise HTTPException(status_code=400, detail="budget_daily must be a number") from None
             if budget_daily <= 0:
                 raise HTTPException(status_code=400, detail="budget_daily must be positive")
+        card_lists: dict[str, Optional[str]] = {}
+        for field in LIST_FIELDS:
+            raw = body.get(field)
+            if raw is None:
+                continue
+            if role != ROLE_INGEST:
+                raise HTTPException(status_code=400,
+                                    detail=f"{field} applies to ingest tokens (team cards)")
+            if not isinstance(raw, (str, list)):
+                raise HTTPException(status_code=400,
+                                    detail=f"{field} must be a list of patterns or a "
+                                           "comma-separated string")
+            if isinstance(raw, list) and not all(isinstance(x, str) for x in raw):
+                raise HTTPException(status_code=400, detail=f"{field} patterns must be strings")
+            card_lists[field] = ",".join(parse_list(raw)) or None
         expires_in_days = body.get("expires_in_days")
         created_at = time.time()
         expires_at = created_at + float(expires_in_days) * 86400 if expires_in_days else None
@@ -2195,12 +2359,14 @@ def create_app(
         token_id = str(uuid.uuid4())
         await _audit(principal, request, "create_token", token_id, f"role={role} name={name}")
         await request.app.state.store.create_token(
-            token_id, name, token_hash, role, created_at, expires_at, budget_daily
+            token_id, name, token_hash, role, created_at, expires_at, budget_daily,
+            policy=card_lists or None,
         )
         # The raw token is returned exactly once; only its hash is stored.
         return JSONResponse({
             "token_id": token_id, "name": name, "role": role,
             "token": raw, "expires_at": expires_at, "budget_daily": budget_daily,
+            **{f: parse_list(card_lists.get(f)) for f in LIST_FIELDS},
             "note": "Store this token now — it is shown only once.",
         }, status_code=201)
 
@@ -2430,12 +2596,14 @@ def create_app(
         # budget — the allowance-card model.
         team_name: Optional[str] = None
         team_budget: Optional[float] = None
+        card_policy: Optional[Policy] = None
         supplied_ingest = request.headers.get("x-agenticledger-ingest-key")
         if supplied_ingest and not (_ingest_key and hmac.compare_digest(supplied_ingest, _ingest_key)):
             card = await request.app.state.store.get_token_by_hash(hash_token(supplied_ingest))
             if card and _token_is_valid(card) and card.get("role") == ROLE_INGEST:
                 team_name = card.get("name")
                 team_budget = card.get("budget_daily")
+                card_policy = Policy.from_card(card)
             else:
                 # A key was presented and it is neither the shared key nor a
                 # live card. 403, not 401: 401 means "authenticate again" and
@@ -2497,6 +2665,91 @@ def create_app(
             if meta.get("iteration") is None:
                 meta["iteration"] = _int_or_none(path_iteration)
 
+        async def _file_refusal(error_type: str, reason: str, *,
+                                status: Optional[int] = None,
+                                headers: Optional[dict[str, str]] = None,
+                                run_id: Optional[str] = None) -> JSONResponse:
+            """Every refusal at the wall leaves a record: one rail for the
+            stop, the lists, rate limits, loop guards, the kill switch and
+            run ceilings. Captured with a "blocked:" detail (amber in the
+            dashboard, never an agent error, zero cost), counted by reason
+            in /metrics, and filed under the run the tracker resolves so
+            an inferred run's refusals land where the operator is looking,
+            numbered as the iteration the loop was attempting. The tracker
+            must see refusals too: without this, the session's follow-up
+            calls (client retries, companion calls) resolve to nothing and
+            sail through the wall, and the loop's next iterations launder
+            into a fresh auto-run (#77/#78, both observed live)."""
+            status = budget_status if status is None else status
+            _count_refusal(request.app, error_type)
+            try:
+                canonical_req = normalize_request(body_json, path)
+                attribution = _attribution.resolve(
+                    {**meta, "run_id": run_id} if run_id else meta, canonical_req)
+                filed_run = run_id or attribution.run_id
+                blocked_iteration = _attribution.commit_refusal(
+                    attribution, canonical_req, meta)
+                blocked_resp = _empty_response(0)
+                apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
+                filed_meta = {**meta, "run_id": filed_run}
+                if filed_meta.get("iteration") is None and blocked_iteration is not None:
+                    filed_meta["iteration"] = blocked_iteration
+                await request.app.state.store.save(
+                    action_id, canonical_req, blocked_resp,
+                    status_code=status,
+                    error_detail=f"blocked: {reason}", **filed_meta,
+                )
+                await broadcaster.broadcast({
+                    "type": "call",
+                    "action_id": action_id,
+                    "session_id": meta.get("session_id"),
+                    "status_code": status,
+                    "budget_warning": False,
+                    "run_id": filed_run,
+                    "iteration": filed_meta.get("iteration"),
+                    "model_id": canonical_req.model_id,
+                    "provider": canonical_req.provider,
+                    "cost_usd": 0,
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "latency_ms": 0,
+                    "blocked": True,
+                    "error": False,
+                    "flags": [],
+                })
+            except Exception:
+                _record_capture_drop(request.app, action_id)
+            return JSONResponse(
+                {"error": {"type": error_type, "message": reason}},
+                status_code=status, headers=headers or {},
+            )
+
+        # ── Stop all calls ───────────────────────────────────────────────────
+        # The fleet-wide emergency stop: while engaged, every LLM call is
+        # refused at the wall, recorded, and answered with who stopped it
+        # and how to lift it. count_tokens stays free: it costs nothing.
+        if is_llm_path and not is_count_tokens and request.app.state.calls_stopped:
+            return await _file_refusal(
+                "calls_stopped", _stop_message(request.app.state.calls_stopped))
+
+        # ── Allow and deny lists ─────────────────────────────────────────────
+        # The fleet's lists, then the team card's: a card can only narrow.
+        # Judged on the model and provider the proxy resolved for this call,
+        # before any quota is spent on it. 403, not 429: a denied model
+        # will not be allowed by waiting, and agents accept a final answer
+        # without retry storms.
+        if (is_llm_path and not is_count_tokens
+                and (card_policy is not None or not _fleet_policy.empty())):
+            _judged = None
+            with suppress(Exception):
+                _judged = normalize_request(body_json, path)
+            if _judged is not None:
+                list_error = check_policies(
+                    _judged.model_id, _judged.provider, _fleet_policy, card_policy)
+                if list_error:
+                    return await _file_refusal(
+                        refusal_type(list_error), list_error, status=403)
+
         # ── Rate limit check ─────────────────────────────────────────────────
         # Fail open: a rate-limiter error must never block the agent's LLM call.
         # count_tokens is free — it neither consumes quota nor gets blocked.
@@ -2510,11 +2763,9 @@ def create_app(
                 rate_error = None
             if rate_error:
                 # Sliding 60s window — a retry after it genuinely can succeed.
-                return JSONResponse(
-                    {"error": {"type": "rate_limit_exceeded", "message": rate_error}},
-                    status_code=429,
-                    headers={"Retry-After": "60"},
-                )
+                return await _file_refusal(
+                    "rate_limit_exceeded", rate_error, status=429,
+                    headers={"Retry-After": "60"})
 
         # ── Loop circuit breaker ─────────────────────────────────────────────
         # Only in block mode: warn mode surfaces flags via alerts/dashboard,
@@ -2522,11 +2773,12 @@ def create_app(
         if is_llm_path and _loop_action == "block":
             loop_error = _loop_tracker.check_block(meta.get("session_id"))
             if loop_error:
-                return JSONResponse(
-                    {"error": {"type": "loop_detected", "message": loop_error}},
-                    status_code=429,
-                    headers={"Retry-After": "60"},
-                )
+                _sid = meta.get("session_id") or "-"
+                return await _file_refusal(
+                    "loop_detected",
+                    f"{loop_error}. Lift it from the session in the dashboard or "
+                    f"DELETE /api/sessions/{_sid}/loop-block",
+                    status=429, headers={"Retry-After": "60"})
 
         # ── Operator kill switch ─────────────────────────────────────────────
         # A stopped run's calls are refused before they cost anything. Same
@@ -2586,56 +2838,11 @@ def create_app(
                 elif reservation is not None:
                     _reservations.take(reservation, _run_key)
         if reason:
-            try:
-                canonical_req = normalize_request(body_json, path)
-                # The tracker must see refusals too: without this, the
-                # session's follow-up calls (client retries, companion
-                # calls) resolve to nothing and sail through the wall, and
-                # the loop's next iterations launder into a fresh auto-run
-                # (#77/#78, both observed live).
-                _blocked_iteration = _attribution.commit_refusal(
-                    _attribution.resolve({**meta, "run_id": _stopped_run}, canonical_req),
-                    canonical_req, meta)
-                blocked_resp = _empty_response(0)
-                apply_capture_policy(canonical_req, blocked_resp, _capture_level, _redactor)
-                # File the refusal under the stopped run even when the id
-                # was inferred, so the amber trail lands where the operator
-                # is looking — numbered as the iteration the loop was
-                # attempting, so it sorts after the ones that ran.
-                _kill_meta = {**meta, "run_id": _stopped_run}
-                if _kill_meta.get("iteration") is None and _blocked_iteration is not None:
-                    _kill_meta["iteration"] = _blocked_iteration
-                await request.app.state.store.save(
-                    action_id, canonical_req, blocked_resp,
-                    status_code=budget_status,
-                    error_detail=f"blocked: {reason}", **_kill_meta,
-                )
-                await broadcaster.broadcast({
-                    "type": "call",
-                    "action_id": action_id,
-                    "session_id": meta.get("session_id"),
-                    "status_code": budget_status,
-                    "budget_warning": False,
-                    "run_id": _stopped_run,
-                    "iteration": _kill_meta.get("iteration"),
-                    "model_id": canonical_req.model_id,
-                    "provider": canonical_req.provider,
-                    "cost_usd": 0,
-                    "tokens_in": 0,
-                    "tokens_out": 0,
-                    "latency_ms": 0,
-                    "blocked": True,
-                    "error": False,
-                    "flags": [],
-                })
-            except Exception:
-                _record_capture_drop(request.app, action_id)
-            return JSONResponse(
-                {"error": {"type": ("run_ceiling_reached"
-                                    if "cost ceiling" in reason else "run_stopped"),
-                           "message": reason}},
-                status_code=budget_status,
-            )
+            # Filed under the stopped run even when the id was inferred, so
+            # the amber trail lands where the operator is looking.
+            return await _file_refusal(
+                "run_ceiling_reached" if "cost ceiling" in reason else "run_stopped",
+                reason, run_id=_stopped_run)
 
         async def _refuse_configured(message: str) -> JSONResponse:
             """A pre-forward refusal leaves a record (#115). Three refused
@@ -2694,6 +2901,7 @@ def create_app(
                 should_block = budget_action in ("block", "both")
                 should_warn  = budget_action in ("warn",  "both")
                 if should_block:
+                    _count_refusal(request.app, "budget_exceeded")
                     # Save blocked call with empty response, then reject
                     try:
                         canonical_req = normalize_request(body_json, path)

@@ -483,6 +483,9 @@ def status() -> int:
     print(f"  dashboard: http://localhost:{port}/app")
     if health.get("bedrock"):
         print(f"  bedrock:   {health['bedrock']}")
+    if health.get("calls_stopped"):
+        print("  calls:     STOPPED for every agent (stop all calls is engaged; "
+              "lift it from the dashboard banner or DELETE /api/stop)")
     return 0
 
 

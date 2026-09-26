@@ -141,6 +141,16 @@ Every deployment that leaves localhost should set:
 | `AGENTICLEDGER_HOST=127.0.0.1` | When the proxy and its TLS terminator share a host, don't listen on all interfaces. |
 | `AGENTICLEDGER_EXPORT_HMAC_KEY` | Compliance exports get a keyed tamper-evident integrity tag instead of a plain hash. |
 | `AGENTICLEDGER_REPLAY_API_KEY` | Off by default. When set, `POST /api/replay` (editor role and above) can re-execute captured calls, spending real tokens on this key. Use a dedicated key with its own spend limit on your provider console, not your production agent key - replay spend then stays separately visible and separately capped. Agents' own keys are never stored, with or without this. |
+| `AGENTICLEDGER_ALLOW_MODELS` / `AGENTICLEDGER_DENY_MODELS` / `AGENTICLEDGER_ALLOW_PROVIDERS` / `AGENTICLEDGER_DENY_PROVIDERS` | Which models and providers the fleet may call at all (globs, deny wins). A call outside the lists is refused with the rule named before any quota is spent; team cards can narrow the lists per team. |
+
+Two controls are live state rather than settings. **Stop all calls**
+(`POST /api/stop`, editor role) refuses every LLM call at the wall until
+lifted with `DELETE /api/stop`; it is persisted in the store, so a rolling
+restart cannot lift it quietly, and `agenticledger status` and `/health`
+(`calls_stopped`) report it. Every refusal, whatever the wall, is recorded
+as a `blocked:` row and counted in `/metrics` as
+`agenticledger_refusals_total{reason="..."}`; alert on that counter the
+way you would on 5xx rates.
 
 ### Protect the data you capture
 

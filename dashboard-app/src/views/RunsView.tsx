@@ -10,6 +10,7 @@ import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, Time
 import { setLabel } from "../api";
 import ProviderMark from "./ProviderMark";
 import BatchReplay from "./BatchReplay";
+import { StopAllControl } from "../StopControls";
 import WhatIf from "./WhatIf";
 import { RaccoonHead } from "../Raccoon";
 import { Breadcrumb, CostChart, Icon, RunTimeline } from "../LedgerVisuals";
@@ -433,6 +434,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                     <div className="landing-scope-top">
                       Latest {plural(scoped.length, "loaded run")} · {projLabel}
                     </div>
+                    <StopAllControl />
                   </div>
                   <div className="landing-summary">
                     <div className="ls-metric">

@@ -150,6 +150,16 @@ table.grid, .rtable { background: var(--bg-card); border: 1px solid var(--border
 .inspector-tabs { gap: 16px; }
 .landing { max-width: 1160px; }
 .landing-head { display: block; margin-bottom: 28px; }
+.landing-head .stop-control { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+
+/* Stop all calls: the banner is the state, on every page while engaged. */
+.stop-banner { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 26px; background: var(--warning-bg); border-bottom: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); color: var(--text); }
+.stop-banner b { color: var(--amber); }
+.stop-banner .link-btn { color: var(--amber); white-space: nowrap; }
+.stop-note { color: var(--amber); }
+.loop-block-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 8px 0 12px; padding: 10px 14px; background: var(--warning-bg); border: 1px solid color-mix(in srgb, var(--amber) 20%, transparent); border-radius: 8px; }
+.loop-block-row b { color: var(--amber); }
+.loop-block-row .link-btn { color: var(--amber); white-space: nowrap; }
 .landing-head .page-title { font-size: 30px; margin-bottom: 9px; }
 .landing-scope-top { font-size: 11px; }
 .landing-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; padding: 24px 0; margin-bottom: 30px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -198,6 +208,7 @@ table.grid, .rtable { background: var(--bg-card); border: 1px solid var(--border
   .landing-row { flex-wrap: wrap; }
 }
 @media (max-width: 600px) {
+  .stop-banner { padding: 10px 16px; }
   .topbar { padding: 12px; gap: 9px; }
   .brand { gap: 7px; }
   .brand img { width: 28px; height: 28px; }

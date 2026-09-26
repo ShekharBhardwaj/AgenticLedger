@@ -59,6 +59,9 @@ DEFAULT_RUN_GAP_SECONDS = 900.0
 _MAX_SESSIONS = 10_000       # LRU bound on tracked sessions
 _MAX_THREADS_PER_SESSION = 64
 
+# The flags that trip the circuit breaker (check_block) in block mode.
+_BLOCK_FLAGS = frozenset({"repeat_tool_call", "step_budget_exceeded"})
+
 
 # Claude Code's compaction rewrites history into a summary message with a
 # stable opening phrase — the reliable signal that a shrunken, non-matching
@@ -100,6 +103,9 @@ class _Thread:
     last_tool_sig: Optional[tuple[str, ...]] = None
     repeat_streak: int = 1
     last_ts: float = 0.0
+    # Where the step budget counts from. Lifting a loop block re-arms the
+    # guard from the current step instead of re-tripping on the next call.
+    step_base: int = 0
     # tool_call_id → {tool_name, arguments, issued_by_action_id, issued_ts}
     pending_tools: dict = field(default_factory=dict)
 
@@ -295,7 +301,8 @@ class LoopTracker:
             thread.repeat_streak = 1
         thread.last_tool_sig = sig
 
-        if self._max_steps is not None and thread.step_index >= self._max_steps:
+        if (self._max_steps is not None
+                and thread.step_index - thread.step_base >= self._max_steps):
             new_flags.append("step_budget_exceeded")
 
         # Completion promise: a runner-visible "the loop is done" signal in the
@@ -382,6 +389,22 @@ class LoopTracker:
                 f"{self._max_steps}-step budget. Session: {session_id}"
             )
         return None
+
+    def lift_block(self, session_id: Optional[str]) -> bool:
+        """Lift a loop block without a restart. The guards re-arm from
+        now: every thread gets a fresh step budget and its repeat streak
+        starts over, so the next call flows and the same loop trips the
+        wall again only by repeating itself again. Returns whether a
+        block was in place. Never raises."""
+        state = self._sessions.get(session_id or "-")
+        if state is None:
+            return False
+        was_blocked = bool(state.flags & _BLOCK_FLAGS)
+        state.flags -= _BLOCK_FLAGS
+        for thread in state.threads:
+            thread.repeat_streak = 1
+            thread.step_base = thread.step_index
+        return was_blocked
 
     # ── internals ────────────────────────────────────────────────────────────
 

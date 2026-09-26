@@ -43,6 +43,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   price cannot be counted. It passes uncounted by default, stated on the
   settings page and in the docs, and `AGENTICLEDGER_BUDGET_UNPRICED=refuse`
   turns it away while any budget applies.
+- **Fleet refusal controls.** Stop all calls (`POST /api/stop`, lifted
+  with `DELETE`) is the emergency stop for every agent at once: each call,
+  replays included, is refused at the wall with who stopped it and how to
+  lift it, and the stop survives a restart until someone lifts it. The
+  dashboard engages it from Loop Lens with a confirm and shows a banner
+  on every page while it is on. Model and provider allow and deny lists
+  (`AGENTICLEDGER_ALLOW_MODELS`, `DENY_MODELS`, `ALLOW_PROVIDERS`,
+  `DENY_PROVIDERS`, globs, case-insensitive; deny wins) refuse with the
+  rule named, and a team card can carry its own four lists that narrow
+  the fleet's but never widen them. Every refusal is now on the record:
+  rate-limit and loop-guard refusals, which used to vanish, land as
+  amber `blocked:` rows like budget, ceiling and kill-switch refusals,
+  and `/metrics` counts them by reason
+  (`agenticledger_refusals_total`, `agenticledger_calls_stopped`). A
+  loop block is lifted without a restart from the session in the
+  dashboard (`DELETE /api/sessions/{id}/loop-block`), re-arming the
+  guards from that point. Refuse only, reason named: nothing is
+  rewritten or rerouted.
 
 ## [0.14.0] - 2026-09-16
 

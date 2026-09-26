@@ -65,6 +65,12 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "status": "AGENTICLEDGER_BUDGET_STATUS",
         "unpriced": "AGENTICLEDGER_BUDGET_UNPRICED",
     },
+    "policy": {
+        "allow_models": "AGENTICLEDGER_ALLOW_MODELS",
+        "deny_models": "AGENTICLEDGER_DENY_MODELS",
+        "allow_providers": "AGENTICLEDGER_ALLOW_PROVIDERS",
+        "deny_providers": "AGENTICLEDGER_DENY_PROVIDERS",
+    },
     "audit": {
         "enabled": "AGENTICLEDGER_AUDIT_LOG",
         "strict": "AGENTICLEDGER_AUDIT_STRICT",
@@ -109,6 +115,16 @@ TEMPLATE = '''\
 # user = 10.0         # per-user daily ceiling
 # status = 429        # or 402 — HTTP answer when a wall blocks a call
 # unpriced = "allow"  # or "refuse": a model with no price cannot be counted
+
+[policy]
+# Allow and deny lists for models and providers. Refuse only: a call that
+# fails a rule is turned away with the rule named, and recorded. Deny wins;
+# an allow list that exists admits only what it names. Team cards can carry
+# their own lists (POST /api/tokens) and can only narrow these.
+# allow_models = ["claude-*", "gpt-4o*"]   # globs, case-insensitive
+# deny_models = ["*-preview"]
+# allow_providers = ["anthropic", "openai"]
+# deny_providers = []
 
 [audit]
 # The trail of who viewed, exported, deleted or changed what. Rows are
@@ -187,6 +203,9 @@ def _plain(value: Any) -> str:
     """TOML value → the string the env pipeline expects."""
     if isinstance(value, bool):
         return "1" if value else "0"
+    if isinstance(value, list):
+        # A list of patterns becomes the comma-separated form the env takes.
+        return ",".join(str(v).strip() for v in value if str(v).strip())
     if isinstance(value, float) and value == int(value):
         return str(value)  # keep 25.0 as-is; float parsers accept it
     return str(value)

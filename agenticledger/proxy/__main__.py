@@ -65,6 +65,17 @@ Reads config from environment variables:
     AGENTICLEDGER_RATE_LIMIT_AGENT_RPM  Max requests per minute per agent_name (default: none)
     AGENTICLEDGER_RATE_LIMIT_USER_RPM   Max requests per minute per user_id (default: none)
 
+  Allow and deny lists (refuse only, the rule named; every refusal is recorded):
+    AGENTICLEDGER_ALLOW_MODELS          Comma-separated model patterns; when set, only these pass
+                                        (globs: claude-*, gpt-4o) (default: none)
+    AGENTICLEDGER_DENY_MODELS           Model patterns refused outright; deny wins (default: none)
+    AGENTICLEDGER_ALLOW_PROVIDERS       Provider names or patterns; when set, only these pass
+                                        (openai, anthropic, bedrock, azure-openai) (default: none)
+    AGENTICLEDGER_DENY_PROVIDERS        Providers refused outright (default: none)
+    Team cards carry their own four lists (POST /api/tokens); the fleet lists
+    always apply and a card can only narrow them. Stop all calls, the
+    fleet-wide emergency stop, is POST /api/stop (lift: DELETE /api/stop).
+
   Alerts (POST to webhook on threshold breach; does not block calls):
     AGENTICLEDGER_ALERT_WEBHOOK_URL     Webhook URL for alerts (default: none)
     AGENTICLEDGER_DIGEST_HOUR           UTC hour (0-23) to POST a daily spend digest for the
@@ -108,6 +119,7 @@ from ..config import apply_config
 from .alerts import AlertConfig
 from .app import _secret_env, create_app
 from .otel import init_otel
+from .policy import Policy
 from .ratelimit import RateLimitConfig
 from .redact import build_redactor
 
@@ -168,6 +180,12 @@ app = create_app(
     budget_daily=_float_env("AGENTICLEDGER_BUDGET_DAILY"),
     budget_action=os.environ.get("AGENTICLEDGER_BUDGET_ACTION", "block"),
     budget_unpriced=os.environ.get("AGENTICLEDGER_BUDGET_UNPRICED", "allow"),
+    policy=Policy.from_values(
+        allow_models=os.environ.get("AGENTICLEDGER_ALLOW_MODELS"),
+        deny_models=os.environ.get("AGENTICLEDGER_DENY_MODELS"),
+        allow_providers=os.environ.get("AGENTICLEDGER_ALLOW_PROVIDERS"),
+        deny_providers=os.environ.get("AGENTICLEDGER_DENY_PROVIDERS"),
+    ),
     rate_limit_config=RateLimitConfig(
         global_rpm=  int(os.environ["AGENTICLEDGER_RATE_LIMIT_RPM"])          if os.environ.get("AGENTICLEDGER_RATE_LIMIT_RPM")          else None,
         session_rpm= int(os.environ["AGENTICLEDGER_RATE_LIMIT_SESSION_RPM"])  if os.environ.get("AGENTICLEDGER_RATE_LIMIT_SESSION_RPM")  else None,
