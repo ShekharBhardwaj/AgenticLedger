@@ -1,15 +1,18 @@
 """
-Anomaly detection and webhook alerts.
+Threshold alerts over a webhook.
 
-Agentic Ledger fires a POST to AGENTICLEDGER_ALERT_WEBHOOK_URL whenever a
-threshold is breached. The payload is plain JSON — wire it to Slack,
-PagerDuty, Discord, or your own endpoint on your side.
+Agentic Ledger fires a POST to AGENTICLEDGER_ALERT_WEBHOOK_URL whenever one
+of the fixed thresholds below is crossed (there is no baseline or anomaly
+model). The payload is plain JSON with our own field names; Slack incoming
+webhooks expect "text", PagerDuty Events v2 expects a "routing_key" and
+Discord expects "content", so put a small adapter or relay in front of
+those (native formats are tracked in #123).
 
 Thresholds (all optional):
     AGENTICLEDGER_ALERT_WEBHOOK_URL    URL to POST alerts to
     AGENTICLEDGER_ALERT_COST_PER_CALL  Alert if a single call costs more than $X
     AGENTICLEDGER_ALERT_LATENCY_MS     Alert if a single call takes longer than Xms
-    AGENTICLEDGER_ALERT_ERROR_RATE     Alert if session error rate exceeds X (0.0–1.0)
+    AGENTICLEDGER_ALERT_ERROR_RATE     Alert if session error rate exceeds X (0.0 to 1.0)
     AGENTICLEDGER_ALERT_DAILY_SPEND    Alert (not block) when daily spend crosses $X
 
 Payload sent to the webhook:
@@ -24,10 +27,10 @@ Payload sent to the webhook:
         "timestamp":  "2026-04-03T12:00:00+00:00"
     }
 
-Slack example — create an incoming webhook and set:
-    AGENTICLEDGER_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/xxx/yyy/zzz
-The `message` field maps to Slack's `text` field automatically if you use
-a Slack workflow that reads the JSON body.
+Slack: a plain incoming webhook (hooks.slack.com/services/...) rejects this
+payload because it reads `text` and we send `message`. Point the URL at a
+Slack Workflow webhook and map `message` to a text variable, or at a small
+relay of your own. The daily digest does carry `text` and posts as-is.
 """
 
 import datetime

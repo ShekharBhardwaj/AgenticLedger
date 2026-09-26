@@ -20,33 +20,6 @@ services:
       - AGENTICLEDGER_BUDGET_USER=${AGENTICLEDGER_BUDGET_USER:-}
       - AGENTICLEDGER_REPLAY_API_KEY=${AGENTICLEDGER_REPLAY_API_KEY:-}
 
-  # Uncomment below to run with Postgres instead
-  #
-  # agenticledger:
-  #   build: .
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     - AGENTICLEDGER_UPSTREAM_URL=${AGENTICLEDGER_UPSTREAM_URL:-https://api.openai.com}
-  #     - AGENTICLEDGER_DSN=postgresql://agenticledger:agenticledger@db/agenticledger
-  #     - AGENTICLEDGER_API_KEY=${AGENTICLEDGER_API_KEY:-}
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #
-  # db:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_DB: agenticledger
-  #     POSTGRES_USER: agenticledger
-  #     POSTGRES_PASSWORD: agenticledger
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U agenticledger"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-  #
-  # volumes:
-  #   pgdata:
+  # Postgres instead of SQLite: keep this file as it is and layer the
+  # override, which swaps the DSN and adds the database service:
+  #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up

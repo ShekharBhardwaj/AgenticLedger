@@ -246,7 +246,122 @@ report card, settings editing from the UI.
 Build order A → B → C → D, user-zero hands on every seam, tag on the
 word — the 0.9.2 retest discipline is the permanent process now.
 
-## Where the plan stands (2026-09-09)
+## Where the plan stands (2026-09-26)
+
+**Three releases shipped since the last entry.** v0.13.0 "Nothing
+wasted" tagged 2026-09-15 after the release-docs audit: an independent
+seven-surface audit of the docs against the shipped code caught a
+false httpx2 claim, a contradicted accuracy statement, the TLS section
+still denying the listener #118 added, a stale sonnet-5 rate, and
+seventeen README links that 404 on PyPI; all fixed before the tag.
+v0.13.1 tagged 2026-09-16: doctor's health probe still imported httpx
+after #93 and reported every healthy 0.13 install as broken; fixed,
+with a regression test that runs the real probe. v0.14.0 tagged
+2026-09-16: the dashboard facelift (design by GPT Astra via Codex),
+verified by sixteen end-to-end smoke tests against the real proxy;
+presentation only, with the honest-state labels, the loop-fix guards,
+the accessibility landmarks and both themes preserved. The campaign
+has not fired and no scorecard numbers exist yet.
+
+**Milestone 4 was refilled by the facelift, not by strangers.** The
+filed 0.14 issues (#121 to #130) stay open: #124 budget reservation,
+#123 reliable notifications and #122 pagination are absorbed into the
+cycles below; the rest stay on the bench.
+
+**Scope decision (2026-09-26): three enterprise cycles, a deliberate
+override of the sequencing rule.** The rule says enterprise features
+wait for a named pulling team. The maintainer's call is to build the
+seven enterprise blockers now, across three releases, done right or
+not at all, because an independent code audit showed the foundations
+are real (hashed tokens and roles, refusals that hold in the request
+path, a governance baseline, a signed supply chain, Postgres under the
+full suite in CI) and the gaps are specific and bounded. The rule's
+intent survives: the moment a real team pulls, its identity provider,
+deploy target and compliance framework replace the assumptions below;
+and if launch feedback converges on one missing thing, that thing
+still takes the room.
+
+*Target assumptions, until a pulling team names its own:* generic
+OIDC with Okta first for sign-in; Kubernetes with Postgres as the
+deploy target; SOC 2 as the first compliance framework.
+
+*Constraints that do not move:* every control is refuse or record,
+never route, rewrite, substitute a model, scrub an outbound body or
+inject a prompt; local-first means no vendor control plane and no
+vendor identity broker; nothing in the OSS core moves behind a gate;
+and each cycle ships the rig user zero needs to pass its primary
+scenario by hand (a local test identity provider, a second tenant,
+two replicas), or it does not ship.
+
+**0.15 "The wall holds" (the trust release).**
+- Batch one, first: the hour-one failures and the claims ahead of
+  evidence. The published image installs the Postgres driver
+  ([otel,postgres]) and the compose Postgres profile works; the
+  ROADMAP hash-chain checkmarks come off; SECURITY.md says integrity
+  tagged, not signed; the README role table shows all four roles; the
+  Slack and PagerDuty webhook claim matches what alerts.py sends; the
+  anomaly-detection docstring matches the fixed thresholds; tool-call
+  arguments get the capture level and redaction (a stated guarantee
+  they escaped); redaction catches real key shapes (sk-ant, sk-proj,
+  JWT, bearer).
+- #124 budget reservation: admission-time reservation with post-call
+  reconcile, so concurrent calls cannot overshoot. First in the build
+  order, as milestone 4 already said; every later quota, HA and Helm
+  claim stacks on it.
+- An audit trail security operations will accept: hash-chained rows
+  with a verify endpoint, a fail-closed option, failed logins and MCP
+  reads recorded, the forwarded client address recorded, filters and
+  pagination, a dashboard audit view, structured logs, and forwarding
+  by syslog, HTTP or OTel logs to the customer's own SIEM.
+- Fleet refusal controls: one global emergency stop, model and
+  provider allow and deny lists per team, every refusal on the record
+  (rate-limit and loop refusals included), loop blocks liftable
+  without a restart. Refuse only, with the reason named.
+- Credentials never in URLs: the pairing link carries the key in the
+  URL fragment instead of the query string, the websocket
+  authenticates with a short-lived ticket, and query-string keys stop
+  being accepted. Its own item, not batch one, because it changes the
+  phone pairing flow and needs the phone hand test.
+- The compliance document set, written alongside the code: DPA
+  template, subprocessor statement, HIPAA and BAA posture, SOC 2 and
+  ISO 27001 control mapping (which controls the product provides and
+  which the operator does), a data-flow diagram, and a stated support
+  window with a deprecation notice period.
+- Companions as they fit: #123 reliable native notifications, #122
+  pagination and a versioned API.
+
+**0.16 "Identity" (its own cycle).** Sign in with the company's
+identity provider: OIDC with PKCE, a users table with group-to-role
+mapping, httponly cookie sessions with logout, idle and absolute
+timeouts and server-side revocation, CSRF on mutating routes, and a
+real person behind every audit row. Then access scoped to a team or
+project, enforced as a required argument in every read, search,
+report, export and MCP handler, so a forgotten filter cannot become a
+data breach. Ships with a local test identity provider so user zero
+can pass the primary scenario by hand. SAML and SCIM follow when a
+pulling team names its provider.
+
+**0.17 "Platform" (its own cycle).** Enforcement that holds across
+two copies: shared state for the stop set, run ceilings and rate
+windows (Postgres rows and advisory locks first, Redis only if
+measured necessary, fail-open on outage kept), single-runner election
+for the retention and digest workers, versioned locked migrations
+with an `agenticledger migrate` command a DBA can run ahead of a
+rollout, SQLite refused above one replica, a Helm chart with
+guardrails, backup and restore as product, and the first supported
+two-replica deployment, proven on a two-replica rig.
+
+*Deferred behind those, pull-gated:* field-level encryption with
+customer-managed keys (regulated buyers first), cost allocation by
+tags with calendar statements, policy as code, the admin console,
+Vertex and Gemini adapters, air-gapped bundles, Terraform.
+
+Process unchanged and permanent: user-zero hands on every seam, the
+primary scenario passes under those hands before any tag, docs and
+site audited against the release before the tag, and the tag ships on
+the word.
+
+## Where the plan stood (2026-09-09)
 
 **Scope decision (2026-09-10): the premium dashboard pulled forward
 into 0.13.** The maintainer's call: the full redesign (the spec's

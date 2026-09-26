@@ -33,8 +33,15 @@ _BUILTIN_PATTERNS = {
     "ssn":         r"\b\d{3}-\d{2}-\d{4}\b",
     "credit_card": r"\b(?:\d[ -]?){13,16}\b",
     "ip":          r"\b\d{1,3}(?:\.\d{1,3}){3}\b",
-    "api_key":     r"\b(?:sk|pk|rk)-[A-Za-z0-9]{12,}\b|\bAKIA[0-9A-Z]{16}\b|"
-                   r"\bghp_[A-Za-z0-9]{20,}\b|\bxox[baprs]-[A-Za-z0-9-]{10,}\b",
+    # Provider keys carry hyphens and underscores past the prefix (sk-ant-…,
+    # sk-proj-…), GitHub has five token prefixes plus fine-grained PATs,
+    # Google keys are AIza + 35, JWTs are three base64url segments, and a
+    # bearer header keeps its scheme and loses only the credential.
+    "api_key":     r"\b(?:sk|pk|rk)-[A-Za-z0-9_-]{12,}\b|\bAKIA[0-9A-Z]{16}\b|"
+                   r"\bgh[pousr]_[A-Za-z0-9]{20,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b|"
+                   r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b|\bAIza[0-9A-Za-z_-]{35}\b|"
+                   r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b|"
+                   r"(?<=[Bb]earer )[A-Za-z0-9._~+/=-]{20,}",
 }
 BUILTIN_CATEGORIES = tuple(_BUILTIN_PATTERNS)
 
@@ -142,3 +149,22 @@ def apply_capture_policy(req, resp, level: str, redactor: Optional[Redactor]) ->
             resp.tool_calls = redactor.scrub(resp.tool_calls)
         if resp.thinking:
             resp.thinking = redactor.redact_text(resp.thinking)
+
+
+def apply_tool_execution_policy(executions, level: str, redactor: Optional[Redactor]):
+    """Apply the capture policy to derived tool-execution rows, in place.
+
+    Tool arguments are prompt-shaped content (file bodies, queries, whatever
+    the agent typed into a tool) and get the same treatment as messages:
+    dropped at the metadata level, redacted at full level when a redactor is
+    configured. Tool names, ids, timing and error flags are metadata and stay.
+    Only the stored copy changes; the agent already made the real call.
+    """
+    for ex in executions or ():
+        if "arguments" not in ex:
+            continue
+        if level == CAPTURE_METADATA:
+            ex["arguments"] = None
+        elif redactor is not None and redactor.enabled:
+            ex["arguments"] = redactor.scrub(ex["arguments"])
+    return executions

@@ -34,8 +34,11 @@ Recommendations for any non-local deployment:
 - **Secure the database.** Captured traffic is stored in SQLite or Postgres. Apply
   the same access controls, encryption-at-rest, and retention policy you would to any
   store of sensitive prompt data.
-- **Compliance exports are signed but not encrypted.** The JSON export includes a
-  SHA-256 integrity hash for tamper-evidence; it does not encrypt the contents.
+- **Compliance exports are integrity tagged, not encrypted.** By default the JSON
+  export carries a SHA-256 checksum over the calls array, which catches accidental
+  corruption but is not a signature (anyone who edits the calls can recompute it).
+  Set `AGENTICLEDGER_EXPORT_HMAC_KEY` for a keyed HMAC-SHA256 tag that is
+  tamper-evident to anyone holding the key. Neither encrypts the contents.
 
 ## Scope
 

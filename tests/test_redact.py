@@ -11,6 +11,7 @@ from agenticledger.proxy.redact import (
     CAPTURE_METADATA,
     Redactor,
     apply_capture_policy,
+    apply_tool_execution_policy,
     build_redactor,
     normalize_capture_level,
 )
@@ -49,6 +50,32 @@ def test_build_redactor_specs():
     assert len(build_redactor("all")._patterns) == len(BUILTIN_CATEGORIES)
     custom = build_redactor("", '{"badword": "secret"}')
     assert custom.redact_text("this is secret") == "this is [REDACTED:badword]"
+
+
+REAL_KEY_SHAPES = [
+    "sk-ant-api03-AbCdEf0123456789_-AbCdEf0123456789",         # Anthropic
+    "sk-proj-AbCdEf0123456789AbCdEf0123456789",                # OpenAI project
+    "github_pat_11ABCDEFG0123456789abcdefghij",               # GitHub fine-grained
+    "gho_AbCdEf0123456789AbCdEf012",                           # GitHub OAuth
+    "AIzaSyA-bCdEfGhIjKlMnOpQrStUvWxYz012345",                 # Google (AIza + 35)
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcdef0123456789ABCDEF",  # JWT
+]
+
+
+def test_redactor_catches_real_key_shapes():
+    """Found live: sk-ant- and sk-proj- keys, JWTs and bearer tokens passed
+    through because the pattern wanted twelve alphanumerics right after
+    'sk-'. Every shape a provider actually issues must be caught."""
+    r = Redactor(categories=["api_key"])
+    for secret in REAL_KEY_SHAPES:
+        out = r.redact_text(f"token: {secret} end")
+        assert secret not in out, secret
+        assert "[REDACTED:api_key]" in out, secret
+    # A bearer header keeps its scheme and loses only the credential.
+    out = r.redact_text("Authorization: Bearer AbCdEf0123456789AbCdEf0123456789")
+    assert out == "Authorization: Bearer [REDACTED:api_key]"
+    # Ordinary prose and short prefixed words are left alone.
+    assert r.redact_text("version 1.2.3 built by sk-team") == "version 1.2.3 built by sk-team"
 
 
 def test_normalize_capture_level():
@@ -91,6 +118,20 @@ def test_full_level_with_redactor_redacts_content():
     assert EMAIL not in resp.tool_calls[0]["arguments"]
 
 
+def test_tool_execution_policy_follows_capture_level():
+    """Tool arguments escaped both controls (they were popped out before the
+    policy ran and saved raw), against the stated metadata guarantee."""
+    rows = [{"tool_name": "Bash", "arguments": f"curl -H 'x: {KEY}' https://x", "latency_ms": 5}]
+    full = apply_tool_execution_policy([dict(r) for r in rows], "full", Redactor(categories=["api_key"]))
+    assert KEY not in full[0]["arguments"] and "[REDACTED:api_key]" in full[0]["arguments"]
+    assert full[0]["tool_name"] == "Bash"            # names and timing are metadata
+    meta = apply_tool_execution_policy([dict(r) for r in rows], CAPTURE_METADATA, None)
+    assert meta[0]["arguments"] is None and meta[0]["tool_name"] == "Bash"
+    same = apply_tool_execution_policy([dict(r) for r in rows], "full", None)
+    assert same[0]["arguments"] == rows[0]["arguments"]
+    assert apply_tool_execution_policy([], "full", None) == []
+
+
 # ── End-to-end through the proxy ──────────────────────────────────────────────
 
 def test_proxy_redacts_stored_copy_but_not_agent_response(proxy):
@@ -112,6 +153,55 @@ def test_proxy_redacts_stored_copy_but_not_agent_response(proxy):
     assert "[REDACTED:email]" in str(stored["messages"])
     assert KEY not in (stored["content"] or "")
     assert "[REDACTED:api_key]" in stored["content"]
+
+
+def _two_call_tool_flow(client, session, name, args):
+    """Call N issues a tool call, call N+1 feeds the result back: the shape
+    the loop engine pairs into one tool_executions row."""
+    user = {"role": "user", "content": "fetch the thing"}
+    client.post("/v1/chat/completions", json={"model": "gpt-4o", "messages": [user]},
+                headers={"x-agenticledger-session-id": session})
+    client.post("/v1/chat/completions", json={"model": "gpt-4o", "messages": [
+        user,
+        {"role": "assistant", "content": None,
+         "tool_calls": [{"id": "call_1", "type": "function",
+                         "function": {"name": name, "arguments": args}}]},
+        {"role": "tool", "tool_call_id": "call_1", "content": "ok"},
+    ]}, headers={"x-agenticledger-session-id": session})
+    return client.get(f"/api/sessions/{session}/tools").json()
+
+
+def test_proxy_redacts_tool_arguments_in_stored_executions(proxy):
+    """Tool arguments are content: a key the agent typed into a tool call must
+    not reach the tool_executions table in the clear. Found live: they were
+    popped out before the capture policy ran and saved raw."""
+    from .conftest import openai_tool_call
+    args = f'{{"cmd":"curl -H \'x-key: {KEY}\' https://x"}}'
+    client = proxy(
+        handler=lambda r: httpx.Response(200, json=openai_response(
+            tool_calls=[openai_tool_call(name="Bash", arguments=args)])),
+        redactor=Redactor(categories=["api_key"]),
+    )
+    tools = _two_call_tool_flow(client, "s-tool-redact", "Bash", args)
+    assert len(tools) == 1 and tools[0]["tool_name"] == "Bash"
+    assert KEY not in str(tools[0]["arguments"])
+    assert "[REDACTED:api_key]" in str(tools[0]["arguments"])
+
+
+def test_proxy_metadata_level_drops_tool_arguments(proxy):
+    """At the metadata level the tool name stays (it is metadata, like the
+    model id) and the arguments go, matching the stated guarantee."""
+    from .conftest import openai_tool_call
+    args = '{"path":"/etc/secret.txt"}'
+    client = proxy(
+        handler=lambda r: httpx.Response(200, json=openai_response(
+            tool_calls=[openai_tool_call(name="Read", arguments=args)])),
+        capture_level="metadata",
+    )
+    tools = _two_call_tool_flow(client, "s-tool-meta", "Read", args)
+    assert len(tools) == 1 and tools[0]["tool_name"] == "Read"
+    assert tools[0]["arguments"] in (None, "null")
+    assert "secret.txt" not in str(tools[0]["arguments"])
 
 
 def test_proxy_metadata_level_keeps_metrics_drops_content(proxy):

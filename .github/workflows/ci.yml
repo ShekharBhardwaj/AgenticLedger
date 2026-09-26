@@ -174,6 +174,56 @@ jobs:
           context: .
           push: false
 
+  # The published image must open Postgres, the documented production path.
+  # The [postgres] extra was missing from the image and nothing noticed,
+  # because every Postgres test ran from a pip install of the source. This
+  # boots the image itself against a real database; /readyz proves the store
+  # connected. Cold (PyPI fallback) build on purpose: it is the image the
+  # public pulls, with this checkout's Dockerfile.
+  docker-postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agenticledger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image (PyPI fallback, loaded locally)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: agenticledger:pg-smoke
+
+      - name: Boot the image against Postgres and check readiness
+        run: |
+          docker run -d --name ledger --network host \
+            -e AGENTICLEDGER_DSN=postgresql://postgres:postgres@localhost:5432/agenticledger \
+            -e AGENTICLEDGER_UPSTREAM_URL=https://api.anthropic.com \
+            agenticledger:pg-smoke
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/readyz && break
+            [ "$i" = 30 ] && { echo "image never became ready on Postgres"; docker logs ledger; exit 1; }
+            sleep 1
+          done
+          if docker logs ledger 2>&1 | grep -qi "ImportError"; then
+            echo "the image failed to import a dependency"; docker logs ledger; exit 1
+          fi
+          echo "published image opens Postgres and reports ready"
+
   dashboard-smoke:
     # #98 — the frontend's floor: the real proxy on a seeded ledger, the
     # built SPA driven headlessly. Minimal by design.

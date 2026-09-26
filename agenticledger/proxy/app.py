@@ -103,7 +103,12 @@ from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
 from .pricing import compute_cost, infer_provider
 from .ratelimit import RateLimitConfig, RateLimiter
-from .redact import Redactor, apply_capture_policy, normalize_capture_level
+from .redact import (
+    Redactor,
+    apply_capture_policy,
+    apply_tool_execution_policy,
+    normalize_capture_level,
+)
 from .replay import (
     NotTranslatable,
     build_cross_request,
@@ -428,6 +433,9 @@ def create_app(
         )
         tool_executions = loop_fields.pop("tool_executions", [])
         apply_capture_policy(job.req, job.resp, _capture_level, _redactor)
+        # Tool arguments are prompt-shaped content and follow the same policy
+        # (dropped at metadata level, redacted at full). Stored copy only.
+        apply_tool_execution_policy(tool_executions, _capture_level, _redactor)
         store = app.state.store
         await store.save(
             job.action_id, job.req, job.resp,
@@ -2247,6 +2255,9 @@ def create_app(
             if isinstance(payload, dict):
                 events = extract_otlp_tool_events(payload)
                 if events:
+                    # Same capture policy as the proxy path: tool arguments
+                    # are content, whichever door they arrive through.
+                    apply_tool_execution_policy(events, _capture_level, _redactor)
                     with suppress(Exception):
                         await request.app.state.store.save_tool_executions(events)
         return _otlp_ack(request)

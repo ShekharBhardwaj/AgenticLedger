@@ -14,9 +14,9 @@ COPY dist/ /tmp/dist/
 RUN set -eu; \
     WHL=$(find /tmp/dist -name '*.whl' | head -n 1); \
     if [ -n "$WHL" ]; then \
-        pip install --no-cache-dir "${WHL}[otel]"; \
+        pip install --no-cache-dir "${WHL}[otel,postgres]"; \
     else \
-        pip install --no-cache-dir "agentic-ledger[otel]${AGENTICLEDGER_VERSION:+==${AGENTICLEDGER_VERSION}}"; \
+        pip install --no-cache-dir "agentic-ledger[otel,postgres]${AGENTICLEDGER_VERSION:+==${AGENTICLEDGER_VERSION}}"; \
     fi; \
     rm -rf /tmp/dist
 

@@ -1,0 +1,32 @@
+# Overlay for running the ledger on Postgres instead of SQLite.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up
+#
+# The base file's SQLite DSN is replaced, the ledger waits for the database
+# to report healthy, and the published image already carries the Postgres
+# driver (the [postgres] extra). Set POSTGRES_PASSWORD in the environment
+# before any shared use; the default below is for a laptop only.
+services:
+  agenticledger:
+    environment:
+      - AGENTICLEDGER_DSN=postgresql://agenticledger:${POSTGRES_PASSWORD:-agenticledger}@db/agenticledger
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agenticledger
+      POSTGRES_USER: agenticledger
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agenticledger}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenticledger -d agenticledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

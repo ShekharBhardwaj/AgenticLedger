@@ -87,6 +87,10 @@ Or with docker compose (SQLite by default - see `docker-compose.yml`):
 ```bash
 AGENTICLEDGER_UPSTREAM_URL=https://api.openai.com docker compose up
 ```
+For Postgres, layer the override; it swaps the DSN and adds the database service, and the image ships the driver:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up
+```
 
 With `uv`:
 ```bash
@@ -733,10 +737,11 @@ http://localhost:8000?api_key=my-secret
 
 The master key is convenient but coarse. For team access, mint **scoped, revocable tokens** with roles instead of sharing the master secret. Tokens are random secrets shown once at creation; only their SHA-256 hash is stored.
 
-Roles are hierarchical:
+Roles are hierarchical, with one exception: `ingest` sits outside the hierarchy and opens only the proxy path.
 
 | Role | Can |
 |---|---|
+| `ingest` | send calls through the proxy only (this is what a team card is): attributes each call to its team and carries the team's daily budget; cannot read the dashboard, API, export or MCP |
 | `viewer` | read captured data - dashboard, API, export, MCP |
 | `editor` | viewer + delete sessions |
 | `admin` | editor + manage API tokens |
@@ -925,11 +930,13 @@ plain words, that cards open the relay, not the dashboard.
 - **Budgets** (`AGENTICLEDGER_BUDGET_*`) - block the call before it reaches the LLM. Agent gets HTTP 429.
 - **Alerts** (`AGENTICLEDGER_ALERT_*`) - the call goes through, you get notified after.
 
-**Slack** - create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) and point `AGENTICLEDGER_ALERT_WEBHOOK_URL` at it. Add `AGENTICLEDGER_DIGEST_HOUR=8` and the same webhook also gets a daily good-morning digest: last-24h spend, cache savings, and the top models and agents.
+**What the webhook receives.** Every alert is one JSON POST with our own field names: `type` (see the table below), `message`, `value`, `threshold`, `action_id`, `session_id`, `agent_name`, `timestamp`. The daily digest (`AGENTICLEDGER_DIGEST_HOUR=8`) is a separate POST with `type: daily_digest`, a ready-to-read `text` block (last-24h spend, cache savings, top models and agents), and `totals`.
 
-**PagerDuty** - use the [Events API v2](https://developer.pagerduty.com/docs/events-api-v2/) URL or a thin adapter that maps `type` → PagerDuty severity.
+**Slack** - a plain [Incoming Webhook](https://api.slack.com/messaging/webhooks) accepts the daily digest as-is (it reads `text`) but rejects the threshold alerts, which carry `message` rather than `text`. To get alerts into Slack today, point `AGENTICLEDGER_ALERT_WEBHOOK_URL` at a Slack Workflow webhook (map `message` to a text variable) or at a small relay of your own. Native Slack formatting is tracked in #123.
 
-**Discord** - use a Discord channel webhook URL directly.
+**PagerDuty** - the [Events API v2](https://developer.pagerduty.com/docs/events-api-v2/) requires a `routing_key` and its own event shape, so it needs a thin adapter that maps `type` to a severity. Native PagerDuty events are tracked in #123.
+
+**Discord** - a channel webhook expects `content`, which the payload does not carry, so it also needs a small adapter. Tracked in #123.
 
 **Custom** - any HTTP endpoint that accepts a JSON `POST`.
 
