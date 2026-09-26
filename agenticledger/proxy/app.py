@@ -118,6 +118,12 @@ from .replay import (
     score_replay,
 )
 from .reports import build_report, digest_text, estimate_whatif
+from .reservations import (
+    Reservation,
+    ReservationLedger,
+    estimate_call_cost,
+    release_reservation,
+)
 from .store import Store
 from .stream import detect_stream_error, reconstruct_from_sse
 
@@ -162,6 +168,9 @@ class _CaptureJob:
     error_detail: Optional[str]
     meta: dict
     budget_warning: Optional[str]
+    # #124: the admission reservation this call holds; released once its
+    # real cost is recorded, or on drop. None when no wall applied.
+    reservation: Optional[Reservation] = None
 
 
 def _extract_token(carrier) -> Optional[str]:
@@ -242,6 +251,7 @@ def create_app(
     budget_user: Optional[float] = None,   # max USD per user_id per UTC day
     budget_action: str = "block",   # "block" | "warn" | "both"
     budget_status: int = 429,       # 429 (default) or 402 — 402 stops client retry storms
+    budget_unpriced: str = "allow",  # "allow": an unpriced model passes uncounted | "refuse"
     alert_config: Optional[AlertConfig] = None,
     rate_limit_config: Optional[RateLimitConfig] = None,
     async_capture: bool = False,
@@ -263,6 +273,13 @@ def create_app(
 
     broadcaster = _Broadcaster()
     _rate_limiter = RateLimiter(rate_limit_config or RateLimitConfig())
+    # #124: in-flight reservations, so concurrent calls see each other at
+    # every wall. Per process today; shared rows in the platform cycle.
+    _reservations = ReservationLedger()
+    _budget_unpriced = (budget_unpriced or "allow").strip().lower()
+    if _budget_unpriced not in ("allow", "refuse"):
+        logger.warning("Unknown AGENTICLEDGER_BUDGET_UNPRICED %r, using 'allow'", budget_unpriced)
+        _budget_unpriced = "allow"
     # Loop/run inference over the capture stream + optional in-path guard.
     _loop_action = loop_action if loop_action in ("warn", "block", "off") else "warn"
     _loop_tracker = LoopTracker(
@@ -294,6 +311,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.store = await Store.connect(dsn)
+        app.state.reservations = _reservations
         # Operator kill switch: run ids whose calls are refused at the wall.
         # Loaded once, kept in memory (the hot path must not pay a query),
         # persisted as marker rows so a restart keeps the wall up.
@@ -467,6 +485,10 @@ def create_app(
                         "text": (f"run '{_tick_run}' has spent ${spent:.2f} "
                                  f"of its ${ceiling:.2f} ceiling"),
                     })
+        # The real cost is recorded and the run meter ticked: the estimate
+        # has done its job. Releasing only now means no instant exists in
+        # which a concurrent check under-counts this call.
+        release_reservation(job.reservation)
         with suppress(Exception):
             emit_span(job.action_id, job.req, job.resp, status_code=job.status_code, **job.meta)
         with suppress(Exception):
@@ -549,6 +571,10 @@ def create_app(
             except Exception:
                 _record_capture_drop(app, job.action_id)
             finally:
+                # A dropped capture still spent real money, but the record
+                # is gone; holding its estimate forever would starve the
+                # wall. Idempotent after a normal persist.
+                release_reservation(job.reservation)
                 _capture_queue.task_done()
 
     async def _retention_worker(app: FastAPI) -> None:
@@ -596,11 +622,14 @@ def create_app(
             except asyncio.QueueFull:
                 # Shed load rather than block the agent's response; the drop is counted.
                 _record_capture_drop(app, job.action_id)
+                release_reservation(job.reservation)
         else:
             try:
                 await _persist(job)
             except Exception:
                 _record_capture_drop(app, job.action_id)
+            finally:
+                release_reservation(job.reservation)
 
     _api_key = _secret_env("AGENTICLEDGER_API_KEY")
     # Optional proxy-ingest key. When set, the proxy refuses to forward a request
@@ -1268,6 +1297,13 @@ def create_app(
                       "which answer the agent gets — 429 says 'come back later' "
                       "(with Retry-After), 402 says 'no' and stops retries.",
                 key="[budgets] status"),
+            row("Budgets", "unpriced models", _budget_unpriced,
+                "AGENTICLEDGER_BUDGET_UNPRICED",
+                means="A model with no price in the packs is recorded with cost "
+                      "unknown, never $0, and cannot be counted. allow lets it "
+                      "through uncounted (the log names the model); refuse turns "
+                      "it away while any budget applies.",
+                key="[budgets] unpriced"),
             row("Capture", "level", _capture_level, "AGENTICLEDGER_CAPTURE_LEVEL",
                 means="full stores prompts and answers; metadata stores only the "
                       "numbers (tokens, cost, latency)."),
@@ -2383,6 +2419,28 @@ def create_app(
         # continuity, or the fresh-context run signature the next iteration
         # of an organic loop arrives with). Same grouping capture applies,
         # read-only. (#74)
+        #
+        # #124 admission reservation: one estimate for this call, held
+        # against every wall it passes (run ceiling, then each budget) and
+        # released when its real cost is recorded. Estimated only when a
+        # wall exists, so the hot path pays nothing otherwise.
+        reservation: Optional[Reservation] = None
+        unpriced_error: Optional[str] = None
+        _any_budget = (budget_session is not None or budget_agent is not None
+                       or budget_daily is not None or budget_user is not None
+                       or team_budget is not None)
+        if (is_llm_path and not is_count_tokens
+                and (_any_budget or request.app.state.run_ceilings)):
+            _estimate: Optional[float] = None
+            with suppress(Exception):
+                _estimate = estimate_call_cost(normalize_request(body_json, path))
+            if _estimate is None and _any_budget and _budget_unpriced == "refuse":
+                _model = str((body_json or {}).get("model") or "?").replace("\n", " ")[:120]
+                unpriced_error = (
+                    f"model '{_model}' has no price in the packs, so it cannot be "
+                    "counted against a budget, and AGENTICLEDGER_BUDGET_UNPRICED is "
+                    "refuse. Add a rate with AGENTICLEDGER_PRICING, or set allow.")
+            reservation = Reservation(_reservations, _estimate or 0.0)
         _stopped_run = meta.get("run_id")
         if (_stopped_run is None and is_llm_path and not is_count_tokens
                 and (request.app.state.stopped_runs
@@ -2400,10 +2458,15 @@ def create_app(
                 # the call while it would still cost nothing.
                 _ceiling = request.app.state.run_ceilings[_stopped_run]
                 _spent = await _run_spent(request.app, _stopped_run)
-                if _spent >= _ceiling:
+                # Recorded spend plus what other in-flight calls hold; the
+                # compare and the take are one synchronous step (#124).
+                _run_key = ("run", _stopped_run)
+                if _spent + _reservations.held(_run_key) >= _ceiling:
                     reason = (f"run '{_stopped_run}' reached its cost ceiling "
                               f"(${_spent:.2f} of ${_ceiling:.2f}); raise or "
                               "clear the ceiling from the dashboard")
+                elif reservation is not None:
+                    _reservations.take(reservation, _run_key)
         if reason:
             try:
                 canonical_req = normalize_request(body_json, path)
@@ -2492,17 +2555,23 @@ def create_app(
         # Fail open: if the store is unavailable the agent must not be blocked.
         # Budget enforcement resumes automatically once the store recovers.
         _budget_warning: Optional[str] = None  # set in warn mode; carried into actual save
-        if is_llm_path and not is_count_tokens and (budget_session is not None or budget_agent is not None or budget_daily is not None or budget_user is not None or team_budget is not None):
-            try:
-                budget_error, budget_retry_after = await _check_budgets(
-                    request.app.state.store, meta,
-                    budget_session, budget_agent, budget_daily, budget_user,
-                    budget_team=(team_name, team_budget)
-                    if team_name and team_budget is not None else None,
-                )
-            except Exception:
-                logger.warning("Budget check failed — allowing call through", exc_info=True)
-                budget_error, budget_retry_after = None, None
+        if is_llm_path and not is_count_tokens and _any_budget:
+            if unpriced_error:
+                # Policy, not arithmetic: refused (or warned) like a breach.
+                release_reservation(reservation)
+                budget_error, budget_retry_after = unpriced_error, None
+            else:
+                try:
+                    budget_error, budget_retry_after = await _check_budgets(
+                        request.app.state.store, meta,
+                        budget_session, budget_agent, budget_daily, budget_user,
+                        budget_team=(team_name, team_budget)
+                        if team_name and team_budget is not None else None,
+                        reservation=reservation,
+                    )
+                except Exception:
+                    logger.warning("Budget check failed, allowing the call through", exc_info=True)
+                    budget_error, budget_retry_after = None, None
             if budget_error:
                 should_block = budget_action in ("block", "both")
                 should_warn  = budget_action in ("warn",  "both")
@@ -2571,7 +2640,7 @@ def create_app(
         if is_streaming:
             return await _streaming_proxy(
                 request, path, body_bytes, body_json, forward_headers, action_id,
-                meta, _capture, _budget_warning,
+                meta, _capture, _budget_warning, reservation,
             )
 
         start = time.monotonic()
@@ -2591,7 +2660,7 @@ def create_app(
             return await _upstream_unreachable(
                 request, path, body_json, action_id, meta, _capture,
                 _budget_warning, exc, (time.monotonic() - start) * 1000,
-                is_llm_call)
+                is_llm_call, reservation)
         latency_ms = (time.monotonic() - start) * 1000
 
         if is_llm_call:
@@ -2618,9 +2687,13 @@ def create_app(
                 await _capture(_CaptureJob(
                     action_id, canonical_req, canonical_resp,
                     status_code, error_detail, meta, _budget_warning,
+                    reservation=reservation,
                 ))
             except Exception:
                 _record_capture_drop(request.app, action_id)
+                release_reservation(reservation)
+        else:
+            release_reservation(reservation)
 
         return Response(
             content=upstream_resp.content,
@@ -2643,6 +2716,7 @@ async def _upstream_unreachable(
     exc: Exception,
     latency_ms: float,
     is_llm_call: bool,
+    reservation: Optional[Reservation] = None,
 ) -> JSONResponse:
     """The upstream never answered (connection refused, DNS, TLS, timeout).
     The flight recorder records the attempt (#106): a 502 capture with the
@@ -2650,13 +2724,18 @@ async def _upstream_unreachable(
     no record."""
     detail = (f"upstream_unreachable: {type(exc).__name__} on "
               f"{request.method} /{path}: {exc}")[:300]
+    handed_off = False
     if is_llm_call:
         with suppress(Exception):
             canonical_req = normalize_request(body_json, path)
+            handed_off = True
             await capture(_CaptureJob(
                 action_id, canonical_req, _empty_response(latency_ms),
-                502, detail, meta, budget_warning,
+                502, detail, meta, budget_warning, reservation=reservation,
             ))
+    if not handed_off:
+        # Nothing was spent and nothing will be recorded: give the room back.
+        release_reservation(reservation)
     # The client gets the failure CLASS only — exception text can embed
     # internal hosts/paths (CodeQL 36); the full detail lives in the
     # ledger record, which is the operator's own data.
@@ -2682,6 +2761,7 @@ async def _streaming_proxy(
     meta: dict,
     capture,
     budget_warning: Optional[str] = None,
+    reservation: Optional[Reservation] = None,
 ) -> Response:
     client: httpx.AsyncClient = _upstream_client(request.app, path)
     query = dict(request.query_params)
@@ -2702,7 +2782,8 @@ async def _streaming_proxy(
     except httpx.TransportError as exc:
         return await _upstream_unreachable(
             request, path, body_json, action_id, meta, capture,
-            budget_warning, exc, (time.monotonic() - start) * 1000, True)
+            budget_warning, exc, (time.monotonic() - start) * 1000, True,
+            reservation)
 
     canonical_req: Optional[CanonicalRequest] = None
     try:
@@ -2725,6 +2806,7 @@ async def _streaming_proxy(
             return _CaptureJob(
                 action_id, canonical_req, canonical_resp, 200,
                 "; ".join(parts) or None, meta, budget_warning,
+                reservation=reservation,
             )
         # Same promise on the streaming path: name the status and the
         # endpoint even when the error body is empty.
@@ -2739,6 +2821,7 @@ async def _streaming_proxy(
         return _CaptureJob(
             action_id, canonical_req, _empty_response(latency_ms),
             upstream.status_code, detail, meta, budget_warning,
+            reservation=reservation,
         )
 
     async def generator() -> AsyncIterator[bytes]:
@@ -2759,6 +2842,10 @@ async def _streaming_proxy(
                     await capture(_build_job(b"".join(chunks), completed=True))
                 except Exception:
                     _record_capture_drop(request.app, action_id)
+                    release_reservation(reservation)
+            else:
+                # Un-normalizable request: never captured, so never recorded.
+                release_reservation(reservation)
         finally:
             # Abnormal teardown — client disconnect or cancellation — means the
             # inline capture above never ran. Schedule it on a task instead of
@@ -2798,63 +2885,92 @@ async def _check_budgets(
     budget_daily: Optional[float],
     budget_user: Optional[float] = None,
     budget_team: Optional[tuple[str, float]] = None,
+    reservation: Optional[Reservation] = None,
 ) -> tuple[Optional[str], Optional[int]]:
     """(error message, Retry-After seconds) if a budget is exceeded, else
     (None, None). Daily windows carry the seconds until UTC midnight;
-    session budgets never reset, so they carry no Retry-After."""
+    session budgets never reset, so they carry no Retry-After.
+
+    #124: each wall compares recorded spend plus what other in-flight calls
+    hold, then takes this call's reservation in the same synchronous step,
+    so two concurrent callers cannot both pass the same remaining room. A
+    refusal at any wall gives back everything taken so far.
+    """
     session_id = meta.get("session_id")
     agent_name = meta.get("agent_name")
     user_id = meta.get("user_id")
+    ledger = reservation.ledger if reservation is not None else None
+
+    def _held(key) -> float:
+        return ledger.held(key) if ledger is not None else 0.0
+
+    def _take(key) -> None:
+        if reservation is not None:
+            ledger.take(reservation, key)
+
+    def _refused(message: str, retry_after: Optional[int]):
+        release_reservation(reservation)
+        return message, retry_after
 
     if budget_session is not None and session_id:
         spent = await store.get_session_cost(session_id)
-        if spent >= budget_session:
-            return (
+        key = ("session", session_id)
+        if spent + _held(key) >= budget_session:
+            return _refused(
                 f"Session budget of ${budget_session:.4f} exceeded "
                 f"(current spend: ${spent:.4f}). Session: {session_id}",
                 None,
             )
+        _take(key)
 
     if budget_agent is not None and agent_name:
         since = _today_start_ts()
         spent = await store.get_agent_cost(agent_name, since)
-        if spent >= budget_agent:
-            return (
+        key = ("agent", agent_name)
+        if spent + _held(key) >= budget_agent:
+            return _refused(
                 f"Agent daily budget of ${budget_agent:.4f} exceeded "
                 f"(current spend: ${spent:.4f}). Agent: {agent_name}",
                 _seconds_to_utc_midnight(),
             )
+        _take(key)
 
     if budget_user is not None and user_id:
         since = _today_start_ts()
         spent = await store.get_user_cost(user_id, since)
-        if spent >= budget_user:
-            return (
+        key = ("user", user_id)
+        if spent + _held(key) >= budget_user:
+            return _refused(
                 f"User daily budget of ${budget_user:.4f} exceeded "
                 f"(current spend: ${spent:.4f}). User: {user_id}",
                 _seconds_to_utc_midnight(),
             )
+        _take(key)
 
     if budget_team is not None:
         team, cap = budget_team
         since = _today_start_ts()
         spent = await store.get_team_cost(team, since)
-        if spent >= cap:
-            return (
+        key = ("team", team)
+        if spent + _held(key) >= cap:
+            return _refused(
                 f"Team daily budget of ${cap:.4f} exceeded "
                 f"(current spend: ${spent:.4f}). Team: {team}",
                 _seconds_to_utc_midnight(),
             )
+        _take(key)
 
     if budget_daily is not None:
         since = _today_start_ts()
         spent = await store.get_period_cost(since)
-        if spent >= budget_daily:
-            return (
+        key = ("daily", "*")
+        if spent + _held(key) >= budget_daily:
+            return _refused(
                 f"Daily budget of ${budget_daily:.4f} exceeded "
                 f"(current spend: ${spent:.4f}).",
                 _seconds_to_utc_midnight(),
             )
+        _take(key)
 
     return None, None
 
@@ -3084,6 +3200,7 @@ def _spawn_capture(app: FastAPI, capture, job: _CaptureJob, action_id: Optional[
             await capture(job)
         except Exception:
             _record_capture_drop(app, action_id)
+            release_reservation(job.reservation)
 
     task = asyncio.get_running_loop().create_task(_run())
     _BG_CAPTURE_TASKS.add(task)

@@ -63,6 +63,7 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "daily": "AGENTICLEDGER_BUDGET_DAILY",
         "user": "AGENTICLEDGER_BUDGET_USER",
         "status": "AGENTICLEDGER_BUDGET_STATUS",
+        "unpriced": "AGENTICLEDGER_BUDGET_UNPRICED",
     },
     "replay": {
         "api_key": "AGENTICLEDGER_REPLAY_API_KEY",
@@ -100,6 +101,7 @@ TEMPLATE = '''\
 # session = 5.0       # per-session ceiling
 # user = 10.0         # per-user daily ceiling
 # status = 429        # or 402 — HTTP answer when a wall blocks a call
+# unpriced = "allow"  # or "refuse": a model with no price cannot be counted
 
 [replay]
 # Same-provider replay through the proxy's own upstream:

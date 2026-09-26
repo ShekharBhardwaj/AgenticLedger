@@ -649,6 +649,9 @@ env-always-wins rule.
 | `AGENTICLEDGER_BUDGET_USER` | _(none)_ | Max USD per `user_id` per calendar day (UTC) - follows the user across sessions. |
 | `AGENTICLEDGER_BUDGET_STATUS` | `429` | HTTP status for budget blocks. `429` ships with an honest `Retry-After` (seconds until the UTC-midnight window reset); set `402` if your clients retry 429s aggressively - nothing retries Payment Required. |
 | `AGENTICLEDGER_BUDGET_ACTION` | `block` | What happens when a budget is exceeded: `block` returns HTTP 429 (call never reaches the LLM), `warn` lets the call through and fires a webhook alert, `both` blocks and fires the webhook. |
+| `AGENTICLEDGER_BUDGET_UNPRICED` | `allow` | A model with no price in the packs cannot be counted. `allow` records it with cost unknown (never $0), lets it through uncounted, and names it in the log; `refuse` turns it away while any budget applies. |
+
+Budgets and run ceilings hold under concurrency. Each admitted call reserves an estimate (its text at four chars per token plus its `max_tokens`, priced like any call) until its real cost is recorded, so a burst of parallel calls cannot each pass the same remaining room. The single call that crosses the line still goes through, as one caller always did, so overshoot is bounded to one call's cost. A reservation is released the moment the call is recorded, fails, is dropped, or is refused.
 
 **Rate limits** - block calls that exceed request frequency (returns HTTP 429, sliding 60-second window):
 

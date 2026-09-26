@@ -49,6 +49,8 @@ Reads config from environment variables:
     AGENTICLEDGER_BUDGET_ACTION         block (default) | warn | both
     AGENTICLEDGER_BUDGET_STATUS         HTTP status for budget blocks: 429 (default, sent with
                                         Retry-After) or 402; clients never retry a 402
+    AGENTICLEDGER_BUDGET_UNPRICED       allow (default) | refuse: what a budget does with a model
+                                        that has no price, since it cannot be counted
 
   Rate limits (returns HTTP 429, sliding 60-second window):
     AGENTICLEDGER_RATE_LIMIT_RPM        Max requests per minute globally (default: none)
@@ -158,6 +160,7 @@ app = create_app(
     budget_agent=_float_env("AGENTICLEDGER_BUDGET_AGENT"),
     budget_daily=_float_env("AGENTICLEDGER_BUDGET_DAILY"),
     budget_action=os.environ.get("AGENTICLEDGER_BUDGET_ACTION", "block"),
+    budget_unpriced=os.environ.get("AGENTICLEDGER_BUDGET_UNPRICED", "allow"),
     rate_limit_config=RateLimitConfig(
         global_rpm=  int(os.environ["AGENTICLEDGER_RATE_LIMIT_RPM"])          if os.environ.get("AGENTICLEDGER_RATE_LIMIT_RPM")          else None,
         session_rpm= int(os.environ["AGENTICLEDGER_RATE_LIMIT_SESSION_RPM"])  if os.environ.get("AGENTICLEDGER_RATE_LIMIT_SESSION_RPM")  else None,

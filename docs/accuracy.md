@@ -44,7 +44,9 @@ holding us to it.
   Unknown-cost calls are excluded from spend totals. Adding the model to
   a pack (docs/pricing.md) and restarting the proxy prices only the calls
   captured after the restart; it does not reprice calls already recorded
-  as unknown, which stay unknown.
+  as unknown, which stay unknown. Budgets cannot count such a call either,
+  so by default it passes uncounted; set `AGENTICLEDGER_BUDGET_UNPRICED=refuse`
+  to turn it away while any budget applies.
 - **Introductory and negotiated rates.** Packs carry list prices, with
   dated notes where a rate is temporary. Private rates belong in
   `AGENTICLEDGER_PRICING` overrides.

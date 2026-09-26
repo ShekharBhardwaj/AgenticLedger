@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The wall holds under concurrency (#124).** Budget and run-ceiling
+  checks read recorded spend, so parallel in-flight calls each saw the
+  same remaining room and a burst could overshoot a cap by roughly
+  concurrency times one call's cost. Each admitted call now reserves an
+  estimate (its text at four chars per token plus its max_tokens, priced
+  like any call) until its real cost is recorded, and gives it back on
+  failure, drop, or refusal, so concurrent callers see each other. The
+  one call that crosses the line still goes through, as a single caller
+  always did, bounding overshoot to one call. Proven by a concurrent
+  test against a slow upstream: eight simultaneous calls into room for
+  three admit exactly three.
+
+### Added
+- **The unpriced-model budget policy is explicit.** A model with no
+  price cannot be counted. It passes uncounted by default, stated on the
+  settings page and in the docs, and `AGENTICLEDGER_BUDGET_UNPRICED=refuse`
+  turns it away while any budget applies.
+
 ## [0.14.0] - 2026-09-16
 
 ### Changed
