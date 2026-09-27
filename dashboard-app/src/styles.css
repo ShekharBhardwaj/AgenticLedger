@@ -25,6 +25,16 @@
   --purple: #C7ACED;
   --warning-bg: #211E18;
   --selected-bg: #142033;
+  /* Marks: the eight colors a person can pin on a run or a session.
+     Pastel on dark so they sit with the accents above; gray is neutral. */
+  --mark-gray: #A3ACBA;
+  --mark-red: #FF9393;
+  --mark-orange: #F5B27A;
+  --mark-yellow: #E9D06B;
+  --mark-green: #8BCEAC;
+  --mark-blue: #91B9FF;
+  --mark-purple: #C7ACED;
+  --mark-pink: #F2A5CF;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.24);
   --shadow-1: none;            /* legacy alias: shadows are overlay-only */
@@ -53,6 +63,14 @@
   --purple: #7443AA;
   --warning-bg: #FCF8EF;
   --selected-bg: #EAF1FA;
+  --mark-gray: #6B7480;
+  --mark-red: #C43C3C;
+  --mark-orange: #C9661C;
+  --mark-yellow: #A8860B;
+  --mark-green: #2E8A5C;
+  --mark-blue: #2F6FD0;
+  --mark-purple: #7E4BC2;
+  --mark-pink: #C2478F;
   --shadow-overlay: 0 8px 24px rgba(20, 30, 40, 0.12);
 }
 

@@ -61,6 +61,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard (`DELETE /api/sessions/{id}/loop-block`), re-arming the
   guards from that point. Refuse only, reason named: nothing is
   rewritten or rerouted.
+- **Icons and colors for runs and sessions.** A loop or a session can
+  carry an icon and a color, chosen in the dashboard's label editor from
+  a picker like Notion's (30 icons, 8 colors), so a wall of loops reads
+  at a glance. They ride the label row next to the name, pin and
+  project, and `PUT /api/labels/{scope}/{ref_id}` takes `icon` and
+  `color` with the same partial-update rules (absent is untouched, `""`
+  clears). Rows from `/api/runs`, `/api/runs/{id}` and `/api/sessions`
+  carry both, and the audit trail records them with the rest of the
+  label change. The two lists live in one place on the server
+  (`agenticledger/proxy/marks.py`) and the dashboard's copy is held to
+  it by a test.
 
 ## [0.14.0] - 2026-09-16
 

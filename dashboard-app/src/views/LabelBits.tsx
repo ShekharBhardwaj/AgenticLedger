@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createProject, deleteProject, renameProject, setLabel } from "../api";
+import { IconPicker, LabelMark, Mark, MarkPlaceholder } from "../LabelMarks";
 
 /** #47 — shared label controls for session and run cards: a ★ pin that
- *  keeps things findable, and a ✎ editor for the human name + project.
+ *  keeps things findable, and a ✎ editor for the human name + project
+ *  (and, since marks, an icon and a color).
  *  Ids stay stable underneath; the label is just how humans refer to it. */
 
 export function PinButton({ scope, refId, pinned, onSaved }: {
@@ -22,23 +24,46 @@ export function PinButton({ scope, refId, pinned, onSaved }: {
   );
 }
 
-export function LabelEditor({ scope, refId, label, project, projects, onSaved, onClose }: {
+export function LabelEditor({ scope, refId, label, project, projects, icon, color, onSaved, onClose }: {
   scope: "session" | "run"; refId: string;
   label: string | null; project: string | null;
   projects: string[]; onSaved: () => void; onClose: () => void;
+  icon?: string | null; color?: string | null;
 }) {
   // A human-chosen id (agenticledger run <name>, or a caller-set session id)
   // IS the name — start the field there so renaming edits rather than
   // retypes. Machine ids (auto-...) start blank.
   const [name, setName] = useState(label ?? (refId.startsWith("auto-") ? "" : refId));
   const [proj, setProj] = useState(project ?? "");
+  // The mark is held here until Save, like the name: closing the picker
+  // commits nothing, Cancel drops it. "" tells the server to clear.
+  const [mark, setMark] = useState<Mark>({ icon: icon ?? null, color: color ?? null });
+  const [picking, setPicking] = useState(false);
+  // The picker takes focus when it opens; closing hands it back to this
+  // button so a keyboard user keeps their place in the editor.
+  const markBtn = useRef<HTMLButtonElement>(null);
+  const closePicker = () => { setPicking(false); markBtn.current?.focus(); };
+  const marked = Boolean(mark.icon || mark.color);
   const save = () => {
-    setLabel(scope, refId, { name, project: proj })
+    setLabel(scope, refId, { name, project: proj, icon: mark.icon ?? "", color: mark.color ?? "" })
       .then(() => { onSaved(); onClose(); })
       .catch(() => {});
   };
   return (
     <div className="label-edit" onClick={(e) => e.stopPropagation()}>
+      <div className="mark-row">
+        <button type="button" className="mark-btn" ref={markBtn}
+                aria-expanded={picking} aria-haspopup="dialog"
+                aria-label={marked ? "Change icon" : "Add icon"}
+                title={`Pick an icon and a color for this ${scope}`}
+                onClick={() => setPicking((p) => !p)}>
+          {marked ? <LabelMark icon={mark.icon} color={mark.color} /> : <MarkPlaceholder />}
+          <span>{marked ? "Change icon" : "Add icon"}</span>
+        </button>
+      </div>
+      {picking && (
+        <IconPicker value={mark} onChange={setMark} onClose={closePicker} />
+      )}
       <input
         autoFocus
         placeholder={`name this ${scope}…`}

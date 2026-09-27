@@ -169,6 +169,34 @@ test("renaming, pinning and filtering preserve raw run identity", async ({ page,
   }
 });
 
+test("an icon and a color mark a run on its card, its title and its breadcrumb", async ({ page, request }) => {
+  await page.goto("/app");
+  const card = page.locator(".sidebar .card").filter({ hasText: "Smoke loop" });
+  try {
+    await card.locator(".card-edit").click();
+    await card.getByRole("button", { name: "Add icon", exact: true }).click();
+    const picker = card.getByRole("dialog", { name: "Icon and color" });
+    await picker.getByRole("radio", { name: "green", exact: true }).click();
+    await expect(picker.getByRole("radio", { name: "green", exact: true })).toBeChecked();
+    await picker.getByRole("button", { name: "flask", exact: true }).click();
+    await expect(picker.getByRole("button", { name: "flask", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await picker.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(picker).toHaveCount(0);
+    await card.getByRole("button", { name: "Save", exact: true }).click();
+    // The mark is decorative (aria-hidden), so the data attributes are the
+    // observable: which icon, which color, at each home of the name.
+    const mark = '.label-mark[data-icon="flask"][data-color="green"]';
+    await expect(card.locator(`.card-name ${mark}`)).toBeVisible();
+    const row = await (await request.get("/api/runs/smoke-loop")).json();
+    expect([row.icon, row.color]).toEqual(["flask", "green"]);
+    await card.click();
+    await expect(page.locator(`.run-title ${mark}`)).toBeVisible();
+    await expect(page.locator(`.ledger-breadcrumb .breadcrumb-current ${mark}`)).toBeVisible();
+  } finally {
+    await request.put("/api/labels/run/smoke-loop", { data: { icon: "", color: "" } });
+  }
+});
+
 test("search, cache, live activity and what-if tools remain usable", async ({ page }) => {
   await page.goto("/app#/sessions");
   await page.getByRole("textbox", { name: "Search captured calls" }).fill("smoke-loop step 1");

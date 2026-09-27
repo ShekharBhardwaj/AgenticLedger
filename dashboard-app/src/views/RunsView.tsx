@@ -14,6 +14,7 @@ import { StopAllControl } from "../StopControls";
 import WhatIf from "./WhatIf";
 import { RaccoonHead } from "../Raccoon";
 import { Breadcrumb, CostChart, Icon, RunTimeline } from "../LedgerVisuals";
+import { LabelMark } from "../LabelMarks";
 
 /** The bookkeeper: a small cartoon raccoon whose expression is the run's
  *  status. Decorative only: inline SVG, aria-hidden, fixed box (no layout
@@ -295,7 +296,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             <PinButton scope="run" refId={r.run_id} pinned={r.pinned} onSaved={refresh} />
             <button
               className="card-edit"
-              title="Rename / assign to a project"
+              title="Rename, add an icon and color, or file under a project"
               onClick={(e) => {
                 e.stopPropagation();
                 setEditing(editing === r.run_id ? null : r.run_id);
@@ -313,7 +314,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
               ⇆
             </button>
             <div className="card-title" title={r.run_id}>
-              <span className="card-name">{r.label ?? r.run_id}</span>
+              <span className="card-name"><LabelMark icon={r.icon} color={r.color} size={14} />{r.label ?? r.run_id}</span>
             </div>
             <div className="card-meta-row">
               <span className={`badge ${r.status}`} title={runStatusInfo(r.status)}>{STATUS_LABEL[r.status] ?? r.status}</span>
@@ -324,6 +325,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             {editing === r.run_id && (
               <LabelEditor scope="run" refId={r.run_id}
                            label={r.label} project={r.project} projects={projects}
+                           icon={r.icon} color={r.color}
                            onSaved={refresh} onClose={() => setEditing(null)} />
             )}
             <div className="card-sub">
@@ -421,7 +423,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(r.run_id); } }}>
                   <span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span>
                   <span className="landing-what">{what}</span>
-                  <span className="card-name landing-run">{r.label ?? r.run_id}</span>
+                  <span className="card-name landing-run"><LabelMark icon={r.icon} color={r.color} size={14} />{r.label ?? r.run_id}</span>
                   <span className="dim landing-when">{fmtAgo(r.last_call_at)}</span>
                   <span className="landing-inspect">Inspect →</span>
                 </div>
@@ -467,7 +469,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                         <tbody>
                           {blocked.map((r) => (
                             <tr key={r.run_id} className="landing-trow" onClick={() => setSelected(r.run_id)}>
-                              <td className="lt-name">{r.label ?? r.run_id}</td>
+                              <td className="lt-name"><LabelMark icon={r.icon} color={r.color} size={14} />{r.label ?? r.run_id}</td>
                               <td><span className="badge stopped">Calls blocked</span></td>
                               <td className="num mono">{fmtUsd(r.total_cost_usd)}</td>
                               <td className="num mono">{fmtNum(r.call_count)}</td>
@@ -486,7 +488,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                         <tbody>
                           {active.map((r) => (
                             <tr key={r.run_id} className="landing-trow" onClick={() => setSelected(r.run_id)}>
-                              <td className="lt-name">{r.label ?? r.run_id}</td>
+                              <td className="lt-name"><LabelMark icon={r.icon} color={r.color} size={14} />{r.label ?? r.run_id}</td>
                               <td><span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
                               <td className="num mono">{fmtUsd(r.total_cost_usd)}</td>
                               <td className="num mono">{fmtNum(r.call_count)}</td>
@@ -509,7 +511,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                         <tbody>
                           {recent.map((r) => (
                             <tr key={r.run_id} className="landing-trow" onClick={() => setSelected(r.run_id)}>
-                              <td className="lt-name">{r.label ?? r.run_id}</td>
+                              <td className="lt-name"><LabelMark icon={r.icon} color={r.color} size={14} />{r.label ?? r.run_id}</td>
                               <td><span className={`badge ${r.status}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
                               <td className="num mono">{fmtUsd(r.total_cost_usd)}</td>
                               <td className="num mono">{fmtNum(r.call_count)}</td>
@@ -541,9 +543,11 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
           </div>
         ) : (
           <>
-            <Breadcrumb area="Loop Lens" project={detail.project} name={detail.label ?? detail.run_id} />
+            <Breadcrumb area="Loop Lens" project={detail.project} name={detail.label ?? detail.run_id}
+                        icon={detail.icon} color={detail.color} />
             <div className="eyebrow detail-eyebrow">{detail.framework || "Agent run"} · Run overview</div>
             <h2 className="page-title run-title">
+              <LabelMark icon={detail.icon} color={detail.color} size={22} />
               {detail.label ?? detail.run_id}{" "}
               <span className={`badge ${detail.status}`} title={runStatusInfo(detail.status)}>{STATUS_LABEL[detail.status] ?? detail.status}</span>
               <RunMascot status={detail.status} />

@@ -1,4 +1,5 @@
 import { Call, FlaggedCall, flagInfo, fmtNum, fmtTime, fmtUsd, plural, Run } from "./api";
+import { LabelMark } from "./LabelMarks";
 
 type IconName = "activity" | "sessions" | "reports" | "settings" | "key" | "info" | "chevron" | "clock" | "flag";
 const paths: Record<IconName, string> = {
@@ -20,10 +21,14 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
     aria-hidden="true" className="ui-icon"><path d={paths[name]} /></svg>;
 }
 
-export function Breadcrumb({ area, project, name }: { area: string; project?: string | null; name?: string }) {
+export function Breadcrumb({ area, project, name, icon, color }: {
+  area: string; project?: string | null; name?: string;
+  icon?: string | null; color?: string | null;   // the current item's mark
+}) {
   return <div className="ledger-breadcrumb">
     <span>{area}</span>{project && <><Icon name="chevron" size={12} /><span>{project}</span></>}
-    {name && <><Icon name="chevron" size={12} /><span className="breadcrumb-current">{name}</span></>}
+    {name && <><Icon name="chevron" size={12} /><span className="breadcrumb-current">
+      <LabelMark icon={icon} color={color} size={12} />{name}</span></>}
   </div>;
 }
 

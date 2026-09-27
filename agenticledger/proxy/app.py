@@ -91,6 +91,7 @@ from .loops import (
 from .loops import (
     with_run_status as _with_run_status,
 )
+from .marks import LABEL_COLORS, LABEL_ICONS
 from .mcp import handle_mcp
 from .normalize import (
     CanonicalRequest,
@@ -998,6 +999,8 @@ def create_app(
             r["pinned"] = bool(lab.get("pinned"))
             r["project"] = lab.get("project")
             r["budget_usd"] = lab.get("budget_usd")
+            r["icon"] = lab.get("icon")
+            r["color"] = lab.get("color")
             r["project_auto"] = False
             # Auto-filing, weakest-to-strongest: a session inherits its
             # run's project (filing a loop files its sessions), an app
@@ -1231,10 +1234,20 @@ def create_app(
             if scope != "run":
                 raise HTTPException(status_code=400,
                                     detail="budget_usd applies to runs only")
+        # Picker marks: a name from the fixed list, or "" to clear. The
+        # list lives in marks.py and the dashboard mirrors it.
+        for field, allowed in (("icon", LABEL_ICONS), ("color", LABEL_COLORS)):
+            val = payload.get(field)
+            if val is not None and (not isinstance(val, str)
+                                    or (val != "" and val not in allowed)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{field} must be one of: {', '.join(allowed)} (\"\" clears it)")
         # Record before the effect: strict mode refuses what it cannot record.
         await _audit(principal, request, "set_label", f"{scope}:{ref_id}",
                      json.dumps({k: payload[k]
-                                 for k in ("name", "pinned", "project", "budget_usd")
+                                 for k in ("name", "pinned", "project", "budget_usd",
+                                           "icon", "color")
                                  if k in payload}))
         row = await request.app.state.store.set_label(
             scope, ref_id,
@@ -1242,6 +1255,8 @@ def create_app(
             pinned=payload.get("pinned"),
             project=payload.get("project"),
             budget_usd=budget,
+            icon=payload.get("icon"),
+            color=payload.get("color"),
         )
         if scope == "run" and budget is not None:
             # The wall reads these in memory; keep them in the same

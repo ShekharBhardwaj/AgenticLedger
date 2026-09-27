@@ -9,6 +9,7 @@ import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, RUN_
 import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
 import { Breadcrumb, CostChart, Icon, SessionMetrics } from "../LedgerVisuals";
+import { LabelMark } from "../LabelMarks";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
   const parts: string[] = [];
@@ -210,9 +211,11 @@ function SessionHeader({ session, sessionId, onOpenSession }: {
   }, [sessionId]);
   return (
     <div className="session-header">
-      <Breadcrumb area="Sessions" project={session?.project} name={session?.label ?? sessionId} />
+      <Breadcrumb area="Sessions" project={session?.project} name={session?.label ?? sessionId}
+                  icon={session?.icon} color={session?.color} />
       <div className="eyebrow detail-eyebrow">{session?.agent_name || "Agent session"} · Session overview</div>
       <h2 className="session-header-title">
+        <LabelMark icon={session?.icon} color={session?.color} size={22} />
         {session?.label ?? sessionId}
         {session?.team && <span className="badge team">{session.team}</span>}
         {session?.project && <span className="badge fw">{session.project}</span>}
@@ -584,7 +587,7 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
                        onSaved={refresh} />
             <button
               className="card-edit"
-              title="Rename / assign to a project"
+              title="Rename, add an icon and color, or file under a project"
               onClick={(e) => {
                 e.stopPropagation();
                 setEditing(editing === s.session_id ? null : s.session_id);
@@ -629,7 +632,7 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
               </div>
             )}
             <div className="card-title title-with-chip" title={s.session_id}>
-              <span className="title-text">{s.label ?? s.session_id}</span>
+              <span className="title-text"><LabelMark icon={s.icon} color={s.color} size={14} />{s.label ?? s.session_id}</span>
               {s.run_id && (
                 <span className="run-chip"
                       title={`this session belongs to run "${s.run_id}" — click to open it in the Loop Lens`}
@@ -641,6 +644,7 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
             {editing === s.session_id && (
               <LabelEditor scope="session" refId={s.session_id}
                            label={s.label} project={s.project} projects={projects}
+                           icon={s.icon} color={s.color}
                            onSaved={refresh} onClose={() => setEditing(null)} />
             )}
             <div className="card-meta-row">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Call, fmtNum, fmtTime, fmtUsd, get, Iteration, Run } from "../api";
+import { LabelMark } from "../LabelMarks";
 
 /** Side-by-side diff of two loop runs — the change-the-prompt-and-rerun
  *  workflow: did the new run get cheaper, shorter, less flagged? */
@@ -337,15 +338,16 @@ function DeltaCell({ row }: { row: Row }) {
   );
 }
 
-function Ribbon({ id, iterations, maxCost, onOpenSession }: {
+function Ribbon({ id, run, iterations, maxCost, onOpenSession }: {
   id: string;
+  run: Run | null;
   iterations: Iteration[];
   maxCost: number;
   onOpenSession: (s: string) => void;
 }) {
   return (
     <div className="cmp-col">
-      <div className="muted mono">{id}</div>
+      <div className="muted mono"><LabelMark icon={run?.icon} color={run?.color} size={14} />{id}</div>
       <div className="ribbon">
         {iterations.map((it) => (
           <div
@@ -406,10 +408,10 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
         </button>
       </h2>
       <div className="muted">
-        <span className="mono">{a}</span>
+        <span className="mono"><LabelMark icon={ra.detail?.icon} color={ra.detail?.color} size={14} />{a}</span>
         {ra.detail && <> ({fmtTime(ra.detail.started_at)})</>}
         {"  vs  "}
-        <span className="mono">{b}</span>
+        <span className="mono"><LabelMark icon={rb.detail?.icon} color={rb.detail?.color} size={14} />{b}</span>
         {rb.detail && <> ({fmtTime(rb.detail.started_at)})</>}
       </div>
 
@@ -417,8 +419,8 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
         <thead>
           <tr>
             <th>metric</th>
-            <th className="mono">A · {a.length > 16 ? a.slice(0, 15) + "…" : a}</th>
-            <th className="mono">B · {b.length > 16 ? b.slice(0, 15) + "…" : b}</th>
+            <th className="mono"><LabelMark icon={ra.detail?.icon} color={ra.detail?.color} size={14} />A · {a.length > 16 ? a.slice(0, 15) + "…" : a}</th>
+            <th className="mono"><LabelMark icon={rb.detail?.icon} color={rb.detail?.color} size={14} />B · {b.length > 16 ? b.slice(0, 15) + "…" : b}</th>
             <th>Δ (B − A)</th>
           </tr>
         </thead>
@@ -436,8 +438,8 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
 
       <div className="section-title">Cost per iteration (shared scale)</div>
       <div className="cmp-grid">
-        <Ribbon id={a} iterations={ra.iterations} maxCost={maxCost} onOpenSession={onOpenSession} />
-        <Ribbon id={b} iterations={rb.iterations} maxCost={maxCost} onOpenSession={onOpenSession} />
+        <Ribbon id={a} run={ra.detail} iterations={ra.iterations} maxCost={maxCost} onOpenSession={onOpenSession} />
+        <Ribbon id={b} run={rb.detail} iterations={rb.iterations} maxCost={maxCost} onOpenSession={onOpenSession} />
       </div>
 
       {(ra.firstCall || rb.firstCall) && (

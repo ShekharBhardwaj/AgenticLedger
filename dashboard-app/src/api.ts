@@ -228,10 +228,14 @@ export function downloadReportsCsv(days: number, tzOffset: number, project = "")
     });
 }
 
-/** Name, pin, or file a session/run under a project (#47). */
+/** Name, pin, mark, or file a session/run under a project (#47). Marks
+ *  (icon, color) clear with ""; a field left out stays as it was. */
 export function setLabel(
   scope: "session" | "run", refId: string,
-  fields: { name?: string; pinned?: boolean; project?: string; budget_usd?: number },
+  fields: {
+    name?: string; pinned?: boolean; project?: string; budget_usd?: number;
+    icon?: string; color?: string;
+  },
 ): Promise<unknown> {
   return put(`/api/labels/${scope}/${encodeURIComponent(refId)}`, fields);
 }
@@ -339,6 +343,8 @@ export interface Run {
   project: string | null;
   project_auto: boolean;
   app_id: string | null;
+  icon: string | null;               // mark: one of LABEL_ICONS, or unset
+  color: string | null;              // mark: one of LABEL_COLORS, or unset
   budget_usd?: number | null;        // per-run cost ceiling (0.11 spend meter)
   burn_last_hour_usd?: number;       // spend in the last hour (detail only)
 }
@@ -393,6 +399,8 @@ export interface Session {
   project: string | null;
   project_auto: boolean;
   app_id: string | null;
+  icon: string | null;
+  color: string | null;
 }
 
 export interface Call {

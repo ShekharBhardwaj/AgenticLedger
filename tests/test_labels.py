@@ -268,3 +268,116 @@ def test_purge_reaches_run_inherited_sessions(proxy):
     assert "filed-loop" not in [r["run_id"] for r in client.get("/api/runs").json()]
     # The bystander survives.
     assert client.get("/session/unrelated").status_code == 200
+
+
+# ── Icon and color marks ──────────────────────────────────────────────────────
+
+def test_marks_ride_run_and_session_rows(proxy):
+    """A run and a session each take an icon and a color, and every row
+    that carries label/pinned/project carries the marks too."""
+    client = proxy(handler=_ok())
+    _capture(client, "mk-s", run_id="mk-run")
+    _capture(client, "plain-s", run_id="plain-run")
+    r = client.put("/api/labels/run/mk-run", json={"icon": "flask", "color": "purple"})
+    assert r.status_code == 200, r.text
+    assert (r.json()["icon"], r.json()["color"]) == ("flask", "purple")
+    assert client.put("/api/labels/session/mk-s",
+                      json={"icon": "heart", "color": "pink"}).status_code == 200
+
+    runs = {x["run_id"]: x for x in client.get("/api/runs").json()}
+    assert (runs["mk-run"]["icon"], runs["mk-run"]["color"]) == ("flask", "purple")
+    assert (runs["plain-run"]["icon"], runs["plain-run"]["color"]) == (None, None)
+    detail = client.get("/api/runs/mk-run").json()
+    assert (detail["icon"], detail["color"]) == ("flask", "purple")
+    sessions = {x["session_id"]: x for x in client.get("/api/sessions").json()}
+    assert (sessions["mk-s"]["icon"], sessions["mk-s"]["color"]) == ("heart", "pink")
+    assert (sessions["plain-s"]["icon"], sessions["plain-s"]["color"]) == (None, None)
+
+
+def test_marks_partial_update_and_clear(proxy):
+    client = proxy(handler=_ok())
+    _capture(client, "pm-s", run_id="pm-run")
+    client.put("/api/labels/run/pm-run",
+               json={"name": "keeper", "icon": "brain", "color": "green"})
+    # Only the color moves; icon and name stay put.
+    client.put("/api/labels/run/pm-run", json={"color": "blue"})
+    row = {x["run_id"]: x for x in client.get("/api/runs").json()}["pm-run"]
+    assert (row["label"], row["icon"], row["color"]) == ("keeper", "brain", "blue")
+    # Empty string clears one mark and leaves the other.
+    client.put("/api/labels/run/pm-run", json={"icon": ""})
+    row = {x["run_id"]: x for x in client.get("/api/runs").json()}["pm-run"]
+    assert (row["label"], row["icon"], row["color"]) == ("keeper", None, "blue")
+    client.put("/api/labels/run/pm-run", json={"color": ""})
+    row = {x["run_id"]: x for x in client.get("/api/runs").json()}["pm-run"]
+    assert (row["label"], row["icon"], row["color"]) == ("keeper", None, None)
+
+
+def test_marks_validation_names_the_allowed_values(proxy):
+    from agenticledger.proxy.marks import LABEL_COLORS, LABEL_ICONS
+
+    client = proxy(handler=_ok())
+    _capture(client, "v-s", run_id="v-run")
+    r = client.put("/api/labels/run/v-run", json={"icon": "unicorn"})
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"].startswith("icon must be one of: ")
+    for name in LABEL_ICONS:
+        assert name in r.json()["detail"]
+    r = client.put("/api/labels/session/v-s", json={"color": "teal"})
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"].startswith("color must be one of: ")
+    for name in LABEL_COLORS:
+        assert name in r.json()["detail"]
+    assert client.put("/api/labels/run/v-run", json={"icon": 7}).status_code == 400
+    assert client.put("/api/labels/run/v-run", json={"color": ["red"]}).status_code == 400
+    # Nothing was written by the refused calls: both rows stay unmarked and
+    # the audit trail, recorded only after validation, has no set_label row.
+    run = client.get("/api/runs/v-run").json()
+    assert (run["icon"], run["color"]) == (None, None)
+    session = {x["session_id"]: x for x in client.get("/api/sessions").json()}["v-s"]
+    assert (session["icon"], session["color"]) == (None, None)
+    assert not [e for e in client.get("/api/audit").json() if e["action"] == "set_label"]
+
+
+def test_marks_are_on_the_audit_trail(proxy):
+    import json
+
+    client = proxy(handler=_ok())
+    _capture(client, "au-s", run_id="au-run")
+    assert client.put("/api/labels/run/au-run",
+                      json={"name": "seen", "icon": "wand", "color": "orange"}).status_code == 200
+    rows = [e for e in client.get("/api/audit").json() if e["action"] == "set_label"]
+    assert rows, "no set_label audit row"
+    details = json.loads(rows[0]["details"])
+    assert details["icon"] == "wand" and details["color"] == "orange"
+    assert details["name"] == "seen"
+
+
+def _tsx_string_list(source: str, const_name: str) -> list[str]:
+    """The string literals inside `export const NAME = [ ... ]`, in order,
+    read off the dashboard's TypeScript so no build step is needed."""
+    import re
+
+    m = re.search(rf"export\s+const\s+{const_name}\b[^=]*=\s*\[", source)
+    assert m, f"{const_name} is not exported from LabelMarks.tsx"
+    depth, i = 1, m.end()
+    while depth and i < len(source):
+        depth += {"[": 1, "]": -1}.get(source[i], 0)
+        i += 1
+    assert depth == 0, f"{const_name} array in LabelMarks.tsx never closes"
+    return re.findall(r"""["']([^"']+)["']""", source[m.end():i - 1])
+
+
+def test_dashboard_marks_match_the_server_lists():
+    """The picker and the API must agree on the names and their order;
+    this reads the dashboard's list so the two cannot drift apart."""
+    from pathlib import Path
+
+    from agenticledger.proxy.marks import LABEL_COLORS, LABEL_ICONS
+
+    tsx = Path(__file__).resolve().parents[1] / "dashboard-app" / "src" / "LabelMarks.tsx"
+    assert tsx.exists(), (
+        f"{tsx} is missing: the dashboard must export LABEL_COLORS and "
+        "LABEL_ICONS in the same order as agenticledger/proxy/marks.py")
+    source = tsx.read_text()
+    assert _tsx_string_list(source, "LABEL_COLORS") == list(LABEL_COLORS)
+    assert _tsx_string_list(source, "LABEL_ICONS") == list(LABEL_ICONS)
