@@ -516,6 +516,7 @@ Every LLM call is stored with:
 | `GET` | `/api/calls/{action_id}` | One call by id - follow a replay's parent back to its original |
 | `GET` | `/api/replay/targets` | Configured replay destinations (feeds the dashboard's dropdown) |
 | `GET` | `/api/replay/models` | Models a replay target actually serves (`?provider=`) |
+| `POST` | `/api/ws/ticket` | A one-minute, single-use ticket for the live `/ws` socket, minted with a key sent in a header (viewer) |
 | `GET` | `/api/whoami` | What is the key I'm holding? Name, role, and team (for team cards) - the dashboard's ⚿ panel uses this |
 | `POST` | `/api/replay/batch` | Replay a whole run or session on another model - returns a job id |
 | `GET` | `/api/replay/jobs/{job_id}` | Batch progress and the report card |
@@ -743,14 +744,12 @@ AGENTICLEDGER_ALERT_DAILY_SPEND=15.00 \
 uv run python -m agenticledger.proxy
 ```
 
-When `AGENTICLEDGER_API_KEY` is set, pass it to access protected endpoints:
+When `AGENTICLEDGER_API_KEY` is set, pass it in a header to access protected endpoints:
 ```bash
-# Header
 curl -H "x-agenticledger-api-key: my-secret" http://localhost:8000/session/run-1
-
-# Query param (browser)
-http://localhost:8000?api_key=my-secret
 ```
+
+Keys travel in headers only. A key in a query string (`?api_key=`, `?token=`) is refused with a 401 that says why: URLs end up in access logs, proxy logs, browser history and Referer headers. In a browser, paste the key into the dashboard's ⚿ panel, or open the pairing link from `agenticledger share`, which carries the key after the `#` (the URL fragment, which a browser never sends to any server).
 
 #### Scoped API tokens (RBAC)
 
@@ -773,7 +772,7 @@ curl -X POST http://localhost:8000/api/tokens \
   -d '{"name": "grafana-readonly", "role": "viewer", "expires_in_days": 90}'
 # → {"token_id": "...", "token": "agl_…", "role": "viewer", ...}  (token shown once)
 
-# Use it (Bearer header, x-agenticledger-token, or ?token=)
+# Use it (Authorization: Bearer or the x-agenticledger-token header)
 curl -H "Authorization: Bearer agl_…" http://localhost:8000/api/sessions
 
 # List and revoke
@@ -781,7 +780,7 @@ curl -H "x-agenticledger-api-key: my-secret" http://localhost:8000/api/tokens
 curl -X DELETE -H "x-agenticledger-api-key: my-secret" http://localhost:8000/api/tokens/<token_id>
 ```
 
-> Auth is enforced only when `AGENTICLEDGER_API_KEY` is set; the master key is the admin bootstrap for minting tokens. The live `/ws` feed accepts the same credentials (`?api_key=`, `?token=`, `Authorization: Bearer`, or `x-agenticledger-token`) and rejects unauthenticated connects with close code 1008 - the dashboard forwards its page credential to the socket automatically.
+> Auth is enforced only when `AGENTICLEDGER_API_KEY` is set; the master key is the admin bootstrap for minting tokens. The live `/ws` feed accepts a header (`Authorization: Bearer` or `x-agenticledger-token`) or a ticket: a browser cannot put a header on a websocket handshake, so the dashboard first calls `POST /api/ws/ticket` with its key in a header and connects with `/ws?ticket=...`, a random one-minute, single-use ticket that is worthless once used. Unauthenticated connects, and any connect with a key in its URL, are rejected with close code 1008.
 
 ---
 

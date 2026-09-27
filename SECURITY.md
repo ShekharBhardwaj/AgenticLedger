@@ -19,6 +19,14 @@ to the most recent release before reporting, and test against `main` if you can.
 
 ## Handling sensitive data — read this before deploying
 
+Credentials never ride in URLs. Keys are accepted in headers only
+(`x-agenticledger-api-key`, `Authorization: Bearer`,
+`x-agenticledger-token`); a key in a query string is refused. The pairing
+link carries its key in the URL fragment, which browsers never send to a
+server, and the dashboard's live socket uses a one-minute single-use
+ticket minted over a header, so access logs, proxy logs and browser
+history hold no reusable secret.
+
 Agentic Ledger is an observability proxy: **by design it captures the full content of
 every LLM request and response**, including system prompts, user messages, tool
 definitions, and tool results. Treat the Agentic Ledger datastore and dashboard as

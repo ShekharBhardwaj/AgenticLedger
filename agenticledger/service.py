@@ -380,7 +380,7 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
         if tls_state.exists():
             scheme_port = f"https://{ip}:{tls_state.read_text().strip()}"
             https = True
-        pairing = (f"{scheme_port}/app?api_key={key}" if key
+        pairing = (f"{scheme_port}/app#key={key}" if key
                    else f"{scheme_port}/app")
         print("Your dashboard, for devices on the same wifi (or tailnet):")
         print(f"  {pairing}")
@@ -388,7 +388,8 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
         _print_qr(pairing)
         print("Point your phone's camera at the code, or open the link.")
         if key:
-            print("The link carries the key: share it only with your own devices.")
+            print("The link carries the key after the #, which browsers never send")
+            print("to any server: share it only with your own devices.")
         if https:
             print("The certificate is self-signed: the phone shows a warning")
             print("once; accept it and the traffic is encrypted on your wifi.")
@@ -441,7 +442,7 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
             pass
         SHARE_PID_FILE.unlink(missing_ok=True)
         return 1
-    pairing = f"{url}/app?api_key={key}" if key else f"{url}/app"
+    pairing = f"{url}/app#key={key}" if key else f"{url}/app"
     print()
     print("Your dashboard, from anywhere, over https:")
     print(f"  {pairing}")
@@ -449,7 +450,8 @@ def share(stop: bool = False, wifi: bool = False, rotate: bool = False) -> int:
     _print_qr(pairing)
     print("Point your phone's camera at the code, or open the link.")
     if key:
-        print("The link carries the key: share it only with your own devices.")
+        print("The link carries the key after the #, which browsers never send")
+        print("to any server: share it only with your own devices.")
     else:
         print("Visitors sign in with your AGENTICLEDGER_API_KEY or a minted token.")
     print("Close the door with:  agenticledger share --stop")

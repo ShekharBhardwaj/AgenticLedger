@@ -166,13 +166,18 @@ def test_create_token_validates_input(proxy, monkeypatch):
                        headers=MASTER).status_code == 400  # bad role
 
 
-def test_token_via_query_param_and_x_header(proxy, monkeypatch):
-    """Tokens can be presented as ?token= or x-agenticledger-token, not only Bearer."""
+def test_token_via_x_header_and_never_the_url(proxy, monkeypatch):
+    """Tokens can be presented as x-agenticledger-token, not only Bearer.
+    A key in the query string is refused with a 401 that says why (0.15:
+    URLs land in logs and browser history)."""
     monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     viewer = _mint(client, "q", ROLE_VIEWER)
-    assert client.get(f"/api/sessions?token={viewer}").status_code == 200
     assert client.get("/api/sessions", headers={"x-agenticledger-token": viewer}).status_code == 200
+    for url in (f"/api/sessions?token={viewer}", "/api/sessions?api_key=master-key"):
+        refused = client.get(url)
+        assert refused.status_code == 401, url
+        assert "Keys in the URL are not accepted" in refused.json()["detail"]
 
 
 def test_endpoints_open_when_auth_disabled(proxy):
@@ -193,33 +198,64 @@ def test_ws_open_when_auth_disabled(proxy):
 
 
 def test_ws_rejects_missing_or_invalid_credential(proxy, monkeypatch):
-    """When auth is enabled, unauthenticated connects are closed with 1008."""
+    """When auth is enabled, unauthenticated connects are closed with 1008,
+    and so is any connect that puts a key in the URL, right or wrong."""
     monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
-    for url in ("/ws", "/ws?api_key=wrong", "/ws?token=agl_not-a-real-token"):
+    for url in ("/ws", "/ws?api_key=wrong", "/ws?token=agl_not-a-real-token",
+                "/ws?api_key=master-key", "/ws?ticket=not-a-ticket"):
         with pytest.raises(WebSocketDisconnect) as exc, client.websocket_connect(url):
             pass
         assert exc.value.code == 1008, url
 
 
-def test_ws_accepts_master_key_and_viewer_token(proxy, monkeypatch):
-    """The same credentials the dashboard uses (?api_key= / ?token= / Bearer) work."""
+def _ticket(client, headers):
+    resp = client.post("/api/ws/ticket", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["expires_in"] == 60
+    return body["ticket"]
+
+
+def test_ws_accepts_a_ticket_or_a_bearer_header(proxy, monkeypatch):
+    """The dashboard mints a ticket over a header and hands only the
+    ticket to the socket; non-browser clients can still send Bearer."""
     monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
     viewer = _mint(client, "ws-viewer", ROLE_VIEWER)
-    with client.websocket_connect("/ws?api_key=master-key"):
+    with client.websocket_connect(f"/ws?ticket={_ticket(client, MASTER)}"):
         pass
-    with client.websocket_connect(f"/ws?token={viewer}"):
+    with client.websocket_connect(f"/ws?ticket={_ticket(client, _bearer(viewer))}"):
         pass
     with client.websocket_connect("/ws", headers=_bearer(viewer)):
         pass
+    # Minting needs a credential of its own.
+    assert client.post("/api/ws/ticket").status_code == 401
+
+
+def test_ws_ticket_is_single_use_and_expires(proxy, monkeypatch):
+    monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
+    client = proxy()
+    ticket = _ticket(client, MASTER)
+    with client.websocket_connect(f"/ws?ticket={ticket}"):
+        pass
+    with pytest.raises(WebSocketDisconnect) as exc, client.websocket_connect(f"/ws?ticket={ticket}"):
+        pass
+    assert exc.value.code == 1008
+    # A minute later an unused ticket is worthless too.
+    ticket = _ticket(client, MASTER)
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + 61)
+    with pytest.raises(WebSocketDisconnect) as exc, client.websocket_connect(f"/ws?ticket={ticket}"):
+        pass
+    assert exc.value.code == 1008
 
 
 def test_ws_authenticated_client_receives_call_events(proxy, monkeypatch):
     """An authenticated socket still gets the live call broadcast."""
     monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
-    with client.websocket_connect("/ws?api_key=master-key") as ws:
+    with client.websocket_connect(f"/ws?ticket={_ticket(client, MASTER)}") as ws:
         client.post("/v1/chat/completions",
                     json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
                     headers={"x-agenticledger-session-id": "s-ws"})
@@ -287,13 +323,15 @@ def test_dashboard_shell_public_but_data_locked(proxy, monkeypatch):
     assert client.get("/api/reports").status_code == 401
 
 
-def test_any_key_works_through_any_channel(proxy, monkeypatch):
-    """Master key via ?token= (what the SPA's websocket sends) and minted
-    tokens via ?api_key= — every channel accepts every kind of key."""
+def test_any_key_works_through_any_header(proxy, monkeypatch):
+    """Master key on the token header and minted tokens on the api-key
+    header: every header channel accepts every kind of key."""
     monkeypatch.setenv("AGENTICLEDGER_API_KEY", "master-key")
     client = proxy()
-    assert client.get("/api/sessions?token=master-key").status_code == 200
+    assert client.get("/api/sessions",
+                      headers={"x-agenticledger-token": "master-key"}).status_code == 200
     viewer = _mint(client, "channel-swap", ROLE_VIEWER)
-    assert client.get(f"/api/sessions?api_key={viewer}").status_code == 200
-    with client.websocket_connect("/ws?token=master-key"):
+    assert client.get("/api/sessions",
+                      headers={"x-agenticledger-api-key": viewer}).status_code == 200
+    with client.websocket_connect("/ws", headers={"x-agenticledger-token": "master-key"}):
         pass  # handshake accepted

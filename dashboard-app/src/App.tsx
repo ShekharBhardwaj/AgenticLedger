@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { connectionStatus, health, shareInfo, shareQr, whoami, WhoAmI } from "./api";
+import { connectionStatus, health, shareInfo, shareQr, staleLinkKey, whoami, WhoAmI } from "./api";
 import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
@@ -61,6 +61,7 @@ function KeyPanel() {
   // open the panel unprompted when the server wants a key we don't have
   // (or the one we have has gone stale).
   useEffect(() => {
+    if (staleLinkKey) { setOpen(true); return; }
     whoami(stored).catch(() => setOpen(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -69,6 +70,17 @@ function KeyPanel() {
     if (!open) return;
     setValue(stored ?? "");
     setStatus(null);
+    if (staleLinkKey) {
+      // The old link format is not honored; say so instead of silently
+      // showing empty views to someone who scanned last month's QR.
+      setStatus({
+        text: "This link put the key in the address, which is no longer "
+              + "accepted (addresses end up in logs). Run `agenticledger share` "
+              + "on the ledger's machine for a fresh pairing link, or paste the key here.",
+        tone: "warn",
+      });
+      return;
+    }
     // Identify whatever is in effect right now (stored key, or open server).
     whoami(stored)
       .then((w) => setStatus(describeKey(w)))

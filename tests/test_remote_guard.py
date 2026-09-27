@@ -49,11 +49,20 @@ async def test_loopback_stays_open_remote_needs_the_key(guarded_app):
         denied = await remote.get("/api/sessions")
         assert denied.status_code == 401
         assert "agenticledger share" in denied.json()["detail"]
-        assert (await remote.get(f"/api/sessions?api_key={key}")).status_code == 200
         assert (await remote.get("/api/sessions",
                                  headers={"x-agenticledger-api-key": key})).status_code == 200
+        # The right key in the URL is still refused, and told why (0.15).
+        in_url = await remote.get(f"/api/sessions?api_key={key}")
+        assert in_url.status_code == 401
+        assert "Keys in the URL are not accepted" in in_url.json()["detail"]
         # A wrong key is a wrong key.
-        assert (await remote.get("/api/sessions?api_key=agl_wrong")).status_code == 401
+        assert (await remote.get("/api/sessions",
+                                 headers={"x-agenticledger-api-key": "agl_wrong"})).status_code == 401
+        # A paired remote device gets its live socket through a ticket
+        # minted over the header; the ticket is all the socket URL carries.
+        minted = await remote.post("/api/ws/ticket", headers={"x-agenticledger-api-key": key})
+        assert minted.status_code == 200 and minted.json()["ticket"]
+        assert (await remote.post("/api/ws/ticket")).status_code == 401
         await local.aclose()
         await remote.aclose()
 
@@ -69,7 +78,8 @@ async def test_explicit_api_key_mode_is_unchanged(tmp_path, monkeypatch):
                             base_url="http://t")
         # With an explicit key even loopback must authenticate — as before.
         assert (await local.get("/api/sessions")).status_code == 401
-        assert (await local.get("/api/sessions?api_key=master-key")).status_code == 200
+        assert (await local.get("/api/sessions",
+                                headers={"x-agenticledger-api-key": "master-key"})).status_code == 200
         await local.aclose()
 
 
@@ -83,10 +93,10 @@ async def test_tunnel_visitors_are_remote_even_from_loopback(guarded_app):
                                base_url="http://t")
         hdr = {"x-forwarded-for": "203.0.113.9"}
         assert (await tunneled.get("/api/sessions", headers=hdr)).status_code == 401
-        assert (await tunneled.get(f"/api/sessions?api_key={key}",
-                                   headers=hdr)).status_code == 200
+        keyed = {**hdr, "x-agenticledger-api-key": key}
+        assert (await tunneled.get("/api/sessions", headers=keyed)).status_code == 200
         assert (await tunneled.get("/api/whoami", headers=hdr)).status_code == 401
-        ok = await tunneled.get(f"/api/whoami?api_key={key}", headers=hdr)
+        ok = await tunneled.get("/api/whoami", headers=keyed)
         assert ok.status_code == 200
         assert ok.json()["source"] == "pairing-key"
         await tunneled.aclose()
@@ -107,7 +117,8 @@ async def test_pairing_info_is_gated_and_keyed(guarded_app, tmp_path):
         assert info.status_code == 200
         body = info.json()
         assert body["keyed"] is True
-        assert body["wifi_url"] is None or key in body["wifi_url"]
+        # The key rides in the fragment, never the query string.
+        assert body["wifi_url"] is None or f"/app#key={key}" in body["wifi_url"]
         qr = await local.get("/api/share/qr.svg")
         # 404 is legitimate on a runner with no LAN address; otherwise SVG.
         assert qr.status_code in (200, 404)

@@ -1,23 +1,40 @@
 // API client for the Agentic Ledger proxy. The SPA is served by the proxy
-// itself, so all paths are same-origin. Auth: an api_key/token query param on
-// first load is remembered and attached to every request (the legacy embedded
-// dashboard never did this — its fetches 401'd under auth).
+// itself, so all paths are same-origin. Auth: the pairing link carries the
+// key in the URL fragment (#key=...), which a browser never sends to any
+// server; on first load it is remembered and attached to every request as
+// a header. Keys never ride in query strings: the server refuses them.
 
-const params = new URLSearchParams(window.location.search);
-const urlKey = params.get("api_key") || params.get("token");
-if (urlKey) {
-  localStorage.setItem("agenticledger.key", urlKey);
+const fragmentKey = (() => {
+  const m = /^#key=([^&]+)$/.exec(window.location.hash);
+  return m ? decodeURIComponent(m[1]) : null;
+})();
+// A pairing link from before 0.15 put the key in the query string. It is
+// not honored (the server would refuse it too); the ⚿ panel says why.
+export const staleLinkKey: boolean = (() => {
+  const params = new URLSearchParams(window.location.search);
+  return Boolean(params.get("api_key") || params.get("token"));
+})();
+if (fragmentKey) {
+  localStorage.setItem("agenticledger.key", fragmentKey);
+}
+if (fragmentKey || staleLinkKey) {
   // Scrub the credential from the address bar immediately: only the
   // deliberate pairing QR carries a key, and a copied link must never
-  // leak full access. Keep the path and hash; drop the query.
+  // leak full access. Keep the path; drop the query and the fragment.
   try {
-    const clean = window.location.pathname + window.location.hash;
-    window.history.replaceState(null, "", clean);
+    window.history.replaceState(null, "", window.location.pathname);
   } catch { /* history unavailable: the key is at least out of new links */ }
 }
 
 export const apiKey: string | null =
-  urlKey || localStorage.getItem("agenticledger.key");
+  fragmentKey || localStorage.getItem("agenticledger.key");
+
+// Pasting a pairing link into an already-open tab changes only the hash,
+// with no reload, so this module would never see it. Take the same path a
+// fresh load takes.
+window.addEventListener("hashchange", () => {
+  if (/^#key=/.test(window.location.hash)) window.location.reload();
+});
 
 function headers(): Record<string, string> {
   return apiKey ? { "x-agenticledger-api-key": apiKey } : {};
@@ -496,11 +513,21 @@ export function liveUpdates(onEvent: () => void, onCall?: (ev: LiveCall) => void
   // seen live after a key rotation. A socket that OPENS resets the delay.
   let retryDelay = 3000;
 
-  const connect = () => {
+  const connect = async () => {
     if (closed) return;
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const key = apiKey ? `?token=${encodeURIComponent(apiKey)}` : "";
-    ws = new WebSocket(`${proto}://${window.location.host}/ws${key}`);
+    // A browser cannot put a header on the handshake, so the credential is
+    // presented over a header here and the socket URL carries only a
+    // one-minute single-use ticket. If minting fails (a stale key, a
+    // remote without one), connect anyway: the rejection drives the same
+    // backoff and the ⚿ panel's prompt.
+    let ticket = "";
+    try {
+      const resp = await fetch("/api/ws/ticket", { method: "POST", headers: headers() });
+      if (resp.ok) ticket = `?ticket=${encodeURIComponent((await resp.json()).ticket)}`;
+    } catch { /* offline: the socket attempt below reports it */ }
+    if (closed) return;
+    ws = new WebSocket(`${proto}://${window.location.host}/ws${ticket}`);
     let counted = false;
     ws.onopen = () => {
       counted = true;

@@ -181,7 +181,24 @@ def _extract_token(carrier) -> Optional[str]:
     authz = carrier.headers.get("authorization") or ""
     if authz.lower().startswith("bearer "):
         return authz[7:].strip() or None
-    return carrier.headers.get("x-agenticledger-token") or carrier.query_params.get("token")
+    return carrier.headers.get("x-agenticledger-token")
+
+
+# Keys never ride in URLs (0.15): a query string lands in access logs,
+# proxy logs, browser history and Referer headers. Credentials travel in
+# headers; the one place a browser cannot set a header, the websocket
+# handshake, uses a short-lived single-use ticket minted over a header.
+_QUERY_KEY_PARAMS = ("api_key", "token")
+_WS_TICKET_TTL = 60.0
+_WS_TICKET_MAX = 1000
+_URL_KEY_REFUSED = (
+    "Keys in the URL are not accepted (they end up in logs and browser "
+    "history). Send the key in a header: x-agenticledger-api-key, "
+    "Authorization: Bearer, or x-agenticledger-token.")
+
+
+def _key_in_url(carrier) -> bool:
+    return any(carrier.query_params.get(p) for p in _QUERY_KEY_PARAMS)
 
 
 def _secret_env(name: str) -> Optional[str]:
@@ -486,6 +503,7 @@ def create_app(
     app.state.capture_persisted = 0
     app.state.refusals = {}
     app.state.calls_stopped = None
+    app.state.ws_tickets = {}
     app.state.audit_dropped = 0
 
     async def _run_spent(app_obj, run_id: str) -> float:
@@ -741,7 +759,6 @@ def create_app(
             return False
         candidates = (
             carrier.headers.get("x-agenticledger-api-key"),
-            carrier.query_params.get("api_key"),
             _extract_token(carrier),
         )
         return any(c and secrets.compare_digest(c, _pairing_key) for c in candidates)
@@ -749,14 +766,13 @@ def create_app(
     async def _authenticate(carrier) -> Optional[Principal]:
         """Resolve a Principal from a request/websocket, or None if no valid credential.
 
-        Every credential channel (x-agenticledger-api-key header, ?api_key,
-        Bearer/x-agenticledger-token/?token) accepts every kind of key — the
-        server sorts out what it was handed. Asymmetry here caused real bugs:
-        minted tokens pasted into the dashboard's ⚿ field silently 401'd, and
-        the SPA's websocket sent the master key on the token channel."""
+        Every header channel (x-agenticledger-api-key, Authorization: Bearer,
+        x-agenticledger-token) accepts every kind of key; the server sorts
+        out what it was handed. Asymmetry here caused real bugs: minted
+        tokens pasted into the dashboard's ⚿ field silently 401'd. Query
+        strings are not a channel: see _URL_KEY_REFUSED."""
         candidates = [c for c in (
             carrier.headers.get("x-agenticledger-api-key"),
-            carrier.query_params.get("api_key"),
             _extract_token(carrier),
         ) if c]
         for cand in candidates:
@@ -780,13 +796,16 @@ def create_app(
                          actor_source="rejected")
             raise HTTPException(
                 status_code=401,
-                detail="Remote access needs the key. On the machine running the "
+                detail=_URL_KEY_REFUSED if _key_in_url(request) else
+                       "Remote access needs the key. On the machine running the "
                        "ledger: agenticledger share prints the pairing link.")
         principal = await _authenticate(request)
         if principal is None:
             await _audit(None, request, "auth_failed", request.url.path,
                          "401: no valid credential", actor_source="rejected")
-            raise HTTPException(status_code=401, detail="Unauthorized")
+            raise HTTPException(
+                status_code=401,
+                detail=_URL_KEY_REFUSED if _key_in_url(request) else "Unauthorized")
         if not role_satisfies(principal.role, role):
             await _audit(principal, request, "auth_failed", request.url.path,
                          f"403: requires '{role}' role")
@@ -970,15 +989,54 @@ def create_app(
 
     # ── WebSocket (live events) ───────────────────────────────────────────────
 
+    def _redeem_ws_ticket(ticket: Optional[str]) -> tuple[bool, Optional[Principal]]:
+        """One ticket, one handshake, within its minute. Returns (valid,
+        principal); the principal is None for an open instance."""
+        tickets: dict = app.state.ws_tickets
+        now = time.time()
+        for stale in [t for t, (_, exp) in tickets.items() if exp <= now]:
+            tickets.pop(stale, None)
+        if not ticket:
+            return False, None
+        entry = tickets.pop(ticket, None)
+        if entry is None:
+            return False, None
+        principal, _exp = entry
+        return True, principal
+
+    @app.post("/api/ws/ticket")
+    async def api_ws_ticket(request: Request) -> JSONResponse:
+        """A short-lived, single-use ticket for the live-events socket. A
+        browser cannot put a header on a websocket handshake, so the
+        credential is presented here, in a header, and the socket URL
+        carries only this ticket: worthless after one use or one minute."""
+        principal = await _require(request, ROLE_VIEWER)
+        tickets: dict = request.app.state.ws_tickets
+        now = time.time()
+        for stale in [t for t, (_, exp) in tickets.items() if exp <= now]:
+            tickets.pop(stale, None)
+        if len(tickets) >= _WS_TICKET_MAX:
+            oldest = min(tickets, key=lambda t: tickets[t][1])
+            tickets.pop(oldest, None)
+        ticket = secrets.token_urlsafe(32)
+        tickets[ticket] = (principal if _auth_enabled else None, now + _WS_TICKET_TTL)
+        return JSONResponse({"ticket": ticket, "expires_in": int(_WS_TICKET_TTL)})
+
     @app.websocket("/ws")
     async def ws_endpoint(websocket: WebSocket) -> None:
         # Live events carry call metadata (session ids, status codes) — require
         # the same credential as the dashboard when auth is configured. Closing
         # before accept rejects the handshake with 1008 (policy violation).
-        if not _auth_enabled and not _open_access_allowed(websocket):
+        # The credential is a ticket from POST /api/ws/ticket or a header;
+        # a key in the query string is refused like everywhere else.
+        if _key_in_url(websocket):
+            await websocket.close(code=1008, reason="key in URL not accepted")
+            return
+        ticketed, ticket_principal = _redeem_ws_ticket(websocket.query_params.get("ticket"))
+        if not _auth_enabled and not (ticketed or _open_access_allowed(websocket)):
             await websocket.close(code=4401)
             return
-        if _auth_enabled and await _authenticate(websocket) is None:
+        if _auth_enabled and not ticketed and await _authenticate(websocket) is None:
             await websocket.close(code=1008)
             return
         await broadcaster.connect(websocket)
@@ -2247,14 +2305,17 @@ def create_app(
 
     @app.get("/api/share")
     async def api_share(request: Request) -> JSONResponse:
-        """Pairing info for another device — links carry the key, so this
-        sits behind the admin gate (open-local counts)."""
+        """Pairing info for another device. Links carry the key (in the
+        URL fragment, which never reaches a server), so this sits behind
+        the admin gate (open-local counts)."""
         await _require(request, ROLE_ADMIN)
         from agenticledger import service as _svc
         key = None if _auth_enabled else _pairing_key
         port = request.url.port or 8000
         ip = _svc._lan_ip()
-        suffix = f"/app?api_key={key}" if key else "/app"
+        # The key rides in the fragment: a browser never sends it to the
+        # server, so it stays out of access logs, proxies and Referers.
+        suffix = f"/app#key={key}" if key else "/app"
         tunnel = None
         if _svc.SHARE_PID_FILE.exists():
             try:

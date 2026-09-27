@@ -3,10 +3,15 @@ Scoped, hashed, revocable API tokens with roles.
 
 Auth is enforced only when AGENTICLEDGER_API_KEY is set. When it is:
 
-* the master key (``x-agenticledger-api-key`` header or ``?api_key=``) grants the
-  ``admin`` role — it is the bootstrap credential used to mint tokens;
-* an API token (``Authorization: Bearer agl_…``, ``x-agenticledger-token`` header,
-  or ``?token=``) grants the role it was created with.
+* the master key (``x-agenticledger-api-key`` header) grants the ``admin``
+  role; it is the bootstrap credential used to mint tokens;
+* an API token (``Authorization: Bearer agl_…`` or the ``x-agenticledger-token``
+  header) grants the role it was created with.
+
+Keys travel in headers only: a key in a query string is refused with a
+401 that says so, because URLs land in logs and browser history. The
+dashboard's live socket, which cannot set a header, uses a short-lived
+single-use ticket from ``POST /api/ws/ticket``.
 
 Tokens are random secrets shown once at creation; only their SHA-256 hash is
 stored, so a database leak does not expose usable credentials. A token can be

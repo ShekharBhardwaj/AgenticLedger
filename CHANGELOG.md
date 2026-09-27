@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Credentials never ride in URLs.** The pairing link from
+  `agenticledger share` and the dashboard's Pair a device now carry the
+  key after the `#` (the URL fragment, which a browser never sends to
+  any server), and the dashboard's live socket connects with a
+  one-minute, single-use ticket from `POST /api/ws/ticket` instead of
+  the key itself. Keys in query strings (`?api_key=`, `?token=`) are no
+  longer accepted anywhere: they end up in access logs, proxy logs,
+  browser history and Referer headers. A request that sends one gets a
+  401 that says so, and a pre-0.15 pairing link opens the ⚿ panel with
+  the same explanation. Headers are unchanged: `x-agenticledger-api-key`,
+  `Authorization: Bearer`, `x-agenticledger-token`.
+
 ### Fixed
 - **The wall holds under concurrency (#124).** Budget and run-ceiling
   checks read recorded spend, so parallel in-flight calls each saw the
