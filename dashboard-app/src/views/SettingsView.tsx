@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { get, post } from "../api";
+import { useCallback, useEffect, useState } from "react";
+import { fmtAgo, get, listNotifications, NotificationList, post, sendTestNotification } from "../api";
 
 interface SettingRow {
   section: string; label: string; value: string; source: string;
@@ -103,6 +103,7 @@ export default function SettingsView() {
           </table>
         </div>
       ))}
+      <Notifications />
       <Maintenance />
       <AuditTrail />
     </div>
@@ -246,6 +247,84 @@ function AuditTrail() {
           )}
           {more && rows && (
             <button className="link-btn" type="button" onClick={loadOlder}>Load older</button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** What the ledger sent and whether it landed, plus the one-click test
+ *  that turns "did I wire Slack right?" into an answer. */
+function Notifications() {
+  const [list, setList] = useState<NotificationList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const refresh = useCallback(() => {
+    listNotifications().then((l) => { setList(l); setError(null); }).catch((e) => setError(e.message));
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  const test = () => {
+    setBusy(true); setResult(null);
+    sendTestNotification()
+      .then((r) => {
+        setResult(r.sent
+          ? `Delivered as ${r.format} after ${r.row?.attempts ?? 1} attempt${(r.row?.attempts ?? 1) === 1 ? "" : "s"}.`
+          : r.reason ?? `Not delivered: ${r.row?.error ?? "unknown error"} (${r.row?.attempts ?? 0} attempts).`);
+        refresh();
+      })
+      .catch((e) => setResult(`Failed: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <section className="settings-section" aria-label="Notifications">
+      <div className="section-title">Notifications</div>
+      <div className="muted" style={{ maxWidth: 760, marginBottom: 8 }}>
+        Every alert, loop flag, run summary and digest the ledger sends, and
+        whether it landed. Each is tried three times with backoff, said once
+        per window, and shaped for Slack, Discord or PagerDuty when the
+        webhook is one of those.
+        {list && (list.enabled
+          ? <> Webhook configured; payload shape: <span className="mono">{list.format}</span>.</>
+          : <> No webhook configured: set <span className="mono">AGENTICLEDGER_ALERT_WEBHOOK_URL</span> and restart.</>)}
+      </div>
+      {error ? (
+        <div className="empty">Notifications need a viewer key. ({error})</div>
+      ) : (
+        <>
+          <div className="key-actions">
+            <button className="link-btn" disabled={busy || !list?.enabled} onClick={test}>
+              {busy ? "sending…" : "Send a test notification"}
+            </button>
+            {result && <span className="muted" role="status">{result}</span>}
+          </div>
+          {!list ? (
+            <div className="empty">Loading…</div>
+          ) : list.rows.length === 0 ? (
+            <div className="empty">Nothing sent yet.</div>
+          ) : (
+            <table className="rtable">
+              <thead>
+                <tr><th>when</th><th>type</th><th>about</th><th>status</th><th>tries</th><th>detail</th></tr>
+              </thead>
+              <tbody>
+                {list.rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="mono" title={r.timestamp}>{fmtAgo(r.timestamp)}</td>
+                    <td className="mono">{r.type}</td>
+                    <td className="mono">{r.target_id ?? "-"}</td>
+                    <td>
+                      <span className={`badge ${r.status === "delivered" ? "complete" : r.status === "failed" ? "error" : "fw"}`}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="mono">{r.attempts}</td>
+                    <td className="muted">{r.error ?? r.summary ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </>
       )}

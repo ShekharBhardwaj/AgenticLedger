@@ -249,6 +249,14 @@ test("stop all calls engages from Loop Lens, banners every page, and lifts", asy
   }
 });
 
+test("the notifications panel says plainly that no webhook is configured", async ({ page }) => {
+  await page.goto("/app#/settings");
+  const panel = page.getByRole("region", { name: "Notifications" });
+  await expect(panel).toContainText("No webhook configured");
+  await expect(panel.getByRole("button", { name: "Send a test notification", exact: true })).toBeDisabled();
+  await expect(panel).toContainText("Nothing sent yet");
+});
+
 test("light appearance persists across reload and navigation", async ({ page }) => {
   await page.goto("/app#/settings");
   await page.getByRole("radio", { name: "Light", exact: true }).click();

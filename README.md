@@ -693,7 +693,10 @@ Budgets and run ceilings hold under concurrency. Each admitted call reserves an 
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENTICLEDGER_ALERT_WEBHOOK_URL` | _(none)_ | URL to POST alert payloads to. Required for any alerts to fire. |
+| `AGENTICLEDGER_ALERT_WEBHOOK_URL` | _(none)_ | URL to POST alert payloads to. Required for any alerts to fire. Slack, Discord and PagerDuty URLs get their native shape. |
+| `AGENTICLEDGER_ALERT_FORMAT` | `auto` | Payload shape: `auto` reads the webhook host; `generic`, `slack`, `discord` or `pagerduty` forces one. |
+| `AGENTICLEDGER_ALERT_PAGERDUTY_KEY` | _(none)_ | PagerDuty Events v2 integration key; needed when the webhook is `events.pagerduty.com`. `_FILE` variant accepted. |
+| `AGENTICLEDGER_PUBLIC_URL` | _(none)_ | Where the dashboard is reachable (`https://ledger.example.com`), so notifications about a run or session link to it. |
 | `AGENTICLEDGER_DIGEST_HOUR` | _(off)_ | UTC hour (0-23) to POST a daily spend digest - last 24h totals, cache savings, top models/agents - to the alert webhook. Slack-incoming-webhook friendly (`text`). |
 | `AGENTICLEDGER_ALERT_COST_PER_CALL` | _(none)_ | Alert when a single call costs more than `$X`. |
 | `AGENTICLEDGER_ALERT_LATENCY_MS` | _(none)_ | Alert when a single call takes longer than `Xms`. |
@@ -893,9 +896,11 @@ Each agent's calls are tagged with its name and pipeline position. The Flow tab 
 
 ## Alerts
 
-Agentic Ledger fires a `POST` to your webhook URL when a threshold is breached. You connect it to whatever you already use - Slack, PagerDuty, Discord, email, or a custom endpoint. Agentic Ledger sends the payload; the integration is on your side.
+Agentic Ledger posts to your webhook URL when a threshold is breached, a loop is flagged, a run hits a wall, or a run ends. Slack incoming webhooks, Discord webhooks and PagerDuty Events v2 are recognised from the URL and get their native shape (override with `AGENTICLEDGER_ALERT_FORMAT`); anything else gets the plain JSON below.
 
-**Payload format:**
+**Reliable by construction.** Every notification is tried three times with backoff (1s, 3s, 9s) off the request path, said once per window (a crossed daily budget once a day, a flagged loop once per ten minutes, a run hitting a wall once an hour), and recorded: the Settings page lists what was sent, whether it landed, after how many tries, and why not, with a **Send a test notification** button so wiring Slack takes one click. `GET /api/notifications` returns the same history. Set `AGENTICLEDGER_PUBLIC_URL` and every notification about a run or session carries a link straight to it.
+
+**Payload format** (plain JSON; the native shapes carry the same facts):
 ```json
 {
   "type":       "high_cost",
@@ -921,6 +926,10 @@ Agentic Ledger fires a `POST` to your webhook URL when a threshold is breached. 
 | `run_ceiling_approaching` | A run's spend reaches 80% of its cost ceiling (fired once per run) |
 | `loop_flag` | The loop engine raised flags on a call (`repeat_tool_call`, `step_budget_exceeded`, `completion_promise`) |
 | `run_complete` | A run's completion promise was seen - the payload carries the full run summary (iterations, cost, tokens, flagged calls) |
+| `run_ended` | A run went quiet (no calls for the run gap) - the same summary, so an overnight loop's end is in your channel by morning |
+| `run_failed` | A run went quiet and its last iteration ended in an error - the same summary, flagged as a failure |
+| `run_blocked` | A run's call was refused at the wall (kill switch, cost ceiling, budget, stop all calls, a model or provider list) - once per run and reason per hour, with the reason |
+| `test` | You pressed Send a test notification |
 
 ### Team cards - one proxy, many teams
 
@@ -963,11 +972,11 @@ curl -X POST http://localhost:8000/api/tokens \
 
 **What the webhook receives.** Every alert is one JSON POST with our own field names: `type` (see the table below), `message`, `value`, `threshold`, `action_id`, `session_id`, `agent_name`, `timestamp`. The daily digest (`AGENTICLEDGER_DIGEST_HOUR=8`) is a separate POST with `type: daily_digest`, a ready-to-read `text` block (last-24h spend, cache savings, top models and agents), and `totals`.
 
-**Slack** - a plain [Incoming Webhook](https://api.slack.com/messaging/webhooks) accepts the daily digest as-is (it reads `text`) but rejects the threshold alerts, which carry `message` rather than `text`. To get alerts into Slack today, point `AGENTICLEDGER_ALERT_WEBHOOK_URL` at a Slack Workflow webhook (map `message` to a text variable) or at a small relay of your own. Native Slack formatting is tracked in #123.
+**Slack** - paste an [Incoming Webhook](https://api.slack.com/messaging/webhooks) URL (`hooks.slack.com`): each notification arrives as a titled message with the detail and an "Open in Agentic Ledger" link.
 
-**PagerDuty** - the [Events API v2](https://developer.pagerduty.com/docs/events-api-v2/) requires a `routing_key` and its own event shape, so it needs a thin adapter that maps `type` to a severity. Native PagerDuty events are tracked in #123.
+**PagerDuty** - use the [Events API v2](https://developer.pagerduty.com/docs/events-api-v2/) URL (`https://events.pagerduty.com/v2/enqueue`) and set `AGENTICLEDGER_ALERT_PAGERDUTY_KEY` to the integration key: notifications trigger incidents with a severity per type (critical for a failed or blocked run, warning for thresholds, info for summaries and digests), a dedup key, and a link to the run.
 
-**Discord** - a channel webhook expects `content`, which the payload does not carry, so it also needs a small adapter. Tracked in #123.
+**Discord** - a channel webhook URL (`discord.com/api/webhooks/...`): a titled embed with the detail and the link.
 
 **Custom** - any HTTP endpoint that accepts a JSON `POST`.
 

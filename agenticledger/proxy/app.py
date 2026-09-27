@@ -99,6 +99,7 @@ from .normalize import (
     normalize_request,
     normalize_response,
 )
+from .notify import Notifier, NotifyConfig
 from .otel import emit_audit_log, emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_calls as extract_otlp_calls
@@ -311,6 +312,7 @@ def create_app(
     budget_unpriced: str = "allow",  # "allow": an unpriced model passes uncounted | "refuse"
     policy: Optional[Policy] = None,  # fleet-wide model and provider allow/deny lists
     alert_config: Optional[AlertConfig] = None,
+    notify_config: Optional[NotifyConfig] = None,   # delivery: format, PagerDuty key, public URL
     rate_limit_config: Optional[RateLimitConfig] = None,
     async_capture: bool = False,
     capture_queue_max: int = 10_000,
@@ -351,6 +353,10 @@ def create_app(
         completion_promise=completion_promise,
     )
     _attribution = AttributionResolver(_loop_tracker)
+    # One door for every webhook (#123): retries, dedupe, history, native
+    # payloads. The store is attached once the lifespan opens it.
+    _notifier = Notifier(notify_config or NotifyConfig(
+        webhook_url=(alert_config.webhook_url if alert_config else None)))
     _alert_config = alert_config or AlertConfig(
         webhook_url=None, cost_per_call=None,
         latency_ms=None, error_rate=None, daily_spend=None,
@@ -387,6 +393,13 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.store = await Store.connect(dsn)
+        _notifier.store = app.state.store
+        app.state.notifier = _notifier
+        # Runs already summarized (before this boot) are not announced again.
+        app.state.run_notified = set()
+        with suppress(Exception):
+            app.state.run_notified = await app.state.store.notified_targets(
+                ("run_ended", "run_failed", "run_complete"))
         app.state.store.audit_hmac_key = _audit_hmac_key
         app.state.reservations = _reservations
         # Operator kill switch: run ids whose calls are refused at the wall.
@@ -458,6 +471,7 @@ def create_app(
             for prov, cfg in (replay_targets or {}).items()
         }
         app.state.broadcaster = broadcaster
+        app.state.run_watch_once = _run_watch_once
         worker: Optional[asyncio.Task] = None
         if _async_capture:
             worker = asyncio.create_task(_capture_worker(app))
@@ -467,7 +481,16 @@ def create_app(
         digest_task: Optional[asyncio.Task] = None
         if digest_hour is not None and _alert_config.webhook_url:
             digest_task = asyncio.create_task(_digest_worker(app))
+        watcher_task: Optional[asyncio.Task] = None
+        if _notifier.enabled:
+            watcher_task = asyncio.create_task(_run_watcher(app))
         yield
+        if watcher_task is not None:
+            watcher_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await watcher_task
+        # In-flight notifications finish before the store they record to closes.
+        await _notifier.flush()
         if sig_tasks:
             with suppress(Exception):
                 await asyncio.wait_for(
@@ -560,18 +583,17 @@ def create_app(
             app.state.run_spend[_tick_run] = spent
             ceiling = app.state.run_ceilings[_tick_run]
             if (spent >= 0.8 * ceiling and _tick_run not in app.state.ceiling_alerted
-                    and _alert_config.webhook_url):
+                    and _notifier.enabled):
                 app.state.ceiling_alerted.add(_tick_run)
                 with suppress(Exception):
-                    from .alerts import _fire
-                    await _fire(_alert_config.webhook_url, {
+                    await _notifier.send({
                         "type": "run_ceiling_approaching",
                         "run_id": _tick_run,
                         "spent_usd": round(spent, 4),
                         "ceiling_usd": ceiling,
-                        "text": (f"run '{_tick_run}' has spent ${spent:.2f} "
-                                 f"of its ${ceiling:.2f} ceiling"),
-                    })
+                        "message": (f"run '{_tick_run}' has spent ${spent:.2f} "
+                                    f"of its ${ceiling:.2f} ceiling"),
+                    }, key=f"run_ceiling_approaching:{_tick_run}", dedupe_seconds=86400)
         # The real cost is recorded and the run meter ticked: the estimate
         # has done its job. Releasing only now means no instant exists in
         # which a concurrent check under-counts this call.
@@ -607,47 +629,35 @@ def create_app(
             await check_and_fire(
                 _alert_config, store, job.resp, job.action_id,
                 job.meta.get("session_id"), job.meta.get("agent_name"), job.status_code,
+                notifier=_notifier,
             )
-        if loop_fields.get("loop_flags") and _alert_config.webhook_url:
+        if loop_fields.get("loop_flags") and _notifier.enabled:
             with suppress(Exception):
-                from .alerts import _fire
                 flags = json.loads(loop_fields["loop_flags"])
-                await _fire(_alert_config.webhook_url, {
+                _sid = job.meta.get("session_id")
+                # A flagged loop keeps flagging on every step: say it once
+                # per session and flag set every ten minutes.
+                await _notifier.send({
                     "type": "loop_flag",
                     "message": f"Loop health flags raised: {loop_fields['loop_flags']}",
                     "flags": flags,
                     "action_id": job.action_id,
-                    "session_id": job.meta.get("session_id"),
+                    "session_id": _sid,
+                    "run_id": loop_fields.get("run_id") or job.meta.get("run_id"),
                     "agent_name": job.meta.get("agent_name"),
                     "thread_id": loop_fields.get("thread_id"),
                     "step_index": loop_fields.get("step_index"),
-                })
+                }, key=f"loop_flag:{_sid}:{','.join(sorted(flags))}", dedupe_seconds=600)
                 # The morning report: the completion promise ends a run, so
-                # send the whole run's story in one webhook — iterations,
-                # spend, tokens, and how many calls got flagged on the way.
+                # send the whole run's story in one notification.
                 run_id = loop_fields.get("run_id")
                 if "completion_promise" in flags and run_id:
                     run = await store.get_run(run_id)
                     if run is not None:
-                        await _fire(_alert_config.webhook_url, {
-                            "type": "run_complete",
-                            "message": (
-                                f"Run {run_id} complete: "
-                                f"{run.get('iterations') or '?'} iterations, "
-                                f"{run['call_count']} calls, "
-                                f"${(run.get('total_cost_usd') or 0):.2f}, "
-                                f"{run['flagged_calls']} flagged calls."
-                            ),
-                            "run_id": run_id,
-                            "iterations": run.get("iterations"),
-                            "call_count": run["call_count"],
-                            "session_count": run.get("session_count"),
-                            "total_cost_usd": run.get("total_cost_usd"),
-                            "total_tokens_in": run.get("total_tokens_in"),
-                            "total_tokens_out": run.get("total_tokens_out"),
-                            "flagged_calls": run["flagged_calls"],
-                            "started_at": run.get("started_at"),
-                        })
+                        app.state.run_notified.add(run_id)
+                        await _notifier.send(
+                            _run_summary("run_complete", run_id, run, "complete"),
+                            key=f"run_complete:{run_id}", dedupe_seconds=86400)
 
     async def _capture_worker(app: FastAPI) -> None:
         """Drain the capture queue, persisting each job off the request hot path."""
@@ -683,7 +693,6 @@ def create_app(
         24h to the alert webhook (Slack-incoming-webhook friendly `text`)."""
         import datetime as _dt
 
-        from .alerts import _fire
         while True:
             now = _dt.datetime.now(_dt.timezone.utc)
             target = now.replace(hour=digest_hour, minute=0, second=0, microsecond=0)
@@ -693,13 +702,108 @@ def create_app(
             try:
                 raw = await app.state.store.get_report_aggregates(time.time() - 86400)
                 report = build_report(raw["daily"], raw["models"], raw["agents"], days=1)
-                await _fire(_alert_config.webhook_url, {
+                await _notifier.send({
                     "type": "daily_digest",
                     "text": digest_text(report, hours=24),
                     "totals": report["totals"],
                 })
             except Exception:
                 logger.warning("Daily digest failed", exc_info=True)
+
+    def _run_summary(kind: str, run_id: str, run: dict, how: str) -> dict:
+        """One run's story in one notification: how it ended, what it did,
+        what it cost. The same shape for complete, ended and failed."""
+        return {
+            "type": kind,
+            "message": (
+                f"Run {run_id} {how}: "
+                f"{run.get('iterations') or '?'} iterations, "
+                f"{run['call_count']} calls, "
+                f"${(run.get('total_cost_usd') or 0):.2f}, "
+                f"{run.get('flagged_calls') or 0} flagged calls."
+            ),
+            "run_id": run_id,
+            "iterations": run.get("iterations"),
+            "call_count": run["call_count"],
+            "session_count": run.get("session_count"),
+            "total_cost_usd": run.get("total_cost_usd"),
+            "total_tokens_in": run.get("total_tokens_in"),
+            "total_tokens_out": run.get("total_tokens_out"),
+            "flagged_calls": run.get("flagged_calls"),
+            "started_at": run.get("started_at"),
+            "last_call_at": run.get("last_call_at"),
+        }
+
+    async def _run_watch_once(app: FastAPI) -> list[str]:
+        """One pass of the end-of-run watcher: every run whose status has
+        become ended since the last pass gets its summary, as run_failed
+        when its last iteration ended in an error, else run_ended. Runs
+        that ended before this process was watching (older than twice the
+        run gap) are marked seen without a notification, so a boot never
+        re-announces history. Returns the run ids announced."""
+        store = app.state.store
+        announced: list[str] = []
+        runs = await store.list_runs(limit=200)
+        ended = await store.get_run_end_markers([r["run_id"] for r in runs])
+        now = time.time()
+        for r in runs:
+            run_id = r["run_id"]
+            if run_id in app.state.run_notified:
+                continue
+            row = _with_run_status(dict(r), loop_run_gap_seconds,
+                                   explicitly_ended=_end_marker_holds(r, ended.get(run_id)),
+                                   stopped=run_id in app.state.stopped_runs)
+            if row["status"] != "ended":
+                continue
+            app.state.run_notified.add(run_id)
+            try:
+                last = datetime.datetime.fromisoformat(str(r.get("last_call_at")))
+                age = now - last.timestamp()
+            except Exception:
+                age = 0.0
+            if age > 2 * loop_run_gap_seconds:
+                continue
+            failed = False
+            with suppress(Exception):
+                iterations = await store.get_run_iterations(run_id)
+                failed = bool(iterations and (iterations[-1].get("error_calls") or 0))
+            kind = "run_failed" if failed else "run_ended"
+            how = ("ended with its last iteration failing" if failed
+                   else "ended (no calls for a while)")
+            await _notifier.send(_run_summary(kind, run_id, r, how),
+                                 key=f"{kind}:{run_id}", dedupe_seconds=86400)
+            announced.append(run_id)
+        return announced
+
+    async def _run_watcher(app: FastAPI) -> None:
+        """Every minute, announce runs that went quiet. Never dies on an
+        error: the next pass tries again."""
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await _run_watch_once(app)
+            except Exception:
+                logger.warning("Run watcher pass failed", exc_info=True)
+
+    def _notify_blocked(error_type: str, reason: str, run_id: Optional[str],
+                        session_id: Optional[str]) -> None:
+        """A run stopped at the wall is the overnight event the operator
+        most wants to hear about: one notification per run and reason per
+        hour, never on the request path. Rate-limit and loop refusals are
+        the wall doing routine work and stay in the ledger only."""
+        if error_type in ("rate_limit_exceeded", "loop_detected") or not _notifier.enabled:
+            return
+        target = run_id or session_id
+        if not target:
+            return
+        with suppress(Exception):
+            asyncio.get_running_loop().create_task(_notifier.send({
+                "type": "run_blocked",
+                "reason": error_type,
+                "message": reason,
+                "run_id": run_id,
+                "session_id": session_id,
+            }, key=f"run_blocked:{target}:{error_type}", dedupe_seconds=3600))
 
     async def _capture(job: _CaptureJob) -> None:
         """Persist a captured call — enqueued (async mode) or inline (sync mode)."""
@@ -929,6 +1033,13 @@ def create_app(
             f"agenticledger_calls_stopped {1 if getattr(app.state, 'calls_stopped', None) else 0}",
             "# HELP agenticledger_refusals_total Calls refused at the wall, by reason.",
             "# TYPE agenticledger_refusals_total counter",
+        ]
+        lines += [
+            "# HELP agenticledger_notifications_total Notifications by outcome.",
+            "# TYPE agenticledger_notifications_total counter",
+            f'agenticledger_notifications_total{{outcome="delivered"}} {_notifier.delivered}',
+            f'agenticledger_notifications_total{{outcome="failed"}} {_notifier.failed}',
+            f'agenticledger_notifications_total{{outcome="suppressed"}} {_notifier.suppressed}',
         ]
         refusals = getattr(app.state, "refusals", {})
         lines += [f'agenticledger_refusals_total{{reason="{r}"}} {refusals.get(r, 0)}'
@@ -1632,6 +1743,25 @@ def create_app(
                         "AGENTICLEDGER_ALERT_WEBHOOK_URL",
                         means="Where alerts are posted — Slack, Discord, PagerDuty. "
                               "Alerts notify after the fact; budgets block before."))
+        rows.append(row("Alerts", "format",
+                        _notifier.format if _notifier.enabled else None,
+                        "AGENTICLEDGER_ALERT_FORMAT",
+                        means="The shape of each notification: Slack, Discord and "
+                              "PagerDuty are recognised from the URL; anything else "
+                              "gets plain JSON. Set this to override.",
+                        key="[alerts] format"))
+        rows.append(row("Alerts", "PagerDuty key",
+                        key_state(bool(_notifier.config.pagerduty_key)),
+                        "AGENTICLEDGER_ALERT_PAGERDUTY_KEY",
+                        means="The Events v2 integration key; needed only when the "
+                              "webhook is events.pagerduty.com.",
+                        key="[alerts] pagerduty_key / pagerduty_key_file"))
+        rows.append(row("Alerts", "public URL", _notifier.config.public_url,
+                        "AGENTICLEDGER_PUBLIC_URL",
+                        means="Where this dashboard is reachable, so every "
+                              "notification about a run or session links straight "
+                              "to it.",
+                        key="[alerts] public_url"))
         rows.append(row("Alerts", "daily digest (UTC hour)", digest_hour,
                         "AGENTICLEDGER_DIGEST_HOUR",
                         means="Hour of day to post a last-24h spend summary to the "
@@ -2303,6 +2433,36 @@ def create_app(
                      details=("ok" if result["ok"] else f"break at seq {result['first_break']}"))
         return JSONResponse(result)
 
+    @app.get("/api/notifications")
+    async def api_notifications(request: Request, limit: int = 50) -> JSONResponse:
+        """Delivery history: every notification sent, whether it landed,
+        after how many tries, and why not."""
+        await _require(request, ROLE_VIEWER)
+        rows = await request.app.state.store.list_notifications(max(1, min(int(limit), 500)))
+        return JSONResponse({
+            "enabled": _notifier.enabled,
+            "format": _notifier.format if _notifier.enabled else None,
+            "rows": rows,
+        })
+
+    @app.post("/api/notifications/test")
+    async def api_notifications_test(request: Request) -> JSONResponse:
+        """Send a test notification now and report how it went, so wiring
+        Slack takes one click instead of a night of waiting."""
+        principal = await _require(request, ROLE_EDITOR)
+        await _audit(principal, request, "notify_test", None, "test notification sent")
+        if not _notifier.enabled:
+            return JSONResponse({"sent": False,
+                                 "reason": "No webhook configured: set "
+                                           "AGENTICLEDGER_ALERT_WEBHOOK_URL and restart."})
+        row = await _notifier.send({
+            "type": "test",
+            "message": "Test notification from Agentic Ledger: if you can read this, "
+                       "alerts will reach you here.",
+        }, wait=True)
+        return JSONResponse({"sent": bool(row and row["status"] == "delivered"),
+                             "format": _notifier.format, "row": row})
+
     @app.get("/api/share")
     async def api_share(request: Request) -> JSONResponse:
         """Pairing info for another device. Links carry the key (in the
@@ -2758,6 +2918,8 @@ def create_app(
             into a fresh auto-run (#77/#78, both observed live)."""
             status = budget_status if status is None else status
             _count_refusal(request.app, error_type)
+            _notify_blocked(error_type, reason, run_id or meta.get("run_id"),
+                            meta.get("session_id"))
             try:
                 canonical_req = normalize_request(body_json, path)
                 attribution = _attribution.resolve(
@@ -2978,6 +3140,8 @@ def create_app(
                 should_warn  = budget_action in ("warn",  "both")
                 if should_block:
                     _count_refusal(request.app, "budget_exceeded")
+                    _notify_blocked("budget_exceeded", budget_error, meta.get("run_id"),
+                                    meta.get("session_id"))
                     # Save blocked call with empty response, then reject
                     try:
                         canonical_req = normalize_request(body_json, path)
@@ -3013,18 +3177,15 @@ def create_app(
                 if should_warn:
                     # Let call through; tag the actual response on save
                     _budget_warning = budget_error
-                    if _alert_config and _alert_config.webhook_url:
-                        try:
-                            from .alerts import _fire
-                            await _fire(_alert_config.webhook_url, {
-                                "type": "budget_exceeded",
-                                "message": budget_error,
-                                "action_id": action_id,
-                                "session_id": meta.get("session_id"),
-                                "agent_name": meta.get("agent_name"),
-                            })
-                        except Exception:
-                            pass
+                    with suppress(Exception):
+                        await _notifier.send({
+                            "type": "budget_exceeded",
+                            "message": budget_error,
+                            "action_id": action_id,
+                            "session_id": meta.get("session_id"),
+                            "run_id": meta.get("run_id"),
+                            "agent_name": meta.get("agent_name"),
+                        }, key=f"budget_exceeded:{budget_error[:80]}", dedupe_seconds=600)
 
         forward_headers = {
             k: v for k, v in request.headers.items()

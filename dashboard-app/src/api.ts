@@ -154,6 +154,22 @@ export function resumeAllCalls(): Promise<void> {
   return del("/api/stop");
 }
 
+/** Notifications: the delivery history and the test button (#123). */
+export interface NotificationRow {
+  id: string; timestamp: string; type: string; target_kind: string | null;
+  target_id: string | null; summary: string | null; format: string | null;
+  status: string; attempts: number; delivered_at: string | null; error: string | null;
+}
+export interface NotificationList { enabled: boolean; format: string | null; rows: NotificationRow[] }
+export function listNotifications(): Promise<NotificationList> {
+  return get<NotificationList>("/api/notifications?limit=50");
+}
+export function sendTestNotification(): Promise<{
+  sent: boolean; reason?: string; format?: string; row?: NotificationRow;
+}> {
+  return post("/api/notifications/test", {});
+}
+
 /** The loop circuit breaker's live hold on a session, and the lift. */
 export interface LoopBlock { session_id: string; blocked: boolean; reason: string | null }
 export function loopBlockState(sessionId: string): Promise<LoopBlock> {

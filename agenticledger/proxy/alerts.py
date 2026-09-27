@@ -1,12 +1,11 @@
 """
 Threshold alerts over a webhook.
 
-Agentic Ledger fires a POST to AGENTICLEDGER_ALERT_WEBHOOK_URL whenever one
-of the fixed thresholds below is crossed (there is no baseline or anomaly
-model). The payload is plain JSON with our own field names; Slack incoming
-webhooks expect "text", PagerDuty Events v2 expects a "routing_key" and
-Discord expects "content", so put a small adapter or relay in front of
-those (native formats are tracked in #123).
+Agentic Ledger posts to AGENTICLEDGER_ALERT_WEBHOOK_URL whenever one of the
+fixed thresholds below is crossed (there is no baseline or anomaly model).
+Delivery goes through notify.Notifier: retries with backoff off the request
+path, deduplication, a delivery history, and native payloads for Slack,
+Discord and PagerDuty (plain JSON with our own field names otherwise).
 
 Thresholds (all optional):
     AGENTICLEDGER_ALERT_WEBHOOK_URL    URL to POST alerts to
@@ -27,10 +26,9 @@ Payload sent to the webhook:
         "timestamp":  "2026-04-03T12:00:00+00:00"
     }
 
-Slack: a plain incoming webhook (hooks.slack.com/services/...) rejects this
-payload because it reads `text` and we send `message`. Point the URL at a
-Slack Workflow webhook and map `message` to a text variable, or at a small
-relay of your own. The daily digest does carry `text` and posts as-is.
+Slack incoming webhooks, Discord webhooks and PagerDuty Events v2 are
+recognised from the URL (or forced with AGENTICLEDGER_ALERT_FORMAT) and get
+their native shape; see notify.render.
 """
 
 import datetime
@@ -41,6 +39,7 @@ from typing import Optional
 import httpx2 as httpx
 
 from .normalize import CanonicalResponse
+from .notify import Notifier, NotifyConfig
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +65,16 @@ async def check_and_fire(
     session_id: Optional[str],
     agent_name: Optional[str],
     status_code: int,
+    notifier: Optional[Notifier] = None,
 ) -> None:
-    """Check all thresholds after a call is saved. Fire webhook for any breach."""
+    """Check all thresholds after a call is saved and hand every breach to
+    the notifier. Without one (direct callers, tests) a bare notifier posts
+    through _fire and waits for the delivery."""
     if not config.enabled:
         return
+    wait = notifier is None
+    if notifier is None:
+        notifier = Notifier(NotifyConfig(webhook_url=config.webhook_url), post=_post)
 
     alerts = []
 
@@ -124,16 +129,28 @@ async def check_and_fire(
             pass
 
     for alert in alerts:
-        await _fire(config.webhook_url, {
+        # Per-call alerts are unique by nature; a session's error rate and
+        # the day's spend would otherwise repeat on every call after the
+        # line is crossed, so they say it once per window.
+        kind = alert["type"]
+        if kind == "high_error_rate":
+            key, window = f"high_error_rate:{session_id}", 600.0
+        elif kind == "daily_spend":
+            key, window = f"daily_spend:{datetime.date.today().isoformat()}", 86400.0
+        else:
+            key, window = f"{kind}:{action_id}", 0.0
+        await notifier.send({
             **alert,
             "action_id":  action_id,
             "session_id": session_id,
             "agent_name": agent_name,
             "timestamp":  datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-        })
+        }, key=key, dedupe_seconds=window, wait=wait)
 
 
 async def _fire(url: str, payload: dict) -> None:
+    """One direct POST, kept for callers and tests that patch it; the
+    Notifier is the door the app uses."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
@@ -141,6 +158,13 @@ async def _fire(url: str, payload: dict) -> None:
                 logger.warning("Alert webhook returned %s: %s", resp.status_code, resp.text[:200])
     except Exception as exc:
         logger.warning("Alert webhook failed: %s", exc)
+
+
+async def _post(url: str, payload: dict) -> tuple[bool, Optional[str]]:
+    """The bare notifier's post primitive: _fire, looked up at call time
+    so a test that patches alerts._fire still sees every payload."""
+    await _fire(url, payload)
+    return True, None
 
 
 def _today_start_ts() -> float:

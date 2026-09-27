@@ -74,6 +74,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard (`DELETE /api/sessions/{id}/loop-block`), re-arming the
   guards from that point. Refuse only, reason named: nothing is
   rewritten or rerouted.
+- **Reliable native notifications (#123).** Every webhook the ledger
+  sends now leaves through one door: tried three times with backoff off
+  the request path, said once per window (a crossed daily budget once a
+  day instead of on every call after it, a flagged loop once per ten
+  minutes), and recorded in a delivery history the Settings page shows
+  with a Send a test notification button (`GET /api/notifications`,
+  `POST /api/notifications/test`). Slack incoming webhooks, Discord
+  webhooks and PagerDuty Events v2 are recognised from the URL and get
+  their native shape (`AGENTICLEDGER_ALERT_FORMAT` overrides,
+  `AGENTICLEDGER_ALERT_PAGERDUTY_KEY` for the integration key); the plain
+  JSON payload is unchanged for everything else. New events: `run_ended`
+  and `run_failed` summaries when a run goes quiet (a watcher every
+  minute; nothing announced twice, even across restarts), `run_blocked`
+  once per run and reason per hour when a call is refused at the wall,
+  and `test`. With `AGENTICLEDGER_PUBLIC_URL` set, every notification
+  about a run or session links straight to it. The `[alerts]` section of
+  the config file now holds all of this. `/metrics` counts deliveries
+  by outcome.
 - **The compliance document set.** `docs/compliance/` holds what a
   security or privacy review asks for, written to be attached as is: a
   data-flow diagram with every hop in and out of the proxy, a

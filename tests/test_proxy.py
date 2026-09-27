@@ -862,15 +862,13 @@ def test_claude_code_utility_calls_stay_out_of_loop_inference(proxy):
 def test_run_complete_webhook_fires_morning_report(proxy, monkeypatch):
     """The completion promise triggers a run_complete webhook with the run's
     full summary — the morning report for overnight loops."""
-    import agenticledger.proxy.alerts as alerts_mod
     from agenticledger.proxy.alerts import AlertConfig
 
     fired = []
 
     async def _collect(url, payload):
         fired.append(payload)
-
-    monkeypatch.setattr(alerts_mod, "_fire", _collect)
+        return True, None
 
     client = proxy(
         handler=lambda r: httpx.Response(200, json=openai_response(
@@ -882,6 +880,9 @@ def test_run_complete_webhook_fires_morning_report(proxy, monkeypatch):
             cost_per_call=None, latency_ms=None, error_rate=None, daily_spend=None,
         ),
     )
+    # Every webhook leaves through the notifier (#123), off the request
+    # path: swap its post primitive and wait for the background delivery.
+    client.app.state.notifier.post = _collect
 
     for i in (1, 2):
         client.post("/v1/chat/completions", json=_CHAT_BODY, headers={
@@ -889,6 +890,7 @@ def test_run_complete_webhook_fires_morning_report(proxy, monkeypatch):
             "x-agenticledger-run-id": "night-run",
             "x-agenticledger-iteration": str(i),
         })
+    client.portal.call(client.app.state.notifier.flush)
 
     reports = [p for p in fired if p.get("type") == "run_complete"]
     assert reports, f"no run_complete among {[p.get('type') for p in fired]}"

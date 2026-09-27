@@ -146,6 +146,16 @@ def _iteration_row(d: dict) -> dict:
     return d
 
 
+def _notification_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Timestamps as ISO strings for the API; the table keeps epoch floats."""
+    for col in ("timestamp", "delivered_at"):
+        val = row.get(col)
+        if isinstance(val, (int, float)):
+            row[col] = datetime.datetime.fromtimestamp(
+                val, tz=datetime.timezone.utc).isoformat()
+    return row
+
+
 def _policy_columns(policy: Optional[dict]) -> tuple[Optional[str], ...]:
     """A team card's four lists as the column values the INSERT expects:
     comma-joined pattern strings, None for a list the card does not set."""
@@ -452,6 +462,29 @@ class Store(ABC):
         return self._audit_lock
 
     @abstractmethod
+    async def add_notification(self, row: dict[str, Any]) -> None:
+        """Record a notification the moment it is queued (status pending)."""
+        ...
+
+    @abstractmethod
+    async def update_notification(self, notification_id: str, *, status: str,
+                                  attempts: int, delivered_at: Optional[float],
+                                  error: Optional[str]) -> None:
+        """The delivery outcome: delivered or failed, after how many tries."""
+        ...
+
+    @abstractmethod
+    async def list_notifications(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Recent notifications, newest first: the dashboard's delivery history."""
+        ...
+
+    @abstractmethod
+    async def notified_targets(self, types: tuple[str, ...]) -> set[str]:
+        """Target ids that already received a notification of any of these
+        types, so a restart does not re-announce every ended run."""
+        ...
+
+    @abstractmethod
     async def add_audit(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Append an audit entry (who did what to which target, when), chained
         to the row before it. Returns the entry with seq, prev_hash, row_hash."""
@@ -558,6 +591,26 @@ class _SqliteStore(Store):
                 client       TEXT
             )
         """)
+        # 0.15 notifications: every webhook the ledger sends, and whether
+        # it landed. The dashboard's delivery history reads this.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id           TEXT PRIMARY KEY,
+                timestamp    REAL NOT NULL,
+                type         TEXT NOT NULL,
+                target_kind  TEXT,
+                target_id    TEXT,
+                summary      TEXT,
+                format       TEXT,
+                status       TEXT NOT NULL,
+                attempts     INTEGER DEFAULT 0,
+                delivered_at REAL,
+                error        TEXT,
+                key          TEXT
+            )
+        """)
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(timestamp)")
         for col, col_type in (("seq", "INTEGER"), ("prev_hash", "TEXT"), ("row_hash", "TEXT")):
             # The hash chain's columns; already present on an upgraded DB.
             with contextlib.suppress(Exception):
@@ -1233,6 +1286,44 @@ class _SqliteStore(Store):
         await self._db.commit()
         return deleted
 
+    async def add_notification(self, row: dict[str, Any]) -> None:
+        await self._db.execute(
+            "INSERT INTO notifications (id, timestamp, type, target_kind, target_id, summary, "
+            "format, status, attempts, delivered_at, error, key) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (row["id"], row["timestamp"], row["type"], row.get("target_kind"),
+             row.get("target_id"), row.get("summary"), row.get("format"), row["status"],
+             row.get("attempts", 0), row.get("delivered_at"), row.get("error"), row.get("key")),
+        )
+        await self._db.commit()
+
+    async def update_notification(self, notification_id, *, status, attempts,
+                                  delivered_at, error) -> None:
+        await self._db.execute(
+            "UPDATE notifications SET status = ?, attempts = ?, delivered_at = ?, error = ? "
+            "WHERE id = ?",
+            (status, attempts, delivered_at, error, notification_id),
+        )
+        await self._db.commit()
+
+    async def list_notifications(self, limit: int = 50) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT * FROM notifications ORDER BY timestamp DESC LIMIT ?", (int(limit),)
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_notification_row(dict(r)) for r in rows]
+
+    async def notified_targets(self, types: tuple[str, ...]) -> set[str]:
+        if not types:
+            return set()
+        marks = ",".join("?" for _ in types)
+        async with self._db.execute(
+            f"SELECT DISTINCT target_id FROM notifications WHERE type IN ({marks}) "
+            "AND target_id IS NOT NULL", tuple(types)
+        ) as cur:
+            rows = await cur.fetchall()
+        return {r[0] for r in rows}
+
     async def add_audit(self, entry: dict[str, Any]) -> dict[str, Any]:
         from .auditchain import GENESIS, row_hash
         async with self._chain_lock():
@@ -1449,6 +1540,24 @@ class _PostgresStore(Store):
                     client       TEXT
                 )
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id           TEXT PRIMARY KEY,
+                    timestamp    DOUBLE PRECISION NOT NULL,
+                    type         TEXT NOT NULL,
+                    target_kind  TEXT,
+                    target_id    TEXT,
+                    summary      TEXT,
+                    format       TEXT,
+                    status       TEXT NOT NULL,
+                    attempts     INTEGER DEFAULT 0,
+                    delivered_at DOUBLE PRECISION,
+                    error        TEXT,
+                    key          TEXT
+                )
+            """)
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(timestamp)")
             for col, pg_type in (("seq", "BIGINT"), ("prev_hash", "TEXT"), ("row_hash", "TEXT")):
                 # The hash chain's columns (0.15); no-op on an upgraded DB.
                 await conn.execute(f"ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS {col} {pg_type}")
@@ -2129,6 +2238,41 @@ class _PostgresStore(Store):
                 "DELETE FROM llm_calls WHERE user_id = $1", user_id
             )
         return int(result.split()[-1])  # "DELETE N"
+
+    async def add_notification(self, row: dict[str, Any]) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO notifications (id, timestamp, type, target_kind, target_id, "
+                "summary, format, status, attempts, delivered_at, error, key) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+                row["id"], row["timestamp"], row["type"], row.get("target_kind"),
+                row.get("target_id"), row.get("summary"), row.get("format"), row["status"],
+                row.get("attempts", 0), row.get("delivered_at"), row.get("error"), row.get("key"),
+            )
+
+    async def update_notification(self, notification_id, *, status, attempts,
+                                  delivered_at, error) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE notifications SET status = $1, attempts = $2, delivered_at = $3, "
+                "error = $4 WHERE id = $5",
+                status, attempts, delivered_at, error, notification_id,
+            )
+
+    async def list_notifications(self, limit: int = 50) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM notifications ORDER BY timestamp DESC LIMIT $1", int(limit))
+        return [_notification_row(_pg_plain(r)) for r in rows]
+
+    async def notified_targets(self, types: tuple[str, ...]) -> set[str]:
+        if not types:
+            return set()
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT target_id FROM notifications WHERE type = ANY($1::text[]) "
+                "AND target_id IS NOT NULL", list(types))
+        return {r["target_id"] for r in rows}
 
     async def add_audit(self, entry: dict[str, Any]) -> dict[str, Any]:
         from .auditchain import GENESIS, row_hash

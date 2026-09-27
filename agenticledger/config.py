@@ -71,6 +71,18 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "allow_providers": "AGENTICLEDGER_ALLOW_PROVIDERS",
         "deny_providers": "AGENTICLEDGER_DENY_PROVIDERS",
     },
+    "alerts": {
+        "webhook_url": "AGENTICLEDGER_ALERT_WEBHOOK_URL",
+        "format": "AGENTICLEDGER_ALERT_FORMAT",
+        "pagerduty_key": "AGENTICLEDGER_ALERT_PAGERDUTY_KEY",
+        "pagerduty_key_file": "AGENTICLEDGER_ALERT_PAGERDUTY_KEY_FILE",
+        "public_url": "AGENTICLEDGER_PUBLIC_URL",
+        "cost_per_call": "AGENTICLEDGER_ALERT_COST_PER_CALL",
+        "latency_ms": "AGENTICLEDGER_ALERT_LATENCY_MS",
+        "error_rate": "AGENTICLEDGER_ALERT_ERROR_RATE",
+        "daily_spend": "AGENTICLEDGER_ALERT_DAILY_SPEND",
+        "digest_hour": "AGENTICLEDGER_DIGEST_HOUR",
+    },
     "audit": {
         "enabled": "AGENTICLEDGER_AUDIT_LOG",
         "strict": "AGENTICLEDGER_AUDIT_STRICT",
@@ -125,6 +137,20 @@ TEMPLATE = '''\
 # deny_models = ["*-preview"]
 # allow_providers = ["anthropic", "openai"]
 # deny_providers = []
+
+[alerts]
+# Where notifications go. Slack, Discord and PagerDuty webhooks are
+# recognised from the URL and get their native shape; anything else gets
+# plain JSON. Retried with backoff, deduplicated, recorded on the Settings page.
+# webhook_url = "https://hooks.slack.com/services/..."
+# format = "auto"                                   # or generic | slack | discord | pagerduty
+# pagerduty_key_file = "~/.agenticledger/pagerduty.key"   # Events v2 integration key
+# public_url = "https://ledger.example.com"         # so each notification links to its run
+# cost_per_call = 0.10                              # thresholds, USD / ms / 0..1
+# latency_ms = 20000
+# error_rate = 0.5
+# daily_spend = 50.0
+# digest_hour = 8                                   # UTC hour for the daily digest
 
 [audit]
 # The trail of who viewed, exported, deleted or changed what. Rows are

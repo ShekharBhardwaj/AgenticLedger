@@ -84,6 +84,14 @@ Reads config from environment variables:
     AGENTICLEDGER_ALERT_LATENCY_MS      Alert if single call takes longer than Xms (default: none)
     AGENTICLEDGER_ALERT_ERROR_RATE      Alert if session error rate exceeds X, e.g. 0.5 (default: none)
     AGENTICLEDGER_ALERT_DAILY_SPEND     Alert when daily spend crosses $X (default: none)
+    AGENTICLEDGER_ALERT_FORMAT          auto (default) | generic | slack | discord | pagerduty:
+                                        the payload shape; auto reads the webhook host
+    AGENTICLEDGER_ALERT_PAGERDUTY_KEY   PagerDuty Events v2 integration key, needed when the
+                                        webhook is events.pagerduty.com; _FILE variant accepted
+    AGENTICLEDGER_PUBLIC_URL            Where the dashboard is reachable (https://ledger.example),
+                                        so notifications about a run or session link to it
+    Every notification is retried three times with backoff, deduplicated
+    per window, and recorded (GET /api/notifications, the Settings page).
 
   OpenTelemetry (requires pip install 'agentic-ledger[otel]'):
     AGENTICLEDGER_OTEL_ENDPOINT         OTLP/HTTP base URL, e.g. http://localhost:4318 (default: none)
@@ -118,6 +126,7 @@ import uvicorn
 from ..config import apply_config
 from .alerts import AlertConfig
 from .app import _secret_env, create_app
+from .notify import NotifyConfig
 from .otel import init_otel
 from .policy import Policy
 from .ratelimit import RateLimitConfig
@@ -198,6 +207,12 @@ app = create_app(
         latency_ms=_float_env("AGENTICLEDGER_ALERT_LATENCY_MS"),
         error_rate=_float_env("AGENTICLEDGER_ALERT_ERROR_RATE"),
         daily_spend=_float_env("AGENTICLEDGER_ALERT_DAILY_SPEND"),
+    ),
+    notify_config=NotifyConfig(
+        webhook_url=os.environ.get("AGENTICLEDGER_ALERT_WEBHOOK_URL"),
+        format=os.environ.get("AGENTICLEDGER_ALERT_FORMAT", "auto"),
+        pagerduty_key=_secret_env("AGENTICLEDGER_ALERT_PAGERDUTY_KEY"),
+        public_url=os.environ.get("AGENTICLEDGER_PUBLIC_URL") or None,
     ),
     async_capture=os.environ.get("AGENTICLEDGER_ASYNC_CAPTURE", "").lower() in ("1", "true", "yes", "on"),
     capture_queue_max=int(os.environ.get("AGENTICLEDGER_CAPTURE_QUEUE_MAX", "10000")),
