@@ -14,8 +14,12 @@ to provide a remediation timeline after triage.
 
 ## Supported versions
 
-Agentic Ledger is pre-1.0 and ships fixes on the latest released version. Please upgrade
-to the most recent release before reporting, and test against `main` if you can.
+Agentic Ledger is pre-1.0. The latest minor receives every fix; the previous
+minor receives security fixes only, for 90 days after the next minor ships. The
+full window, with how fixes ship, is in
+[docs/compliance/support-window.md](docs/compliance/support-window.md). Please
+upgrade to a supported version before reporting, and test against `main` if
+you can.
 
 ## Handling sensitive data — read this before deploying
 
@@ -58,6 +62,16 @@ Recommendations for any non-local deployment:
   corruption but is not a signature (anyone who edits the calls can recompute it).
   Set `AGENTICLEDGER_EXPORT_HMAC_KEY` for a keyed HMAC-SHA256 tag that is
   tamper-evident to anyone holding the key. Neither encrypts the contents.
+
+## Compliance documents
+
+The documents a security or privacy review asks for (data flow with a
+diagram, a data-processing description and DPA annex, the subprocessor
+statement, the HIPAA posture, a SOC 2 and ISO 27001 control mapping, and
+the support window) live in
+[docs/compliance](docs/compliance/README.md). They describe what the
+software does and where the evidence is; they do not claim an
+attestation the project does not hold.
 
 ## Scope
 

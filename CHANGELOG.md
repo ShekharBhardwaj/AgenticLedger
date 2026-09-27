@@ -74,6 +74,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard (`DELETE /api/sessions/{id}/loop-block`), re-arming the
   guards from that point. Refuse only, reason named: nothing is
   rewritten or rerouted.
+- **The compliance document set.** `docs/compliance/` holds what a
+  security or privacy review asks for, written to be attached as is: a
+  data-flow diagram with every hop in and out of the proxy, a
+  data-processing description with an Article 30 record and a DPA annex
+  for operators who run the ledger for others, a subprocessor statement
+  (none: the software runs where you install it and sends the project
+  nothing), the HIPAA posture (no BAA needed; how to deploy inside a
+  covered entity), a SOC 2 and ISO 27001 control mapping with a test,
+  workflow or setting as evidence for every row, and the support window.
+  The window is now stated: the latest minor receives every fix, the
+  previous minor receives security fixes for 90 days after the next
+  minor ships. SECURITY.md, the README and the deployment guide link to
+  the set.
 - **Icons and colors for runs and sessions.** A loop or a session can
   carry an icon and a color, chosen in the dashboard's label editor from
   a picker like Notion's (30 icons, 8 colors), so a wall of loops reads

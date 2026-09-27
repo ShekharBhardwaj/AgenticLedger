@@ -207,6 +207,14 @@ What you *can* do today:
 - Watch `/metrics` (Prometheus format) and probe `/health` and `/readyz` - 
   the container image ships a `HEALTHCHECK` that hits `/health`.
 
+## Compliance paperwork
+
+The documents a review asks for, ready to attach, are in
+[docs/compliance](compliance/README.md): the data-flow diagram, the
+data-processing description and DPA annex, the subprocessor statement,
+the HIPAA posture, the SOC 2 and ISO 27001 control mapping, and the
+support window.
+
 ## Deployment checklist
 
 - [ ] Image pulled by digest or verified with `cosign verify`

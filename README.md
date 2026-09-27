@@ -1033,6 +1033,10 @@ Spans are grouped into traces by `session_id` - all calls in a session appear as
 
 ---
 
+## Compliance documents
+
+For a security or privacy review: [docs/compliance](https://github.com/ShekharBhardwaj/AgenticLedger/tree/main/docs/compliance) holds the data-flow diagram, a data-processing description with a DPA annex, the subprocessor statement (none: the software runs where you install it and sends the project nothing), the HIPAA posture, a SOC 2 and ISO 27001 control mapping with evidence for every row, and the support window (the latest minor gets every fix, the previous minor gets security fixes for 90 days). Written to be attached as they are, and honest about what the project does not hold: no SOC 2 report, no ISO certificate, no BAA.
+
 ## Compliance export
 
 Every session can be exported as an integrity-tagged audit trail - useful for regulated industries, internal audits, or passing traces to external tools.
