@@ -20,7 +20,9 @@ workflow under `.github/workflows/`.
 
 | Control | SOC 2 | ISO 27001 | How the ledger supports it | Evidence |
 |---|---|---|---|---|
-| Readers authenticate | CC6.1 | A.5.15, A.8.3 | With `AGENTICLEDGER_API_KEY` set, the dashboard, API, exports, websocket and MCP require a key. Without it, access is open only on the ledger's own machine; every other caller presents the auto-generated pairing key. | `tests/test_token_auth.py`, `tests/test_remote_guard.py` |
+| Readers authenticate | CC6.1 | A.5.15, A.8.3 | With `AGENTICLEDGER_API_KEY` set or an identity provider configured, the dashboard, API, exports, websocket and MCP require a credential. Without either, access is open only on the ledger's own machine; every other caller presents the auto-generated pairing key. | `tests/test_token_auth.py`, `tests/test_remote_guard.py`, `tests/test_oidc.py` |
+| People sign in through the identity provider | CC6.1, CC6.2 | A.5.16, A.8.5 | OpenID Connect, code flow with PKCE, ID tokens verified against the provider's keys (RS256). Groups grant roles; a person whose groups map to nothing is refused and the refusal is recorded. Sign-ins are server-side rows with idle and absolute limits, ended on sign-out or by an admin; cross-site requests riding a cookie are refused. | `tests/test_oidc.py` |
+| Access scoped to projects | CC6.1, CC6.3 | A.5.15, A.8.3 | `AGENTICLEDGER_OIDC_SCOPE_MAP` limits a signed-in person to the projects their groups grant, enforced in every read, export, report, search, replay and MCP tool; out of scope reads as not found. | `tests/test_scope.py` |
 | Least privilege by role | CC6.1, CC6.3 | A.5.15, A.5.18, A.8.2 | Minted tokens carry `viewer`, `editor` or `admin`; `ingest` opens only the proxy path. Roles are enforced per endpoint; a forbidden attempt is a 403 and an audit row. | `tests/test_token_auth.py`, `agenticledger/proxy/auth.py` |
 | Credentials are not stored in clear | CC6.1 | A.5.17 | Tokens are stored as SHA-256 hashes and shown once at creation. Provider keys pass through and are never stored. | `tests/test_token_auth.py` (`hash_token`) |
 | Credential lifecycle | CC6.2, CC6.3 | A.5.16, A.5.18 | Tokens can expire (`expires_in_days`) and be revoked (`DELETE /api/tokens/{id}`); revocation is immediate and audited. | `tests/test_token_auth.py`, `tests/test_teams.py` |
@@ -74,6 +76,5 @@ workflow under `.github/workflows/`.
 
 Controls that live in your organisation, not the software: personnel
 security, physical security, vendor management, risk assessment,
-business continuity beyond backups, identity-provider sign-in (planned
-for 0.16), and encryption at rest. Placing the ledger inside those is the
+business continuity beyond backups, and encryption at rest. Placing the ledger inside those is the
 work this document is meant to make short.

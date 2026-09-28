@@ -34,10 +34,14 @@ governs that hop, as it did before the ledger was in the path.
 Mapped to the Security Rule's families; the
 [control mapping](controls-mapping.md) has the evidence for each.
 
-**Access control (164.312(a)).** Every remote reader presents a key;
-minted tokens carry a role (`viewer`, `editor`, `admin`) and can expire
-and be revoked; team cards open only the proxy path. Keys are accepted
-in headers only. The dashboard is open only on the ledger's own machine.
+**Access control (164.312(a)).** People sign in through your identity
+provider (OpenID Connect); their groups grant a role (`viewer`, `editor`,
+`admin`) and can scope them to named projects, so a person sees only
+the work filed under their projects; sign-ins expire and an admin can
+end them. Scripts and agents present keys: minted tokens carry a role
+and can expire and be revoked; team cards open only the proxy path.
+Keys are accepted in headers only. The dashboard is open only on the
+ledger's own machine.
 
 **Audit controls (164.312(b)).** Every read of captured content and
 every change is an audit row naming the actor, the action, the target
@@ -62,9 +66,10 @@ content; scope what a team card can call with allow and deny lists.
 
 - It does not encrypt the database at rest. Use full-disk encryption,
   an encrypted volume, or Postgres with encryption at rest.
-- It does not authenticate people by identity provider. Keys and tokens
-  are the credential; tie them to people through your own issuance and
-  the token name. (Identity provider sign-in is planned for 0.16.)
+- It authenticates people through your identity provider (OpenID
+  Connect) when you configure one; otherwise keys and tokens are the
+  credential, tied to people through your own issuance and the token
+  name.
 - It does not prove redaction is complete. Treat pattern redaction as
   reducing exposure, and choose `metadata` capture when exposure must be
   zero.
