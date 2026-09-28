@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { plural,
   del as apiDel,
   FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  Iteration, LiveCall, liveUpdates, post, Run, runStatusInfo,
+  getPage, Iteration, listQuery, LiveCall, liveUpdates, post, Run, runStatusInfo,
  listProjects,
 } from "../api";
 import CompareView from "./CompareView";
@@ -189,6 +189,14 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   }
   const [audit, setAudit] = useState<CacheAudit | null>(null);
   const [loaded, setLoaded] = useState(false);   // first /api/runs has settled
+  // #122: the sidebar loads a page and can keep loading older ones; the
+  // project filter goes to the server so a filtered view reaches the
+  // whole history, not the newest 50. Refs, so refresh keeps one identity
+  // and the live socket is not reopened on every change.
+  const PAGE = 50;
+  const [total, setTotal] = useState<number | null>(null);
+  const pageLimit = useRef(PAGE);
+  const filterRef = useRef("");
 
   // #75 — stop/resume must flip the sidebar tile and the detail badge in
   // the same render: update both local copies first, then re-fetch.
@@ -198,9 +206,10 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   };
 
   const refresh = useCallback(() => {
-    get<Run[]>("/api/runs")
-      .then((v) => {
+    getPage<Run>(`/api/runs${listQuery(pageLimit.current, filterRef.current)}`)
+      .then(({ items: v, total: n }) => {
         setRuns(v);
+        setTotal(n);
         // Labels, ceilings and observed status can change without a new
         // call. Merge the confirmed summary, preserving detail-only fields
         // (e.g. burn rate) and the call-count key that prevents fetch loops.
@@ -261,11 +270,16 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   // The list in its rendered order — the phone's prev/next arrows walk
   // exactly what the eye saw, pins and sort direction included.
   const ordered = pinnedFirst(timeSorted(runs.filter((r) => matchesFilter(r, projectFilter)), oldestFirst));
+  const changeFilter = (f: string) => {
+    filterRef.current = f; pageLimit.current = PAGE; setProjectFilter(f); refresh();
+  };
+  const loadOlder = () => { pageLimit.current += PAGE; refresh(); };
+  const older = total !== null ? Math.max(0, total - runs.length) : 0;
 
   return (
     <div className={`layout runs ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
-        <div className="sidebar-heading"><Icon name="activity" /><h2>Loop Lens</h2><span className="sidebar-count">{runs.length}</span></div>
+        <div className="sidebar-heading"><Icon name="activity" /><h2>Loop Lens</h2><span className="sidebar-count" title={older > 0 ? `${runs.length} loaded of ${total}` : undefined}>{total ?? runs.length}</span></div>
         <p className="sidebar-caption">Every iteration, accounted for.</p>
         {error && <div className="empty">{error}</div>}
         {runs.length === 0 && !error && (
@@ -278,7 +292,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             </span>
           </div>
         )}
-        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
+        <ProjectFilter projects={projects} value={projectFilter} onChange={changeFilter}
                        runGroups={[...new Set(runs.filter((x) => !x.project).map((x) => x.run_id))]}
                        hasPinned={runs.some((x) => x.pinned)}
                        knownApps={[...new Set(runs.map((x) => x.app_id).filter(Boolean))] as string[]}
@@ -353,6 +367,12 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             </div>
           </div>
         ))}
+        {older > 0 && (
+          <button className="link-btn load-older" onClick={loadOlder}
+                  title="The list shows the newest first; this brings the next 50 older runs into it">
+            Load older ({older} more)
+          </button>
+        )}
       </div>
 
       <div className="main">

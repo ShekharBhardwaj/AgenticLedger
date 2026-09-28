@@ -1219,30 +1219,148 @@ def create_app(
             keep = [st for st in totals if resolved(st) == project]
         return [st["session_id"] for st in keep], keep, resolved
 
+    # ── Complete history (#122) ──────────────────────────────────────────
+    # Lists used to stop at the latest 50, so older work vanished from
+    # navigation as history grew. Both lists now take a page (limit,
+    # offset) and server-side filters, and answer with the total in
+    # headers, so a dashboard can keep loading older rows and a script can
+    # walk everything. The aggregate query groups every call whatever the
+    # page size, so the filters run over the whole history in memory,
+    # bounded by _HISTORY_CAP rows; the response shape (an array) is
+    # unchanged for existing clients.
+    _HISTORY_CAP = 5000
+    _PAGE_MAX = 500
+
+    def _page_params(request: Request) -> tuple[int, int]:
+        try:
+            limit = int(request.query_params.get("limit", 50))
+            offset = int(request.query_params.get("offset", 0))
+        except ValueError:
+            raise HTTPException(status_code=400,
+                                detail="limit and offset must be integers") from None
+        if limit < 1 or limit > _PAGE_MAX or offset < 0:
+            raise HTTPException(status_code=400,
+                                detail=f"limit must be 1..{_PAGE_MAX} and offset >= 0")
+        return limit, offset
+
+    def _time_param(request: Request, name: str) -> Optional[datetime.datetime]:
+        raw = request.query_params.get(name)
+        if not raw:
+            return None
+        # An unencoded "+02:00" offset arrives as a space: read it as the
+        # plus it was, rather than failing a hand-typed URL.
+        raw = raw.strip().replace(" ", "+").replace("Z", "+00:00")
+        try:
+            parsed = datetime.datetime.fromisoformat(raw)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{name} must be an ISO date or datetime, e.g. 2026-09-01 "
+                       "or 2026-09-01T08:00:00Z") from None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+        return parsed
+
+    def _in_window(row: dict, since, until) -> bool:
+        if since is None and until is None:
+            return True
+        try:
+            last = datetime.datetime.fromisoformat(str(row.get("last_call_at")))
+        except (TypeError, ValueError):
+            return False
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=datetime.timezone.utc)
+        return (since is None or last >= since) and (until is None or last <= until)
+
+    def _project_match(row: dict, wanted: str) -> bool:
+        """Mirrors the dashboard's matchesFilter: a project name, __starred__
+        for pinned rows, run:<id> for a run's own unfiled sessions."""
+        if not wanted:
+            return True
+        if wanted == "__starred__":
+            return bool(row.get("pinned"))
+        if wanted.startswith("run:"):
+            return row.get("run_id") == wanted[4:]
+        return row.get("project") == wanted
+
+    def _model_match(row: dict, wanted: str) -> bool:
+        if not wanted:
+            return True
+        haystack = str(row.get("models") or row.get("model_id") or "").lower()
+        return wanted.lower() in haystack
+
+    def _text_match(row: dict, key: str, wanted: str) -> bool:
+        if not wanted:
+            return True
+        needle = wanted.lower()
+        return any(needle in str(row.get(f) or "").lower() for f in (key, "label", "agent_name"))
+
+    def _paged(rows: list, request: Request) -> JSONResponse:
+        limit, offset = _page_params(request)
+        page = rows[offset:offset + limit]
+        headers = {"X-Total-Count": str(len(rows)), "X-Limit": str(limit),
+                   "X-Offset": str(offset)}
+        if offset + limit < len(rows):
+            headers["X-Next-Offset"] = str(offset + limit)
+        return JSONResponse(page, headers=headers)
+
     @app.get("/api/sessions")
     async def api_sessions(request: Request) -> JSONResponse:
+        """Sessions, newest first. Filters: project (a name, __starred__,
+        run:<id>), run_id, model (substring), since and until (ISO, on the
+        last call), q (session id, label or agent). Page with limit and
+        offset; X-Total-Count, X-Next-Offset in the headers."""
         await _require(request, ROLE_VIEWER)
         store = request.app.state.store
-        sessions = await store.list_sessions()
-        return JSONResponse(_annotate_labels(
+        q = request.query_params
+        since, until = _time_param(request, "since"), _time_param(request, "until")
+        sessions = await store.list_sessions(limit=_HISTORY_CAP)
+        sessions = _annotate_labels(
             sessions, await store.get_labels("session"), "session_id",
             await store.get_project_rules(),
-            await _run_project_map(store)))
+            await _run_project_map(store))
+        run_id = q.get("run_id") or ""
+        rows = [s for s in sessions
+                if _project_match(s, q.get("project") or "")
+                and (not run_id or s.get("run_id") == run_id)
+                and _model_match(s, q.get("model") or "")
+                and _in_window(s, since, until)
+                and _text_match(s, "session_id", q.get("q") or "")]
+        return _paged(rows, request)
 
     @app.get("/api/runs")
     async def api_runs(request: Request) -> JSONResponse:
+        """Runs, newest first. Filters: project (a name or __starred__),
+        status (running, flagged, complete, ended, stopped), model
+        (substring), since and until (ISO, on the last call), q (run id or
+        label). Page with limit and offset; X-Total-Count, X-Next-Offset in
+        the headers."""
         await _require(request, ROLE_VIEWER)
         store = request.app.state.store
-        runs = await store.list_runs()
+        q = request.query_params
+        since, until = _time_param(request, "since"), _time_param(request, "until")
+        status = (q.get("status") or "").strip().lower()
+        if status and status not in ("running", "flagged", "complete", "ended", "stopped"):
+            raise HTTPException(status_code=400,
+                                detail="status must be one of running, flagged, complete, "
+                                       "ended, stopped")
+        runs = await store.list_runs(limit=_HISTORY_CAP)
         ended = await store.get_run_end_markers([r["run_id"] for r in runs])
         runs = _annotate_labels(runs, await store.get_labels("run"), "run_id",
                                 await store.get_project_rules())
-        return JSONResponse([
+        rows = [
             _with_run_status(r, loop_run_gap_seconds,
                              explicitly_ended=_end_marker_holds(r, ended.get(r["run_id"])),
                              stopped=r["run_id"] in request.app.state.stopped_runs)
             for r in runs
-        ])
+        ]
+        rows = [r for r in rows
+                if _project_match(r, q.get("project") or "")
+                and (not status or r["status"] == status)
+                and _model_match(r, q.get("model") or "")
+                and _in_window(r, since, until)
+                and _text_match(r, "run_id", q.get("q") or "")]
+        return _paged(rows, request)
 
     @app.post("/api/runs/{run_id}/end")
     async def api_run_end(run_id: str, request: Request) -> JSONResponse:

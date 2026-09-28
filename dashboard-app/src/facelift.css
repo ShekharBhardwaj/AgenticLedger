@@ -12,7 +12,8 @@ button:focus-visible, [role="button"]:focus-visible, summary:focus-visible, a:fo
 .topbar { min-height: 72px; padding: 14px 26px; gap: 20px; background: var(--bg); }
 .brand { gap: 11px; flex: 0 0 auto; }
 .topbar h1 { font-size: 17px; font-weight: 650; letter-spacing: -.55px; }
-.topbar h1 span { color: var(--text); }
+/* The wordmark as the website sets it: one word, the second half quiet. */
+.topbar h1 span { color: var(--text-dim); }
 .tabs { gap: 5px; padding-left: 24px; border-left: 1px solid var(--border); }
 .tab { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; border: 1px solid transparent; border-radius: 7px; padding: 7px 13px; font-size: 13px; }
 .tab.active { border-color: color-mix(in srgb, var(--accent) 18%, transparent); }
@@ -278,6 +279,10 @@ table.grid, .rtable { background: var(--bg-card); border: 1px solid var(--border
 .sidebar .title-with-chip { display: block; white-space: normal; }
 .sidebar .title-with-chip .title-text { display: block; line-height: 1.5; }
 .sidebar .run-chip { display: inline-block; margin: 6px 0 0; max-width: 100%; vertical-align: middle; }
+
+/* #122: the sidebar keeps loading older history; a linked call stands out. */
+.load-older { display: block; width: calc(100% - 24px); margin: 10px 12px 14px; text-align: center; }
+.call-card.focused { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 /* Marks: the icon and color a person pins on a run or a session. The
    inline mark rides just before the name wherever the name renders; the

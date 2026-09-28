@@ -74,6 +74,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard (`DELETE /api/sessions/{id}/loop-block`), re-arming the
   guards from that point. Refuse only, reason named: nothing is
   rewritten or rerouted.
+- **Complete history (#122).** Lists used to stop at the newest 50, so
+  older work fell off the dashboard as history grew. `GET /api/runs` and
+  `GET /api/sessions` now page (`limit` up to 500, `offset`) and filter
+  on the server (`project`, `status`, `model`, `since`, `until`, `q`,
+  `run_id`), answering with `X-Total-Count` and `X-Next-Offset` headers
+  while keeping the array shape existing clients read. The sidebars show
+  the real total, load older rows with one press, and apply the project
+  filter server-side so a filtered view reaches everything. A single
+  call has a link of its own: `#/sessions/<id>/calls/<action_id>` opens
+  the session with that call expanded and in view, and expanding a call
+  puts that link in the address bar. The dashboard wordmark now reads
+  as the website sets it, AgenticLedger.
 - **Reliable native notifications (#123).** Every webhook the ledger
   sends now leaves through one door: tried three times with backoff off
   the request path, said once per window (a crossed daily budget once a

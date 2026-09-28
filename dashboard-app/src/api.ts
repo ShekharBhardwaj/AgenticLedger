@@ -218,6 +218,31 @@ export async function get<T>(path: string): Promise<T> {
   return resp.json();
 }
 
+/** A list page with its total (#122): the array the endpoint has always
+ *  returned, plus the X-Total-Count header so the sidebar can say how much
+ *  older history is waiting behind Load older. */
+export async function getPage<T>(path: string): Promise<{ items: T[]; total: number }> {
+  const resp = await fetch(path, { headers: headers() });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    const msg = (data as { error?: string; detail?: string }).error
+      ?? (data as { detail?: string }).detail
+      ?? `${resp.status} ${resp.statusText}`;
+    throw new Error(msg);
+  }
+  const items = (await resp.json()) as T[];
+  const total = Number(resp.headers.get("X-Total-Count") ?? items.length);
+  return { items, total: Number.isFinite(total) ? total : items.length };
+}
+
+/** The list query for a sidebar: how many rows, and the server-side
+ *  project filter so filtered views reach the whole history. */
+export function listQuery(limit: number, projectFilter: string, extra = ""): string {
+  const q = new URLSearchParams({ limit: String(limit) });
+  if (projectFilter) q.set("project", projectFilter);
+  return `?${q.toString()}${extra}`;
+}
+
 export async function del(path: string): Promise<void> {
   const resp = await fetch(path, { method: "DELETE", headers: headers() });
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);

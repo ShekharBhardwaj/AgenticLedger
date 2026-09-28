@@ -188,14 +188,14 @@ function AboutMenu({ version }: { version: string | null }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="key-wrap">
-      <button className="key-btn" title="About Agentic Ledger" aria-label="About Agentic Ledger"
+      <button className="key-btn" title="About AgenticLedger" aria-label="About AgenticLedger"
               aria-haspopup="menu" aria-expanded={open}
               onClick={() => setOpen(!open)}>
         <Icon name="info" />
       </button>
       {open && (
         <div className="key-pop about-pop" role="menu">
-          <div className="key-pop-title">Agentic Ledger</div>
+          <div className="key-pop-title">AgenticLedger.</div>
           {version && (
             <div className="about-version mono">
               v{version.split("+")[0]}
@@ -222,12 +222,16 @@ function AboutMenu({ version }: { version: string | null }) {
 /** Hash routing (premium spec, section 5): the URL preserves the
  *  investigation. Hash routes need no server rewrites, opaque ids stay
  *  encoded, and ordinary copied links never carry credentials. */
-type Route = { tab: Tab; runId?: string; sessionId?: string };
+type Route = { tab: Tab; runId?: string; sessionId?: string; callId?: string };
 
 function parseRoute(): Route {
   const h = window.location.hash.replace(/^#\/?/, "");
-  const [head, id] = h.split("/").map((part) => part.split("?")[0]);
-  if (head === "sessions") return { tab: "sessions", sessionId: id ? decodeURIComponent(id) : undefined };
+  const [head, id, kind, sub] = h.split("/").map((part) => part.split("?")[0]);
+  if (head === "sessions") {
+    // #/sessions/<id>/calls/<action_id> reopens one call, expanded (#122).
+    return { tab: "sessions", sessionId: id ? decodeURIComponent(id) : undefined,
+             callId: kind === "calls" && sub ? decodeURIComponent(sub) : undefined };
+  }
   if (head === "reports") return { tab: "reports" };
   if (head === "settings") return { tab: "settings" };
   if (head === "runs") return { tab: "runs", runId: id ? decodeURIComponent(id) : undefined };
@@ -236,7 +240,11 @@ function parseRoute(): Route {
 
 function routeHash(r: Route): string {
   if (r.tab === "runs") return r.runId ? `#/runs/${encodeURIComponent(r.runId)}` : "#/runs";
-  if (r.tab === "sessions") return r.sessionId ? `#/sessions/${encodeURIComponent(r.sessionId)}` : "#/sessions";
+  if (r.tab === "sessions") {
+    if (!r.sessionId) return "#/sessions";
+    const base = `#/sessions/${encodeURIComponent(r.sessionId)}`;
+    return r.callId ? `${base}/calls/${encodeURIComponent(r.callId)}` : base;
+  }
   return `#/${r.tab}`;
 }
 
@@ -244,6 +252,7 @@ export default function App() {
   const initial = parseRoute();
   const [tab, setTabState] = useState<Tab>(initial.tab);
   const [focusSession, setFocusSession] = useState<string | null>(initial.sessionId ?? null);
+  const [focusCall, setFocusCall] = useState<string | null>(initial.callId ?? null);
   const [live, setLive] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [instance, setInstance] = useState<string | null>(null);
@@ -254,7 +263,7 @@ export default function App() {
       setInstance(h.instance ?? null);
       // The tab wears the name too — two dashboards side by side must
       // be tellable apart from the tab bar alone.
-      if (h.instance) document.title = `Agentic Ledger · ${h.instance}`;
+      if (h.instance) document.title = `AgenticLedger · ${h.instance}`;
     }).catch(() => {});
   }, []);
 
@@ -271,6 +280,7 @@ export default function App() {
     setTabState(r.tab);
     setFocusRun(r.tab === "runs" ? r.runId ?? null : null);
     setFocusSession(r.tab === "sessions" ? r.sessionId ?? null : null);
+    setFocusCall(r.tab === "sessions" ? r.callId ?? null : null);
   };
   // Switching tabs restores the tab's last selection instead of dropping
   // it (returning from Settings must not lose the run you were reading).
@@ -292,6 +302,7 @@ export default function App() {
       setTabState(r.tab);
       setFocusRun(r.tab === "runs" ? r.runId ?? null : null);
       setFocusSession(r.tab === "sessions" ? r.sessionId ?? null : null);
+      setFocusCall(r.tab === "sessions" ? r.callId ?? null : null);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -306,6 +317,11 @@ export default function App() {
     lastSession.current = id;
     navigate({ tab: "sessions", sessionId: id ?? undefined });
   };
+  // An expanded call rides in the address, without a history entry per
+  // click, so the link in the bar reopens exactly what is on screen.
+  const onCallFocused = (sessionId: string, callId: string | null) => {
+    navigate({ tab: "sessions", sessionId, callId: callId ?? undefined }, false);
+  };
 
   return (
     <>
@@ -315,7 +331,7 @@ export default function App() {
                 onClick={() => openRun("")}>
           <Logo />
           <h1>
-            Agentic <span>Ledger</span>
+            Agentic<span>Ledger.</span>
           </h1>
         </button>
         {instance && (
@@ -362,8 +378,8 @@ export default function App() {
       ) : tab === "settings" ? (
         <SettingsView />
       ) : (
-        <SessionsView focusSession={focusSession} onOpenRun={openRun}
-                      onSelectedChange={onSessionSelected} />
+        <SessionsView focusSession={focusSession} focusCall={focusCall} onOpenRun={openRun}
+                      onSelectedChange={onSessionSelected} onCallFocused={onCallFocused} />
       )}
       </main>
 

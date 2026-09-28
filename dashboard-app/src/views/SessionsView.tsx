@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect, useState } from "react";
 import {
   Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  getCall, interactionTags, liftLoopBlock, listProjects, liveUpdates, LoopBlock,
+  getCall, getPage, interactionTags, liftLoopBlock, listProjects, listQuery, liveUpdates, LoopBlock,
   loopBlockState, post, ReplayResult,
   replayModels, replayTargets, ReplayTarget, Session, toolNames,
 } from "../api";
@@ -276,10 +276,21 @@ function SessionHeader({ session, sessionId, onOpenSession }: {
   );
 }
 
-function CallCard({ call, num, onOpenSession }: {
+function CallCard({ call, num, onOpenSession, focused, onFocus }: {
   call: Call; num?: number; onOpenSession?: (sid: string) => void;
+  focused?: boolean; onFocus?: (actionId: string | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(Boolean(focused));
+  const setOpen = (next: boolean) => { setOpenState(next); onFocus?.(next ? call.action_id : null); };
+  // A link to this call (#/sessions/<id>/calls/<action_id>) lands here,
+  // expanded and in view.
+  const anchor = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focused) {
+      setOpenState(true);
+      anchor.current?.scrollIntoView({ block: "center" });
+    }
+  }, [focused]);
   const [replaying, setReplaying] = useState(false);
   // Inspector opens on the response (or the relevant error, shown first).
   const [itab, setItab] = useState<"response" | "tools" | "prompt" | "raw">("response");
@@ -314,7 +325,8 @@ function CallCard({ call, num, onOpenSession }: {
   const statusTitle = call.error_detail
     || (flagNames.length ? flagNames.map((n) => `${flagInfo(n).title}`).join("; ") : undefined);
   return (
-    <div className="card call-card">
+    <div className={`card call-card ${focused ? "focused" : ""}`} ref={anchor}
+         id={`call-${call.action_id}`}>
       <div className="call-row" onClick={() => setOpen(!open)}
            role="button" aria-expanded={open} tabIndex={0}
            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); } }}>
@@ -444,10 +456,12 @@ function CallCard({ call, num, onOpenSession }: {
   );
 }
 
-export default function SessionsView({ focusSession, onOpenRun, onSelectedChange }: {
+export default function SessionsView({ focusSession, focusCall, onOpenRun, onSelectedChange, onCallFocused }: {
   focusSession?: string | null;
+  focusCall?: string | null;
   onOpenRun?: (runId: string) => void;
   onSelectedChange?: (id: string | null) => void;
+  onCallFocused?: (sessionId: string, actionId: string | null) => void;
 }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selected, setSelected] = useState<string | null>(focusSession ?? null);
@@ -470,10 +484,16 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
   const [oldestFirst, setOldestFirst] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // #122: paged loading with the project filter applied server-side, so a
+  // filtered view reaches the whole history. Refs keep refresh's identity.
+  const PAGE = 50;
+  const [total, setTotal] = useState<number | null>(null);
+  const pageLimit = useRef(PAGE);
+  const filterRef = useRef("");
 
   const refresh = useCallback(() => {
-    get<Session[]>("/api/sessions")
-      .then((v) => { setSessions(v); setLoadError(null); })
+    getPage<Session>(`/api/sessions${listQuery(pageLimit.current, filterRef.current)}`)
+      .then(({ items: v, total: n }) => { setSessions(v); setTotal(n); setLoadError(null); })
       .catch((e) => setLoadError(String(e?.message || e)));
     listProjects().then((r) => setProjects(r.projects)).catch(() => {});
     // keep an open session view fresh too
@@ -539,11 +559,16 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
     return groups;
   })();
   const ordered = groupedList.flatMap((g) => g.items);
+  const changeFilter = (f: string) => {
+    filterRef.current = f; pageLimit.current = PAGE; setProjectFilter(f); refresh();
+  };
+  const loadOlder = () => { pageLimit.current += PAGE; refresh(); };
+  const older = total !== null ? Math.max(0, total - sessions.length) : 0;
 
   return (
     <div className={`layout ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
-        <div className="sidebar-heading"><Icon name="sessions" /><h2>Sessions</h2><span className="sidebar-count">{sessions.length}</span></div>
+        <div className="sidebar-heading"><Icon name="sessions" /><h2>Sessions</h2><span className="sidebar-count" title={older > 0 ? `${sessions.length} loaded of ${total}` : undefined}>{total ?? sessions.length}</span></div>
         <p className="sidebar-caption">Follow every call, from prompt to response.</p>
         <input
           className="search"
@@ -552,7 +577,7 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <ProjectFilter projects={projects} value={projectFilter} onChange={setProjectFilter}
+        <ProjectFilter projects={projects} value={projectFilter} onChange={changeFilter}
                        runGroups={[...new Set(sessions.filter((x) => !x.project && x.run_id).map((x) => x.run_id!))]}
                        hasPinned={sessions.some((x) => x.pinned)}
                        knownApps={[...new Set(sessions.map((x) => x.app_id).filter(Boolean))] as string[]}
@@ -678,6 +703,12 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
             </div>
           ));
         })()}
+        {older > 0 && (
+          <button className="link-btn load-older" onClick={loadOlder}
+                  title="The list shows the newest first; this brings the next 50 older sessions into it">
+            Load older ({older} more)
+          </button>
+        )}
       </div>
       <div className="main">
         {selected && (() => {
@@ -756,6 +787,9 @@ export default function SessionsView({ focusSession, onOpenRun, onSelectedChange
           (results !== null ? shown : [...shown].reverse()).map((c) => (
             <CallCard key={c.action_id} call={c}
                       num={results !== null ? undefined : calls.indexOf(c) + 1}
+                      focused={results === null && focusCall === c.action_id}
+                      onFocus={results === null && selected
+                        ? (aid) => onCallFocused?.(selected, aid) : undefined}
                       onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />
           ))
         ) : mode === "flow" ? (

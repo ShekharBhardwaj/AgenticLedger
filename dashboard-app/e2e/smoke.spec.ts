@@ -257,6 +257,26 @@ test("the notifications panel says plainly that no webhook is configured", async
   await expect(panel).toContainText("Nothing sent yet");
 });
 
+test("a call link reopens the session with that call expanded, and the lists know their totals", async ({ page, request }) => {
+  const calls = await (await request.get("/session/smoke-loop-s1")).json();
+  const target = calls[calls.length - 1].action_id;
+  await page.goto(`/app#/sessions/smoke-loop-s1/calls/${encodeURIComponent(target)}`);
+  await expect(page.locator(".session-header-title")).toContainText("smoke-loop-s1");
+  const card = page.locator(`#call-${target}`);
+  await expect(card).toHaveClass(/focused/);
+  await expect(card.locator(".call-row")).toHaveAttribute("aria-expanded", "true");
+  // Collapsing it takes the call out of the address; the session stays.
+  await card.locator(".call-row").click();
+  await expect(page).toHaveURL(/#\/sessions\/smoke-loop-s1$/);
+  // Paged lists: the seeded ledger fits in one page, so nothing older is offered.
+  const runs = await request.get("/api/runs?limit=1");
+  expect(runs.headers()["x-total-count"]).toBe("2");
+  expect(runs.headers()["x-next-offset"]).toBe("1");
+  await page.goto("/app#/runs");
+  await expect(page.locator(".sidebar .sidebar-count")).toHaveText("2");
+  await expect(page.getByRole("button", { name: /Load older/ })).toHaveCount(0);
+});
+
 test("light appearance persists across reload and navigation", async ({ page }) => {
   await page.goto("/app#/settings");
   await page.getByRole("radio", { name: "Light", exact: true }).click();
