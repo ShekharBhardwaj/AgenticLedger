@@ -212,7 +212,12 @@ def test_admin_signs_a_person_out_everywhere(sso):
     ended = client.post(f"/api/people/{people['bob@example.test']['id']}/signout",
                         headers={"sec-fetch-site": "same-origin"}).json()
     assert ended["signins_ended"] == 1
-    assert client.get("/api/whoami", cookies={"agenticledger_signin": bob_cookie}).status_code == 401
+    # Bob's cookie alone (the jar would otherwise still hold alice's).
+    client.cookies.clear()
+    client.cookies.set("agenticledger_signin", bob_cookie)
+    assert client.get("/api/whoami").status_code == 401
+    client.cookies.clear()
+    sign_in(client, idp_client, "alice")
     assert client.post("/api/people/nobody/signout",
                        headers={"sec-fetch-site": "same-origin"}).status_code == 404
     assert "signout_all" in [r["action"] for r in client.get("/api/audit").json()]
