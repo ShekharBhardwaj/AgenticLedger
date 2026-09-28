@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tried without a real provider; every page of it says it is not for
   production. The dashboard's access panel gains Sign in and Sign out.
   `cryptography` is now a core dependency.
+- **Access scoped to projects.** `AGENTICLEDGER_OIDC_SCOPE_MAP`
+  (`group=project,...`) gives a signed-in person exactly the projects
+  their groups grant, enforced in every read: the session and run
+  lists, single sessions, calls and runs, search, reports and the CSV,
+  exports, what-if, replay and its jobs, notifications, the project
+  list, and every MCP tool. Anything outside the scope reads as not
+  found, so existence is not revealed; work filed under no project is
+  invisible to a scoped person until someone files it; a scoped editor
+  can stop, end, rename and file only inside their projects. A person
+  in no mapped group is unscoped and sees what their role allows, as
+  before, and keys are always unscoped. The login audit row names the
+  scope, `/api/people` and `/api/whoami` show it, and the access panel
+  says it.
 
 ## [0.15.0] - 2026-09-27
 

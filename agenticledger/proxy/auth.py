@@ -73,6 +73,9 @@ class Principal:
     name: Optional[str] = None
     person_id: Optional[str] = None   # sso: the person row the identity provider vouched for
     signin_id: Optional[str] = None   # sso: the sign-in this request rode in on
+    # The projects this person may see, from their groups; None means
+    # unscoped (everything the role allows). Keys are always unscoped.
+    projects: Optional[frozenset] = None
 
 
 def client_is_local(host: Optional[str]) -> bool:

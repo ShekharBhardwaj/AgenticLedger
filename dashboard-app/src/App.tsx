@@ -45,7 +45,10 @@ function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
     };
   }
   if (!w.dashboard) return { text: `This key’s role (${w.role}) can’t open the dashboard.`, tone: "warn" };
-  if (w.source === "sso") return { text: `Signed in as ${w.name ?? "someone"} · ${w.role}`, tone: "ok" };
+  if (w.source === "sso") {
+    const scope = w.projects && w.projects.length ? ` · projects: ${w.projects.join(", ")}` : "";
+    return { text: `Signed in as ${w.name ?? "someone"} · ${w.role}${scope}`, tone: "ok" };
+  }
   if (w.source === "master") return { text: "Master key · full admin access", tone: "ok" };
   return { text: `${w.name ?? "unnamed key"} · ${w.role}`, tone: "ok" };
 }

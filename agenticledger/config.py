@@ -89,6 +89,7 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "oidc_client_secret": "AGENTICLEDGER_OIDC_CLIENT_SECRET",
         "oidc_client_secret_file": "AGENTICLEDGER_OIDC_CLIENT_SECRET_FILE",
         "oidc_role_map": "AGENTICLEDGER_OIDC_ROLE_MAP",
+        "oidc_scope_map": "AGENTICLEDGER_OIDC_SCOPE_MAP",
         "oidc_groups_claim": "AGENTICLEDGER_OIDC_GROUPS_CLAIM",
         "oidc_scopes": "AGENTICLEDGER_OIDC_SCOPES",
         "oidc_provider_name": "AGENTICLEDGER_OIDC_PROVIDER_NAME",
@@ -172,6 +173,7 @@ TEMPLATE = '''\
 # oidc_client_id = "0oa..."
 # oidc_client_secret_file = "~/.agenticledger/oidc.secret"   # omit for a public client
 # oidc_role_map = "ledger-admins=admin,ledger-editors=editor,ledger-viewers=viewer"
+# oidc_scope_map = "team-alpha=alpha,team-alpha=alpha-infra"   # a group sees only these projects
 # oidc_groups_claim = "groups"
 # oidc_provider_name = "Okta"          # what the sign-in button says
 # session_idle_hours = 12

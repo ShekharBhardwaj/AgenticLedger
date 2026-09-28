@@ -26,6 +26,10 @@ Reads config from environment variables:
     AGENTICLEDGER_OIDC_CLIENT_SECRET    The client secret, if the provider issued one; _FILE accepted
     AGENTICLEDGER_OIDC_ROLE_MAP         group=role pairs, comma separated; a person whose groups
                                         map to nothing is refused (default: none, so everyone is)
+    AGENTICLEDGER_OIDC_SCOPE_MAP        group=project pairs, comma separated (a group may repeat):
+                                        a person in a mapped group sees only those projects,
+                                        unfiled work included in nothing; a person in no mapped
+                                        group sees everything their role allows (default: none)
     AGENTICLEDGER_OIDC_GROUPS_CLAIM     The claim carrying groups (default: groups)
     AGENTICLEDGER_OIDC_SCOPES           Scopes requested (default: openid profile email)
     AGENTICLEDGER_OIDC_PROVIDER_NAME    What the sign-in button says (default: the issuer host)
@@ -140,7 +144,7 @@ from ..config import apply_config
 from .alerts import AlertConfig
 from .app import _secret_env, create_app
 from .notify import NotifyConfig
-from .oidc import OIDCConfig, parse_role_map
+from .oidc import OIDCConfig, parse_role_map, parse_scope_map
 from .otel import init_otel
 from .policy import Policy
 from .ratelimit import RateLimitConfig
@@ -229,6 +233,7 @@ app = create_app(
         scopes=os.environ.get("AGENTICLEDGER_OIDC_SCOPES") or "openid profile email",
         groups_claim=os.environ.get("AGENTICLEDGER_OIDC_GROUPS_CLAIM") or "groups",
         role_map=parse_role_map(os.environ.get("AGENTICLEDGER_OIDC_ROLE_MAP")),
+        scope_map=parse_scope_map(os.environ.get("AGENTICLEDGER_OIDC_SCOPE_MAP")),
         public_url=os.environ.get("AGENTICLEDGER_PUBLIC_URL") or None,
         idle_seconds=float(os.environ.get("AGENTICLEDGER_SESSION_IDLE_HOURS", "12")) * 3600,
         max_seconds=float(os.environ.get("AGENTICLEDGER_SESSION_MAX_HOURS", "168")) * 3600,

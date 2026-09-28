@@ -77,6 +77,39 @@ def parse_role_map(raw: Optional[str]) -> dict[str, str]:
     return out
 
 
+def parse_scope_map(raw: Optional[str]) -> dict[str, set[str]]:
+    """"team-alpha=alpha,team-alpha=alpha-infra,platform=beta" -> the
+    projects each group may see. A group may appear more than once."""
+    out: dict[str, set[str]] = {}
+    for pair in (raw or "").split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise ValueError(f"scope map entry {pair!r} must be group=project")
+        group, _, project = pair.partition("=")
+        group, project = group.strip(), project.strip()
+        if not group or not project:
+            raise ValueError(f"scope map entry {pair!r} must be group=project")
+        out.setdefault(group, set()).add(project)
+    return out
+
+
+def projects_for(groups: list[str], scope_map: dict[str, set[str]]) -> Optional[list[str]]:
+    """The projects a person's groups grant, or None when no group of
+    theirs is in the map: unscoped, they see everything their role allows.
+    A scoped person sees exactly the union of their groups' projects."""
+    if not scope_map:
+        return None
+    granted: set[str] = set()
+    hit = False
+    for group in groups:
+        if group in scope_map:
+            hit = True
+            granted |= scope_map[group]
+    return sorted(granted) if hit else None
+
+
 def role_for(groups: list[str], role_map: dict[str, str]) -> Optional[str]:
     """The highest role the person's groups grant, or None: refused."""
     best: Optional[str] = None
@@ -96,6 +129,7 @@ class OIDCConfig:
     scopes: str = DEFAULT_SCOPES
     groups_claim: str = DEFAULT_GROUPS_CLAIM
     role_map: dict[str, str] = field(default_factory=dict)
+    scope_map: dict[str, set[str]] = field(default_factory=dict)   # group -> projects
     public_url: Optional[str] = None         # the redirect base a browser can reach
     idle_seconds: float = DEFAULT_IDLE_HOURS * 3600
     max_seconds: float = DEFAULT_MAX_HOURS * 3600
@@ -265,6 +299,7 @@ class OIDCClient:
             "name": claims.get("name") or claims.get("preferred_username") or claims.get("email"),
             "groups": groups,
             "role": role_for(groups, self.config.role_map),
+            "projects": projects_for(groups, self.config.scope_map),
         }
 
 
@@ -297,5 +332,5 @@ def display_name(config: OIDCConfig) -> str:
 def signin_row(person: dict[str, Any]) -> dict[str, Any]:
     """The fields a person row exposes to the API (never the subject as an
     address, never internal ids beyond the one the API is keyed by)."""
-    return {k: person.get(k) for k in ("id", "email", "name", "role", "groups",
+    return {k: person.get(k) for k in ("id", "email", "name", "role", "groups", "projects",
                                        "created_at", "last_login_at")}

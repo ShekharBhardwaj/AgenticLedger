@@ -188,13 +188,14 @@ def _run_status(run: dict, ended_at=None, stopped: bool = False) -> dict:
         run, explicitly_ended=end_marker_holds(run, ended_at), stopped=stopped)
 
 
-async def handle_mcp(request: Request) -> JSONResponse:
-    """HTTP transport: POST /mcp on the proxy."""
+async def handle_mcp(request: Request, scope=None) -> JSONResponse:
+    """HTTP transport: POST /mcp on the proxy. `scope` (0.16) filters what
+    a scoped person's model may read; None reads everything."""
     try:
         body = await request.json()
     except Exception:
         return JSONResponse(_err(None, -32700, "Parse error"), status_code=400)
-    response = await dispatch_message(body, request.app.state.store)
+    response = await dispatch_message(body, request.app.state.store, scope=scope)
     return JSONResponse(response if response is not None else {})
 
 
@@ -235,7 +236,7 @@ def _call_summary(index: int, r: dict) -> dict:
     }
 
 
-async def dispatch_message(body: dict, store) -> Any:
+async def dispatch_message(body: dict, store, scope=None) -> Any:
     """Transport-neutral JSON-RPC dispatch — shared by the HTTP endpoint and
     the stdio server (`agenticledger mcp`). Returns a response dict, or None
     for notifications."""
@@ -257,18 +258,21 @@ async def dispatch_message(body: dict, store) -> Any:
         return _ok(id_, {"tools": _TOOLS})
 
     if method == "tools/call":
-        return await _call_tool(id_, params, store)
+        return await _call_tool(id_, params, store, scope)
 
     return _err(id_, -32601, f"Method not found: {method!r}")
 
 
-async def _call_tool(id_: Any, params: dict, store) -> dict:
+async def _call_tool(id_: Any, params: dict, store, scope=None) -> dict:
     name = params.get("name")
     args = params.get("arguments") or {}
+    # A scoped person's model sees what the person sees: rows outside the
+    # scope are dropped from lists and read as not found one by one.
+    allows = scope.allows_row if scope is not None else (lambda row: True)
 
     if name == "list_sessions":
         limit = max(1, min(int(args.get("limit", 20)), 100))
-        sessions = await store.list_sessions(limit=limit)
+        sessions = [r for r in await store.list_sessions(limit=limit) if allows(r)]
         return (_ok(id_, _text_content(json.dumps(sessions, indent=2, default=str))))
 
     if name == "explain":
@@ -276,7 +280,7 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         if not action_id:
             return (_err(id_, -32602, "action_id is required"))
         record = await store.get(action_id)
-        if record is None:
+        if record is None or not allows(record):
             return (_err(id_, -32602, f"No record found for action_id {action_id!r}"))
         return (_ok(id_, _text_content(json.dumps(record, indent=2, default=str))))
 
@@ -285,6 +289,8 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         if not session_id:
             return (_err(id_, -32602, "session_id is required"))
         records = await store.get_session(session_id)
+        if records and not allows(records[0]):
+            records = []
         if not records:
             return (_err(id_, -32602, f"No records found for session_id {session_id!r}"))
         if not args.get("include_messages"):
@@ -296,7 +302,7 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         if not query:
             return (_err(id_, -32602, "query is required"))
         limit = max(1, min(int(args.get("limit", 20)), 100))
-        results = await store.search(query, limit=limit)
+        results = [r for r in await store.search(query, limit=limit) if allows(r)]
         if not results:
             return (_ok(id_, _text_content(f"No results found for query {query!r}")))
         if not args.get("include_messages"):
@@ -305,7 +311,7 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
 
     if name == "list_runs":
         limit = max(1, min(int(args.get("limit", 20)), 100))
-        raw = await store.list_runs(limit=limit)
+        raw = [r for r in await store.list_runs(limit=limit) if allows(r)]
         ended = await store.get_run_end_markers([r["run_id"] for r in raw])
         stopped = set((await store.get_labels("stopped")).keys())
         runs = [_run_status(r, ended_at=ended.get(r["run_id"]),
@@ -317,7 +323,7 @@ async def _call_tool(id_: Any, params: dict, store) -> dict:
         if not run_id:
             return (_err(id_, -32602, "run_id is required"))
         run = await store.get_run(run_id)
-        if run is None:
+        if run is None or not allows(run):
             return (_err(id_, -32602, f"No run found for run_id {run_id!r}"))
         ended = await store.get_run_end_markers([run_id])
         stopped = set((await store.get_labels("stopped")).keys())

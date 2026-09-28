@@ -9,6 +9,7 @@ import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, RUN_
 import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
 import { Breadcrumb, CostChart, Icon, SessionMetrics } from "../LedgerVisuals";
+import { useScope } from "../scope";
 import { LabelMark } from "../LabelMarks";
 
 function cacheStats(side: { cache_read_tokens: number | null; cache_write_tokens: number | null }): string {
@@ -484,6 +485,7 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
   const [oldestFirst, setOldestFirst] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const scope = useScope();
   // #122: paged loading with the project filter applied server-side, so a
   // filtered view reaches the whole history. Refs keep refresh's identity.
   const PAGE = 50;
@@ -773,6 +775,12 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
           <div className="empty">Search failed: {searchError} <button className="link-btn" onClick={() => setQuery((q) => q + " ")}>Retry</button></div>
         ) : loadError && sessions.length === 0 ? (
           <div className="empty">Could not load sessions: {loadError} <button className="link-btn" onClick={refresh}>Retry</button></div>
+        ) : sessions.length === 0 && results === null && scope ? (
+          <div className="empty">
+            Nothing is filed under your projects yet ({scope.join(", ")}).
+            <br />
+            <span className="muted">Sessions appear here once someone files them under one of your projects.</span>
+          </div>
         ) : sessions.length === 0 && results === null ? (
           <WiringGuide />
         ) : shown.length === 0 ? (

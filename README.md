@@ -635,6 +635,7 @@ env-always-wins rule.
 | `AGENTICLEDGER_PORT` | No | `8000` | Port to run on. |
 | `AGENTICLEDGER_API_KEY` | No | _(none)_ | Master admin key. When set, the dashboard, read, and management endpoints require authentication; the key grants the `admin` role and bootstraps API tokens (below). Skip for local dev; set when the proxy is on a server - you choose the value. |
 | `AGENTICLEDGER_OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` | No | _(none)_ | Sign in with an identity provider (OpenID Connect, code flow with PKCE). `_ROLE_MAP` (`group=role,...`) decides roles; unmapped people are refused. `_GROUPS_CLAIM` (`groups`), `_SCOPES`, `_PROVIDER_NAME` optional. The redirect uses `AGENTICLEDGER_PUBLIC_URL`. |
+| `AGENTICLEDGER_OIDC_SCOPE_MAP` | No | _(none)_ | `group=project,...` (a group may repeat): people in a mapped group see only those projects, everywhere the ledger reads; unfiled work is invisible to them. People in no mapped group are unscoped. |
 | `AGENTICLEDGER_SESSION_IDLE_HOURS` / `_MAX_HOURS` | No | `12` / `168` | How long a sign-in lives: idle limit, and the absolute limit. |
 | `AGENTICLEDGER_INGEST_KEY` | No | _(none)_ | When set, the proxy forwards a request only if it carries a matching `x-agenticledger-ingest-key` header - closing the open relay. Off by default; a loud startup warning fires when unset. |
 | `AGENTICLEDGER_REPLAY_API_KEY` | No | _(none)_ | Key for same-provider replay through the proxy's own upstream - the proxy never stores agent credentials, so re-execution needs its own. |
@@ -774,6 +775,8 @@ AGENTICLEDGER_PUBLIC_URL=https://ledger.example.com          # the redirect back
 ```
 
 Register `https://ledger.example.com/auth/callback` as the redirect URI with the provider. A sign-in is a server-side row the browser holds a cookie for (httponly, SameSite=Lax, Secure over https): it ends after 12 idle hours or 7 days (`AGENTICLEDGER_SESSION_IDLE_HOURS`, `AGENTICLEDGER_SESSION_MAX_HOURS`), on Sign out, or when an admin ends it (`POST /api/people/{id}/signout`). Mutating requests that ride a cookie must come from the dashboard's own origin. Every audit row names the person by email. `GET /api/people` lists who has signed in, with their role and groups.
+
+**Scoped access.** `AGENTICLEDGER_OIDC_SCOPE_MAP=team-alpha=alpha,team-alpha=alpha-infra` makes anyone in `team-alpha` see exactly those projects: the lists, single sessions and runs, search, reports, exports, what-if, replay and the MCP tools all answer inside the scope, and anything outside it reads as not found. Work filed under no project is invisible to a scoped person until someone files it. A person in no mapped group is unscoped and sees everything their role allows, as before. Scoped editors can file work only under their own projects.
 
 To try it without a provider: `agenticledger idp` runs a test provider on loopback with four fake people (alice is an admin, dave has no mapped group), prints the four lines to set, and says on every page that it is not for production.
 

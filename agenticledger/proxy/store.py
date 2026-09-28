@@ -147,8 +147,20 @@ def _iteration_row(d: dict) -> dict:
     return d
 
 
+def _signin_scope(row: dict[str, Any]) -> dict[str, Any]:
+    """The projects column back to a list (None stays None: unscoped)."""
+    raw = row.get("projects")
+    if isinstance(raw, str):
+        try:
+            row["projects"] = json.loads(raw)
+        except ValueError:
+            row["projects"] = []
+    return row
+
+
 def _person_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Groups back to a list, timestamps to ISO, for the API."""
+    """Groups and projects back to lists, timestamps to ISO, for the API."""
+    _signin_scope(row)
     raw = row.get("groups")
     if isinstance(raw, str):
         try:
@@ -481,7 +493,7 @@ class Store(ABC):
     @abstractmethod
     async def upsert_person(self, issuer: str, subject: str, *, email: Optional[str],
                             name: Optional[str], role: str, groups: list[str],
-                            now: float) -> dict[str, Any]:
+                            projects: Optional[list[str]], now: float) -> dict[str, Any]:
         """The person behind an identity-provider subject, created on first
         sign-in and refreshed on every later one (role and groups follow the
         provider). Returns the row."""
@@ -677,11 +689,14 @@ class _SqliteStore(Store):
                 name          TEXT,
                 role          TEXT NOT NULL,
                 groups        TEXT,
+                projects      TEXT,
                 created_at    REAL NOT NULL,
                 last_login_at REAL NOT NULL,
                 UNIQUE (issuer, subject)
             )
         """)
+        with contextlib.suppress(Exception):
+            await db.execute("ALTER TABLE people ADD COLUMN projects TEXT")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS signins (
                 id           TEXT PRIMARY KEY,
@@ -1368,18 +1383,21 @@ class _SqliteStore(Store):
         await self._db.commit()
         return deleted
 
-    async def upsert_person(self, issuer, subject, *, email, name, role, groups, now):
+    async def upsert_person(self, issuer, subject, *, email, name, role, groups, projects, now):
         async with self._db.execute(
             "SELECT id FROM people WHERE issuer = ? AND subject = ?", (issuer, subject)
         ) as cur:
             row = await cur.fetchone()
         person_id = row["id"] if row else str(uuid.uuid4())
+        scope = json.dumps(list(projects)) if projects is not None else None
         await self._db.execute(
-            "INSERT INTO people (id, issuer, subject, email, name, role, groups, created_at, "
-            "last_login_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            "INSERT INTO people (id, issuer, subject, email, name, role, groups, projects, "
+            "created_at, last_login_at) VALUES (?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(issuer, subject) DO UPDATE SET email=excluded.email, name=excluded.name, "
-            "role=excluded.role, groups=excluded.groups, last_login_at=excluded.last_login_at",
-            (person_id, issuer, subject, email, name, role, json.dumps(list(groups)), now, now),
+            "role=excluded.role, groups=excluded.groups, projects=excluded.projects, "
+            "last_login_at=excluded.last_login_at",
+            (person_id, issuer, subject, email, name, role, json.dumps(list(groups)), scope,
+             now, now),
         )
         await self._db.commit()
         return await self.get_person(person_id)
@@ -1407,11 +1425,11 @@ class _SqliteStore(Store):
     async def get_signin(self, signin_id: str) -> Optional[dict[str, Any]]:
         async with self._db.execute(
             "SELECT s.id, s.person_id, s.created_at, s.last_seen_at, s.expires_at, s.client, "
-            "p.role, p.email, p.name FROM signins s JOIN people p ON p.id = s.person_id "
+            "p.role, p.email, p.name, p.projects FROM signins s JOIN people p ON p.id = s.person_id "
             "WHERE s.id = ? AND s.revoked_at IS NULL", (signin_id,)
         ) as cur:
             row = await cur.fetchone()
-        return dict(row) if row else None
+        return _signin_scope(dict(row)) if row else None
 
     async def touch_signin(self, signin_id: str, now: float) -> None:
         await self._db.execute("UPDATE signins SET last_seen_at = ? WHERE id = ?", (now, signin_id))
@@ -1712,11 +1730,13 @@ class _PostgresStore(Store):
                     name          TEXT,
                     role          TEXT NOT NULL,
                     groups        TEXT,
+                    projects      TEXT,
                     created_at    DOUBLE PRECISION NOT NULL,
                     last_login_at DOUBLE PRECISION NOT NULL,
                     UNIQUE (issuer, subject)
                 )
             """)
+            await conn.execute("ALTER TABLE people ADD COLUMN IF NOT EXISTS projects TEXT")
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS signins (
                     id           TEXT PRIMARY KEY,
@@ -2409,18 +2429,20 @@ class _PostgresStore(Store):
             )
         return int(result.split()[-1])  # "DELETE N"
 
-    async def upsert_person(self, issuer, subject, *, email, name, role, groups, now):
+    async def upsert_person(self, issuer, subject, *, email, name, role, groups, projects, now):
+        scope = json.dumps(list(projects)) if projects is not None else None
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT id FROM people WHERE issuer = $1 AND subject = $2", issuer, subject)
             person_id = row["id"] if row else str(uuid.uuid4())
             await conn.execute(
-                "INSERT INTO people (id, issuer, subject, email, name, role, groups, created_at, "
-                "last_login_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) "
+                "INSERT INTO people (id, issuer, subject, email, name, role, groups, projects, "
+                "created_at, last_login_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) "
                 "ON CONFLICT (issuer, subject) DO UPDATE SET email=EXCLUDED.email, "
                 "name=EXCLUDED.name, role=EXCLUDED.role, groups=EXCLUDED.groups, "
-                "last_login_at=EXCLUDED.last_login_at",
-                person_id, issuer, subject, email, name, role, json.dumps(list(groups)), now, now)
+                "projects=EXCLUDED.projects, last_login_at=EXCLUDED.last_login_at",
+                person_id, issuer, subject, email, name, role, json.dumps(list(groups)), scope,
+                now, now)
         return await self.get_person(person_id)
 
     async def get_person(self, person_id: str) -> Optional[dict[str, Any]]:
@@ -2446,9 +2468,9 @@ class _PostgresStore(Store):
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT s.id, s.person_id, s.created_at, s.last_seen_at, s.expires_at, s.client, "
-                "p.role, p.email, p.name FROM signins s JOIN people p ON p.id = s.person_id "
+                "p.role, p.email, p.name, p.projects FROM signins s JOIN people p ON p.id = s.person_id "
                 "WHERE s.id = $1 AND s.revoked_at IS NULL", signin_id)
-        return _pg_plain(row) if row else None
+        return _signin_scope(_pg_plain(row)) if row else None
 
     async def touch_signin(self, signin_id: str, now: float) -> None:
         async with self._pool.acquire() as conn:

@@ -11,6 +11,7 @@ import { setLabel } from "../api";
 import ProviderMark from "./ProviderMark";
 import BatchReplay from "./BatchReplay";
 import { StopAllControl } from "../StopControls";
+import { useScope } from "../scope";
 import WhatIf from "./WhatIf";
 import { RaccoonHead } from "../Raccoon";
 import { Breadcrumb, CostChart, Icon, RunTimeline } from "../LedgerVisuals";
@@ -189,6 +190,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   }
   const [audit, setAudit] = useState<CacheAudit | null>(null);
   const [loaded, setLoaded] = useState(false);   // first /api/runs has settled
+  const scope = useScope();
   // #122: the sidebar loads a page and can keep loading older ones; the
   // project filter goes to the server so a filtered view reaches the
   // whole history, not the newest 50. Refs, so refresh keeps one identity
@@ -283,14 +285,24 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
         <p className="sidebar-caption">Every iteration, accounted for.</p>
         {error && <div className="empty">{error}</div>}
         {runs.length === 0 && !error && (
-          <div className="empty">
-            No loop runs yet.
-            <br />
-            <span className="muted">
-              Start one with <code>agenticledger run -- …</code> or send
-              x-agenticledger-run-id headers.
-            </span>
-          </div>
+          scope ? (
+            <div className="empty">
+              Nothing is filed under your projects yet ({scope.join(", ")}).
+              <br />
+              <span className="muted">
+                Runs appear here once someone files them under one of your projects.
+              </span>
+            </div>
+          ) : (
+            <div className="empty">
+              No loop runs yet.
+              <br />
+              <span className="muted">
+                Start one with <code>agenticledger run -- …</code> or send
+                x-agenticledger-run-id headers.
+              </span>
+            </div>
+          )
         )}
         <ProjectFilter projects={projects} value={projectFilter} onChange={changeFilter}
                        runGroups={[...new Set(runs.filter((x) => !x.project).map((x) => x.run_id))]}
@@ -549,6 +561,14 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                 </>
               );
             })()}
+          </div>
+        ) : !detail && scope ? (
+          <div className="landing landing-first">
+            <div className="section-title">Nothing filed under your projects yet</div>
+            <div className="landing-quiet">
+              You are scoped to {scope.join(", ")}. Runs and sessions appear here once
+              someone files them under one of those projects.
+            </div>
           </div>
         ) : !detail ? (
           <div className="landing landing-first">

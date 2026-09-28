@@ -923,8 +923,10 @@ def create_app(
             row["last_seen_at"] = now
             with suppress(Exception):
                 await carrier.app.state.store.touch_signin(signin_id, now)
+        projects = row.get("projects")
         return Principal(row["role"], "sso", None, row.get("email") or row.get("name"),
-                         person_id=row["person_id"], signin_id=signin_id)
+                         person_id=row["person_id"], signin_id=signin_id,
+                         projects=None if projects is None else frozenset(projects))
 
     def _same_origin(request: Request) -> bool:
         """A cookie is an ambient credential, so a mutating request must
@@ -1278,15 +1280,18 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         now = time.time()
         person = await request.app.state.store.upsert_person(
             oidc_config.issuer, who["subject"], email=who.get("email"), name=who.get("name"),
-            role=who["role"], groups=who["groups"], now=now)
+            role=who["role"], groups=who["groups"], projects=who.get("projects"), now=now)
         signin_id = secrets.token_urlsafe(32)
         await request.app.state.store.create_signin(
             signin_id, person["id"], now=now, expires_at=now + oidc_config.max_seconds,
             client=_effective_client_host(request))
+        scoped = who.get("projects")
         principal = Principal(who["role"], "sso", None, label,
-                              person_id=person["id"], signin_id=signin_id)
+                              person_id=person["id"], signin_id=signin_id,
+                              projects=None if scoped is None else frozenset(scoped))
         await _audit(principal, request, "login", person["id"],
-                     f"role={who['role']} via {display_name(oidc_config)}")
+                     f"role={who['role']} via {display_name(oidc_config)}"
+                     + (f" scope={','.join(scoped)}" if scoped is not None else ""))
         response = RedirectResponse(pending["next"], status_code=302)
         response.set_cookie(
             _SIGNIN_COOKIE, signin_id, max_age=int(oidc_config.max_seconds), path="/",
@@ -1401,11 +1406,90 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                     r["project_auto"] = True
         return rows
 
+    class _Scope:
+        """What a request may see. `projects` None means everything the role
+        allows (keys, the master key, the open local dashboard, unscoped
+        people). A scoped person sees exactly their projects; work filed
+        under no project is invisible to them (the operator's decision,
+        recorded in GAMEPLAN under 0.16). Built once per request with the
+        three label sources loaded, so every check is a dict lookup."""
+
+        def __init__(self, projects, labels_session: dict, labels_run: dict,
+                     rules: dict):
+            self.projects = None if projects is None else frozenset(projects)
+            self._sessions = labels_session
+            self._runs = labels_run
+            self._rules = rules
+
+        @property
+        def unscoped(self) -> bool:
+            return self.projects is None
+
+        def project_of(self, row: dict) -> Optional[str]:
+            """A row's project by the same rule the sidebar files by: the
+            row's own label, else its app's binding, else its run's
+            label. Works for sessions, runs, calls and totals rows."""
+            sid = row.get("session_id")
+            rid = row.get("run_id")
+            own = None
+            if sid:
+                own = (self._sessions.get(sid) or {}).get("project")
+            elif rid:
+                own = (self._runs.get(rid) or {}).get("project")
+            if own:
+                return own
+            bound = self._rules.get(row.get("app_id") or "")
+            if bound:
+                return bound
+            if sid and rid:
+                return (self._runs.get(rid) or {}).get("project")
+            return None
+
+        def allows_project(self, project: Optional[str]) -> bool:
+            return self.unscoped or (project is not None and project in self.projects)
+
+        def allows_row(self, row: dict) -> bool:
+            return self.unscoped or self.allows_project(self.project_of(row))
+
+        def keep(self, rows: list) -> list:
+            return rows if self.unscoped else [r for r in rows if self.allows_row(r)]
+
+    async def _scope_for(request: Request, principal: Principal) -> "_Scope":
+        if principal.projects is None:
+            return _Scope(None, {}, {}, {})
+        store = request.app.state.store
+        return _Scope(principal.projects, await store.get_labels("session"),
+                      await store.get_labels("run"), await store.get_project_rules())
+
+    async def _session_row(store, session_id: str) -> Optional[dict]:
+        """Enough of a session to place it: its id, app and run."""
+        calls = await store.get_session(session_id)
+        return calls[0] if calls else None
+
     async def _run_project_map(store) -> dict:
         """run_id → explicitly assigned project, for session inheritance."""
         return {rid: lab["project"]
                 for rid, lab in (await store.get_labels("run")).items()
                 if lab.get("project")}
+
+    async def _run_in_scope(request: Request, principal: Principal, run_id: str) -> dict:
+        """The run, when it exists and the person may see it; 404 otherwise,
+        the same answer for both so existence is not revealed."""
+        run = await request.app.state.store.get_run(run_id)
+        if run is None or not (await _scope_for(request, principal)).allows_row(run):
+            raise HTTPException(status_code=404, detail="run_id not found")
+        return run
+
+    async def _scope_report(request: Request, principal: Principal, scope_ids, totals):
+        """Narrow a report's session set to the person's scope: the
+        per-session rows drop out-of-scope sessions, and the aggregate
+        queries run over exactly the ids that remain (an empty scope is an
+        empty report, not the whole ledger)."""
+        scope = await _scope_for(request, principal)
+        if scope.unscoped:
+            return scope_ids, totals
+        kept = [st for st in totals if scope.allows_row(st)]
+        return [st["session_id"] for st in kept], kept
 
     async def _project_session_scope(store, since_ts: float, project: str):
         """Resolve a project filter (a name, or "run:<id>" for a run-default
@@ -1524,11 +1608,12 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         run:<id>), run_id, model (substring), since and until (ISO, on the
         last call), q (session id, label or agent). Page with limit and
         offset; X-Total-Count, X-Next-Offset in the headers."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
         store = request.app.state.store
         q = request.query_params
         since, until = _time_param(request, "since"), _time_param(request, "until")
-        sessions = await store.list_sessions(limit=_HISTORY_CAP)
+        scope = await _scope_for(request, principal)
+        sessions = scope.keep(await store.list_sessions(limit=_HISTORY_CAP))
         sessions = _annotate_labels(
             sessions, await store.get_labels("session"), "session_id",
             await store.get_project_rules(),
@@ -1549,16 +1634,17 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         (substring), since and until (ISO, on the last call), q (run id or
         label). Page with limit and offset; X-Total-Count, X-Next-Offset in
         the headers."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
         store = request.app.state.store
         q = request.query_params
         since, until = _time_param(request, "since"), _time_param(request, "until")
+        scope = await _scope_for(request, principal)
         status = (q.get("status") or "").strip().lower()
         if status and status not in ("running", "flagged", "complete", "ended", "stopped"):
             raise HTTPException(status_code=400,
                                 detail="status must be one of running, flagged, complete, "
                                        "ended, stopped")
-        runs = await store.list_runs(limit=_HISTORY_CAP)
+        runs = scope.keep(await store.list_runs(limit=_HISTORY_CAP))
         ended = await store.get_run_end_markers([r["run_id"] for r in runs])
         runs = _annotate_labels(runs, await store.get_labels("run"), "run_id",
                                 await store.get_project_rules())
@@ -1582,8 +1668,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         of waiting for the inactivity window. Idempotent."""
         principal = await _require(request, ROLE_EDITOR)
         store = request.app.state.store
-        if await store.get_run(run_id) is None:
-            raise HTTPException(status_code=404, detail="run_id not found")
+        await _run_in_scope(request, principal, run_id)
         await _audit(principal, request, "run_end", run_id, "runner exit signal")
         await store.mark_run_ended(run_id, time.time())
         return JSONResponse({"run_id": run_id, "status": "ended"})
@@ -1631,7 +1716,12 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def api_loop_block_state(session_id: str, request: Request) -> JSONResponse:
         """Whether the loop circuit breaker is holding this session, and why.
         Live tracker state: what the wall would do to the next call."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        scope = await _scope_for(request, principal)
+        if not scope.unscoped:
+            head = await _session_row(request.app.state.store, session_id)
+            if head is None or not scope.allows_row(head):
+                raise HTTPException(status_code=404, detail="session_id not found")
         reason = _loop_tracker.check_block(session_id) if _loop_action == "block" else None
         return JSONResponse({"session_id": session_id, "blocked": bool(reason),
                              "reason": reason})
@@ -1641,6 +1731,11 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         """Lift a loop block without a restart: the guards re-arm from now,
         so the same loop trips the wall again only by repeating itself."""
         principal = await _require(request, ROLE_EDITOR)
+        scope = await _scope_for(request, principal)
+        if not scope.unscoped:
+            head = await _session_row(request.app.state.store, session_id)
+            if head is None or not scope.allows_row(head):
+                raise HTTPException(status_code=404, detail="session_id not found")
         await _audit(principal, request, "loop_block_lift", session_id,
                      "loop guard lifted; guards re-armed from now")
         lifted = _loop_tracker.lift_block(session_id)
@@ -1652,8 +1747,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         until resumed. The run keeps its history; nothing is deleted."""
         principal = await _require(request, ROLE_EDITOR)
         store = request.app.state.store
-        if await store.get_run(run_id) is None:
-            raise HTTPException(status_code=404, detail="run_id not found")
+        await _run_in_scope(request, principal, run_id)
         await _audit(principal, request, "run_stop", run_id,
                      "operator kill switch engaged")
         await store.set_label("stopped", run_id, name="operator")
@@ -1716,6 +1810,12 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         principal = await _require(request, ROLE_EDITOR)
         if scope not in ("session", "run"):
             raise HTTPException(status_code=400, detail="scope must be session or run")
+        visible = await _scope_for(request, principal)
+        if not visible.unscoped:
+            head = (await _session_row(request.app.state.store, ref_id) if scope == "session"
+                    else await request.app.state.store.get_run(ref_id))
+            if head is None or not visible.allows_row(head):
+                raise HTTPException(status_code=404, detail=f"{scope} not found")
         try:
             payload = await request.json()
         except Exception:
@@ -1725,6 +1825,9 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             if val is not None and (not isinstance(val, str) or len(val) > limit):
                 raise HTTPException(status_code=400,
                                     detail=f"{field} must be a string ≤ {limit} chars")
+        if payload.get("project") and not visible.allows_project(payload["project"]):
+            raise HTTPException(status_code=403,
+                                detail="You can file work only under a project in your scope.")
         if "pinned" in payload and not isinstance(payload["pinned"], bool):
             raise HTTPException(status_code=400, detail="pinned must be true/false")
         budget = payload.get("budget_usd")
@@ -1773,12 +1876,13 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
 
     @app.get("/api/projects")
     async def api_projects(request: Request) -> JSONResponse:
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
         store = request.app.state.store
         rules = await store.get_project_rules()
-        bound = {proj: app_id for app_id, proj in rules.items()}
+        scope = await _scope_for(request, principal)
+        bound = {proj: app_id for app_id, proj in rules.items() if scope.allows_project(proj)}
         return JSONResponse({
-            "projects": await store.list_projects(),
+            "projects": [p for p in await store.list_projects() if scope.allows_project(p)],
             "bindings": bound,   # project → app id it auto-files from
         })
 
@@ -2126,9 +2230,9 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def api_get_call(action_id: str, request: Request) -> JSONResponse:
         """One call by id — lets the dashboard follow a replay's
         parent_action_id back to the original call's session."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
         row = await request.app.state.store.get(action_id)
-        if row is None:
+        if row is None or not (await _scope_for(request, principal)).allows_row(row):
             raise HTTPException(status_code=404, detail="action_id not found")
         return JSONResponse(row)
 
@@ -2304,6 +2408,8 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             return JSONResponse({"error": "invalid JSON"}, status_code=400)
         action_id = str(payload.get("action_id") or "").strip()
         original = await request.app.state.store.get(action_id) if action_id else None
+        if original is not None and not (await _scope_for(request, principal)).allows_row(original):
+            original = None
         if original is None:
             raise HTTPException(status_code=404, detail="action_id not found")
         reason = replayable_reason(original)
@@ -2363,6 +2469,8 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         store = request.app.state.store
         calls = (await store.get_run_calls(run_id) if run_id
                  else await store.get_session(session_id))
+        if calls and not (await _scope_for(request, principal)).allows_row(calls[0]):
+            calls = []
         # Replays of replays and metering calls are noise, not steps.
         steps = [c for c in calls if c.get("framework") != "replay"]
         if not steps:
@@ -2508,7 +2616,8 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                               replay_session_id: str = "") -> JSONResponse:
         """Batch jobs, filterable — lets the panel reopen a finished report
         card, and lets a replay session point back at its comparison."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        _visible = await _scope_for(request, principal)
         jobs = list(getattr(request.app.state, "replay_jobs", {}).values())
         if scope:
             jobs = [j for j in jobs if j["scope"] == scope]
@@ -2528,6 +2637,15 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                 if card:
                     jobs = [card]
                     break
+        if not _visible.unscoped:
+            # A scoped person sees the jobs of what they may see.
+            kept = []
+            for j in jobs:
+                head = (await request.app.state.store.get_run(j["ref_id"]) if j["scope"] == "run"
+                        else await _session_row(request.app.state.store, j["ref_id"]))
+                if head is not None and _visible.allows_row(head):
+                    kept.append(j)
+            jobs = kept
         return JSONResponse({"jobs": [
             {**{k: j[k] for k in ("job_id", "scope", "ref_id", "model", "provider",
                                   "status", "done", "total", "replay_session_id")},
@@ -2550,7 +2668,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                          action_id: str = "") -> JSONResponse:
         """Reprice captured token counts against another model — pure math,
         zero API calls: 'this run on haiku would have cost $0.31'."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
         scopes = [("session_id", session_id), ("run_id", run_id), ("action_id", action_id)]
         chosen = [(f, v) for f, v in scopes if v.strip()]
         if len(chosen) != 1:
@@ -2560,6 +2678,16 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             )
         field, value = chosen[0]
         rows = await request.app.state.store.get_token_rows(field, value.strip())
+        visible = await _scope_for(request, principal)
+        if rows and not visible.unscoped:
+            # The token rows are slim (model and counts); place the target
+            # itself, whichever kind it is.
+            store = request.app.state.store
+            head = (await _session_row(store, value.strip()) if field == "session_id"
+                    else await store.get_run(value.strip()) if field == "run_id"
+                    else await store.get(value.strip()))
+            if head is None or not visible.allows_row(head):
+                rows = []
         if not rows:
             raise HTTPException(status_code=404, detail=f"no calls for {field}={value}")
         result = estimate_whatif(rows, model.strip(), infer_provider(model))
@@ -2590,6 +2718,8 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         store = request.app.state.store
         scope_ids, _totals_rows, _resolved = await _project_session_scope(
             store, _since, project)
+        scope_ids, _totals_rows = await _scope_report(
+            request, principal, scope_ids, _totals_rows)
         raw = await store.get_report_aggregates(
             _since, tz_offset_minutes=tz_offset_minutes,
             session_ids=scope_ids)
@@ -2642,8 +2772,9 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         days = max(1, min(days, 365))
         tz_offset_minutes = max(-840, min(tz_offset_minutes, 840))
         _since = time.time() - days * 86400
-        scope_ids, _, _ = await _project_session_scope(
+        scope_ids, _rows, _ = await _project_session_scope(
             request.app.state.store, _since, project)
+        scope_ids, _rows = await _scope_report(request, principal, scope_ids, _rows)
         raw = await request.app.state.store.get_report_aggregates(
             _since, tz_offset_minutes=tz_offset_minutes,
             session_ids=scope_ids)
@@ -2686,7 +2817,12 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:
         """Derived tool executions for a session — the proxy pairs each
         tool call with the result fed back in the following LLM call."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        scope = await _scope_for(request, principal)
+        if not scope.unscoped:
+            head = await _session_row(request.app.state.store, session_id)
+            if head is None or not scope.allows_row(head):
+                raise HTTPException(status_code=404, detail="session_id not found")
         tools = await request.app.state.store.get_tool_executions(session_id)
         return JSONResponse(tools)
 
@@ -2694,10 +2830,10 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def api_run_status(run_id: str, request: Request) -> JSONResponse:
         """Run status for loop runners: poll this between iterations and stop
         when status is 'complete' (completion promise seen) or on budget."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
         store = request.app.state.store
         run = await store.get_run(run_id)
-        if run is None:
+        if run is None or not (await _scope_for(request, principal)).allows_row(run):
             raise HTTPException(status_code=404, detail="run not found")
         ended = await store.get_run_end_markers([run["run_id"]])
         # #76 — the detail view must know the run's custom name too, or a
@@ -2716,7 +2852,8 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
 
     @app.get("/api/runs/{run_id}/iterations")
     async def api_run_iterations(run_id: str, request: Request) -> JSONResponse:
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        await _run_in_scope(request, principal, run_id)
         iterations = await request.app.state.store.get_run_iterations(run_id)
         return JSONResponse(iterations)
 
@@ -2726,7 +2863,8 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         for and did not receive — exact where the provider reported cache
         traffic, a stated-method estimate where it never did, and always a
         reason with a one-line fix."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        await _run_in_scope(request, principal, run_id)
         calls = await request.app.state.store.get_run_calls(run_id)
         if not calls:
             raise HTTPException(status_code=404, detail="run_id not found")
@@ -2737,13 +2875,19 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def api_run_flags(run_id: str, request: Request) -> JSONResponse:
         """The calls behind a run's flagged count, with enough context to
         understand each flag (session, iteration, step, tool calls)."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
+        await _run_in_scope(request, principal, run_id)
         flags = await request.app.state.store.get_flagged_calls(run_id)
         return JSONResponse(flags)
 
     @app.delete("/api/sessions/{session_id}")
     async def delete_session(session_id: str, request: Request) -> JSONResponse:
         principal = await _require(request, ROLE_EDITOR)
+        _visible = await _scope_for(request, principal)
+        if not _visible.unscoped:
+            _head = await _session_row(request.app.state.store, session_id)
+            if _head is None or not _visible.allows_row(_head):
+                raise HTTPException(status_code=404, detail="session_id not found")
         # Record before the effect: under AGENTICLEDGER_AUDIT_STRICT an
         # unrecordable deletion must not happen. The count is in the reply.
         await _audit(principal, request, "delete_session", session_id, "requested")
@@ -2791,8 +2935,20 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def api_notifications(request: Request, limit: int = 50) -> JSONResponse:
         """Delivery history: every notification sent, whether it landed,
         after how many tries, and why not."""
-        await _require(request, ROLE_VIEWER)
+        principal = await _require(request, ROLE_VIEWER)
         rows = await request.app.state.store.list_notifications(max(1, min(int(limit), 500)))
+        scope = await _scope_for(request, principal)
+        if not scope.unscoped:
+            kept = []
+            for r in rows:
+                kind, target = r.get("target_kind"), r.get("target_id")
+                if not target:
+                    continue   # fleet-wide events are not a scoped person's business
+                head = (await request.app.state.store.get_run(target) if kind == "run"
+                        else await _session_row(request.app.state.store, target))
+                if head is not None and scope.allows_row(head):
+                    kept.append(r)
+            rows = kept
         return JSONResponse({
             "enabled": _notifier.enabled,
             "format": _notifier.format if _notifier.enabled else None,
@@ -2900,6 +3056,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             "team": principal.name if is_card else None,
             "dashboard": role_satisfies(principal.role, ROLE_VIEWER),
             "person_id": principal.person_id,
+            "projects": sorted(principal.projects) if principal.projects is not None else None,
         })
 
     # ── API token management (admin only) ─────────────────────────────────────
@@ -2980,7 +3137,8 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         principal = await _require(request, ROLE_VIEWER)
         if not q.strip():
             return JSONResponse([])
-        results = await request.app.state.store.search(q.strip())
+        scope = await _scope_for(request, principal)
+        results = scope.keep(await request.app.state.store.search(q.strip()))
         await _audit(principal, request, "search", q.strip()[:200])
         return JSONResponse(results)
 
@@ -2988,7 +3146,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def explain(action_id: str, request: Request) -> JSONResponse:
         principal = await _require(request, ROLE_VIEWER)
         record = await request.app.state.store.get(action_id)
-        if record is None:
+        if record is None or not (await _scope_for(request, principal)).allows_row(record):
             raise HTTPException(status_code=404, detail="action_id not found")
         await _audit(principal, request, "explain", action_id)
         return JSONResponse(record)
@@ -2997,7 +3155,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def session(session_id: str, request: Request) -> JSONResponse:
         principal = await _require(request, ROLE_VIEWER)
         records = await request.app.state.store.get_session(session_id)
-        if not records:
+        if not records or not (await _scope_for(request, principal)).allows_row(records[0]):
             raise HTTPException(status_code=404, detail="session_id not found")
         await _audit(principal, request, "view_session", session_id)
         return JSONResponse(records)
@@ -3008,7 +3166,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def export_json(session_id: str, request: Request) -> Response:
         principal = await _require(request, ROLE_VIEWER)
         calls = await request.app.state.store.get_session(session_id)
-        if not calls:
+        if not calls or not (await _scope_for(request, principal)).allows_row(calls[0]):
             raise HTTPException(status_code=404, detail="session_id not found")
         await _audit(principal, request, "export_session", session_id)
         export = build_export(session_id, calls)
@@ -3023,7 +3181,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
     async def export_report(session_id: str, request: Request) -> HTMLResponse:
         principal = await _require(request, ROLE_VIEWER)
         calls = await request.app.state.store.get_session(session_id)
-        if not calls:
+        if not calls or not (await _scope_for(request, principal)).allows_row(calls[0]):
             raise HTTPException(status_code=404, detail="session_id not found")
         await _audit(principal, request, "export_report", session_id)
         export = build_export(session_id, calls)
@@ -3045,7 +3203,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             target = (params.get("name") if method == "tools/call" and isinstance(params, dict)
                       else method)
         await _audit(principal, request, "mcp_call", target)
-        return await handle_mcp(request)
+        return await handle_mcp(request, scope=await _scope_for(request, principal))
 
     # ── OTLP ingest (OTel-native frameworks) ─────────────────────────────────
     # Registered before the catch-all proxy so OTLP paths never forward

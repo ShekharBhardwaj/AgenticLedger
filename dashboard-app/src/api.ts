@@ -47,6 +47,7 @@ export function plural(n: number | null | undefined, word: string): string {
 }
 
 export interface WhoAmI {
+  projects?: string[] | null;
   auth: boolean;          // false = server has no key configured, all open
   role: string;
   source: string;         // "open" | "master" | "token"
