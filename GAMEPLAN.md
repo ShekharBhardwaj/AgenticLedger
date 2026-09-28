@@ -246,7 +246,57 @@ report card, settings editing from the UI.
 Build order A → B → C → D, user-zero hands on every seam, tag on the
 word — the 0.9.2 retest discipline is the permanent process now.
 
-## Where the plan stands (2026-09-26)
+## Where the plan stands (2026-09-27)
+
+**0.15 "The wall holds" is built, on main, every commit green across
+the nine CI jobs, and running on user zero's own machine.** The slate
+shipped as written, in this order: batch one (hour-one failures and
+claims ahead of evidence); #124 admission-time budget reservations,
+proven by a concurrent test; the audit trail (hash-chained and keyed,
+verify endpoint, strict mode, failed logins and MCP reads recorded,
+forwarded address, stdout and OTLP forwarding, filters, paging and a
+dashboard view); fleet refusal controls (stop all calls persisted
+across restarts, model and provider allow and deny lists fleet-wide
+and per team card with the card only narrowing, every refusal
+recorded and counted by reason, loop blocks liftable from the
+session); credentials never in URLs (pairing link in the fragment,
+websocket tickets, query-string keys refused, verified by user zero on
+the phone); the compliance document set (data flow with a diagram,
+processing record and DPA annex, subprocessor statement, HIPAA
+posture, SOC 2 and ISO 27001 control mapping with evidence per row,
+and the support window: latest minor gets every fix, the previous
+minor security fixes for 90 days, removals announced a minor ahead);
+#123 notifications through one door with retries, deduplication, a
+delivery history, native Slack, Discord and PagerDuty shapes and
+end-of-run summaries; and #122 complete history: paged, filtered
+lists with real totals and a link to a single call. Alongside, a
+feature user zero asked for by screenshot: an icon and color on any
+run or session, from a Notion-style picker, built by a workflow of
+seven agents and reviewed on three lenses before it landed. The
+dashboard wordmark now reads as the website sets it.
+
+**One slate item moved.** The versioned API is deferred to 0.17
+"Platform" next to the locked migrations: two versioned endpoints
+would have been half a pattern, and the pagination shipped without
+changing the shape existing clients read, so nothing is owed to
+anyone yet.
+
+**What the release pass checked.** Docs, guides and the compliance
+set were audited against the code before the tag: three claims in
+the compliance drafts turned out wrong on inspection (OTel spans
+carry metadata only, Dependabot covers pip and Actions, the container
+is read-only by run flags) and were corrected before commit; the
+ROADMAP hash-chain and "planned for 0.15" lines now say shipped. The
+site copy and the demo recording are user zero's, as before.
+
+**Next: 0.16 "Identity", unchanged.** OIDC with PKCE against a local
+test identity provider first, group-to-role mapping, cookie sessions
+with logout and timeouts, CSRF on mutating routes, a real person
+behind every audit row, then team and project scoping enforced in
+every read. The 0.17 slate gains the versioned API. Everything else
+in the 2026-09-26 entry stands.
+
+## Where the plan stood (2026-09-26)
 
 **Three releases shipped since the last entry.** v0.13.0 "Nothing
 wasted" tagged 2026-09-15 after the release-docs audit: an independent

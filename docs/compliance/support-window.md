@@ -18,6 +18,16 @@ Worked example: 0.15.0 ships. 0.14.x keeps receiving security fixes
 until 90 days after the 0.15.0 release date; 0.13.x and earlier receive
 nothing. When 0.16.0 ships, 0.15.x enters its 90-day tail.
 
+## Deprecation notice
+
+A setting, endpoint, header or payload field that is going away is
+announced in the changelog at least one minor release before it is
+removed, keeps working through that release with a note in the docs,
+and its removal is listed under Changed in the release that removes
+it. Removals never land in a patch release. The one exception is a
+security fix that cannot keep the old behaviour, which says so in its
+entry.
+
 ## How fixes ship
 
 A fix is a tag. Tagging triggers the release pipeline
