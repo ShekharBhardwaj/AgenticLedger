@@ -280,6 +280,9 @@ table.grid, .rtable { background: var(--bg-card); border: 1px solid var(--border
 .sidebar .title-with-chip .title-text { display: block; line-height: 1.5; }
 .sidebar .run-chip { display: inline-block; margin: 6px 0 0; max-width: 100%; vertical-align: middle; }
 
+/* 0.16: sign in with the identity provider, from the access panel. */
+.sso-btn { display: block; width: 100%; box-sizing: border-box; text-align: center; margin: 0 0 10px; text-decoration: none; }
+
 /* #122: the sidebar keeps loading older history; a linked call stands out. */
 .load-older { display: block; width: calc(100% - 24px); margin: 10px 12px 14px; text-align: center; }
 .call-card.focused { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }

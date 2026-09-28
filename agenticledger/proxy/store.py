@@ -16,6 +16,7 @@ import datetime
 import datetime as _dt
 import decimal as _decimal
 import json
+import time
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Optional
@@ -144,6 +145,21 @@ def _iteration_row(d: dict) -> dict:
     if d.get("cost_usd") is not None:
         d["cost_usd"] = float(d["cost_usd"])
     return d
+
+
+def _person_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Groups back to a list, timestamps to ISO, for the API."""
+    raw = row.get("groups")
+    if isinstance(raw, str):
+        try:
+            row["groups"] = json.loads(raw)
+        except ValueError:
+            row["groups"] = []
+    for col in ("created_at", "last_login_at"):
+        val = row.get(col)
+        if isinstance(val, (int, float)):
+            row[col] = datetime.datetime.fromtimestamp(val, tz=datetime.timezone.utc).isoformat()
+    return row
 
 
 def _notification_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -461,6 +477,45 @@ class Store(ABC):
             self.audit_hmac_key = None
         return self._audit_lock
 
+    # ── people and sign-ins (0.16 identity) ──────────────────────────────
+    @abstractmethod
+    async def upsert_person(self, issuer: str, subject: str, *, email: Optional[str],
+                            name: Optional[str], role: str, groups: list[str],
+                            now: float) -> dict[str, Any]:
+        """The person behind an identity-provider subject, created on first
+        sign-in and refreshed on every later one (role and groups follow the
+        provider). Returns the row."""
+        ...
+
+    @abstractmethod
+    async def get_person(self, person_id: str) -> Optional[dict[str, Any]]: ...
+
+    @abstractmethod
+    async def list_people(self) -> list[dict[str, Any]]:
+        """Everyone who has signed in, newest sign-in first."""
+        ...
+
+    @abstractmethod
+    async def create_signin(self, signin_id: str, person_id: str, *, now: float,
+                            expires_at: float, client: Optional[str]) -> None: ...
+
+    @abstractmethod
+    async def get_signin(self, signin_id: str) -> Optional[dict[str, Any]]:
+        """The sign-in row joined with its person (role, email, name), or
+        None when unknown or revoked."""
+        ...
+
+    @abstractmethod
+    async def touch_signin(self, signin_id: str, now: float) -> None: ...
+
+    @abstractmethod
+    async def revoke_signin(self, signin_id: str, now: float) -> int: ...
+
+    @abstractmethod
+    async def revoke_signins_for(self, person_id: str, now: float) -> int:
+        """Sign a person out everywhere. Returns how many sign-ins ended."""
+        ...
+
     @abstractmethod
     async def add_notification(self, row: dict[str, Any]) -> None:
         """Record a notification the moment it is queued (status pending)."""
@@ -611,6 +666,33 @@ class _SqliteStore(Store):
         """)
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(timestamp)")
+        # 0.16 identity: the people an identity provider vouched for, and
+        # their sign-ins (server-side sessions the cookie points at).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS people (
+                id            TEXT PRIMARY KEY,
+                issuer        TEXT NOT NULL,
+                subject       TEXT NOT NULL,
+                email         TEXT,
+                name          TEXT,
+                role          TEXT NOT NULL,
+                groups        TEXT,
+                created_at    REAL NOT NULL,
+                last_login_at REAL NOT NULL,
+                UNIQUE (issuer, subject)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS signins (
+                id           TEXT PRIMARY KEY,
+                person_id    TEXT NOT NULL,
+                created_at   REAL NOT NULL,
+                last_seen_at REAL NOT NULL,
+                expires_at   REAL NOT NULL,
+                client       TEXT,
+                revoked_at   REAL
+            )
+        """)
         for col, col_type in (("seq", "INTEGER"), ("prev_hash", "TEXT"), ("row_hash", "TEXT")):
             # The hash chain's columns; already present on an upgraded DB.
             with contextlib.suppress(Exception):
@@ -1286,6 +1368,69 @@ class _SqliteStore(Store):
         await self._db.commit()
         return deleted
 
+    async def upsert_person(self, issuer, subject, *, email, name, role, groups, now):
+        async with self._db.execute(
+            "SELECT id FROM people WHERE issuer = ? AND subject = ?", (issuer, subject)
+        ) as cur:
+            row = await cur.fetchone()
+        person_id = row["id"] if row else str(uuid.uuid4())
+        await self._db.execute(
+            "INSERT INTO people (id, issuer, subject, email, name, role, groups, created_at, "
+            "last_login_at) VALUES (?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(issuer, subject) DO UPDATE SET email=excluded.email, name=excluded.name, "
+            "role=excluded.role, groups=excluded.groups, last_login_at=excluded.last_login_at",
+            (person_id, issuer, subject, email, name, role, json.dumps(list(groups)), now, now),
+        )
+        await self._db.commit()
+        return await self.get_person(person_id)
+
+    async def get_person(self, person_id: str) -> Optional[dict[str, Any]]:
+        async with self._db.execute("SELECT * FROM people WHERE id = ?", (person_id,)) as cur:
+            row = await cur.fetchone()
+        return _person_row(dict(row)) if row else None
+
+    async def list_people(self) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT p.*, (SELECT COUNT(*) FROM signins s WHERE s.person_id = p.id "
+            "AND s.revoked_at IS NULL AND s.expires_at > ?) AS active_signins "
+            "FROM people p ORDER BY last_login_at DESC", (time.time(),)
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_person_row(dict(r)) for r in rows]
+
+    async def create_signin(self, signin_id, person_id, *, now, expires_at, client) -> None:
+        await self._db.execute(
+            "INSERT INTO signins (id, person_id, created_at, last_seen_at, expires_at, client) "
+            "VALUES (?,?,?,?,?,?)", (signin_id, person_id, now, now, expires_at, client))
+        await self._db.commit()
+
+    async def get_signin(self, signin_id: str) -> Optional[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT s.id, s.person_id, s.created_at, s.last_seen_at, s.expires_at, s.client, "
+            "p.role, p.email, p.name FROM signins s JOIN people p ON p.id = s.person_id "
+            "WHERE s.id = ? AND s.revoked_at IS NULL", (signin_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def touch_signin(self, signin_id: str, now: float) -> None:
+        await self._db.execute("UPDATE signins SET last_seen_at = ? WHERE id = ?", (now, signin_id))
+        await self._db.commit()
+
+    async def revoke_signin(self, signin_id: str, now: float) -> int:
+        cur = await self._db.execute(
+            "UPDATE signins SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+            (now, signin_id))
+        await self._db.commit()
+        return cur.rowcount
+
+    async def revoke_signins_for(self, person_id: str, now: float) -> int:
+        cur = await self._db.execute(
+            "UPDATE signins SET revoked_at = ? WHERE person_id = ? AND revoked_at IS NULL",
+            (now, person_id))
+        await self._db.commit()
+        return cur.rowcount
+
     async def add_notification(self, row: dict[str, Any]) -> None:
         await self._db.execute(
             "INSERT INTO notifications (id, timestamp, type, target_kind, target_id, summary, "
@@ -1558,6 +1703,31 @@ class _PostgresStore(Store):
             """)
             await conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_notifications_ts ON notifications(timestamp)")
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS people (
+                    id            TEXT PRIMARY KEY,
+                    issuer        TEXT NOT NULL,
+                    subject       TEXT NOT NULL,
+                    email         TEXT,
+                    name          TEXT,
+                    role          TEXT NOT NULL,
+                    groups        TEXT,
+                    created_at    DOUBLE PRECISION NOT NULL,
+                    last_login_at DOUBLE PRECISION NOT NULL,
+                    UNIQUE (issuer, subject)
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS signins (
+                    id           TEXT PRIMARY KEY,
+                    person_id    TEXT NOT NULL,
+                    created_at   DOUBLE PRECISION NOT NULL,
+                    last_seen_at DOUBLE PRECISION NOT NULL,
+                    expires_at   DOUBLE PRECISION NOT NULL,
+                    client       TEXT,
+                    revoked_at   DOUBLE PRECISION
+                )
+            """)
             for col, pg_type in (("seq", "BIGINT"), ("prev_hash", "TEXT"), ("row_hash", "TEXT")):
                 # The hash chain's columns (0.15); no-op on an upgraded DB.
                 await conn.execute(f"ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS {col} {pg_type}")
@@ -2238,6 +2408,65 @@ class _PostgresStore(Store):
                 "DELETE FROM llm_calls WHERE user_id = $1", user_id
             )
         return int(result.split()[-1])  # "DELETE N"
+
+    async def upsert_person(self, issuer, subject, *, email, name, role, groups, now):
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id FROM people WHERE issuer = $1 AND subject = $2", issuer, subject)
+            person_id = row["id"] if row else str(uuid.uuid4())
+            await conn.execute(
+                "INSERT INTO people (id, issuer, subject, email, name, role, groups, created_at, "
+                "last_login_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) "
+                "ON CONFLICT (issuer, subject) DO UPDATE SET email=EXCLUDED.email, "
+                "name=EXCLUDED.name, role=EXCLUDED.role, groups=EXCLUDED.groups, "
+                "last_login_at=EXCLUDED.last_login_at",
+                person_id, issuer, subject, email, name, role, json.dumps(list(groups)), now, now)
+        return await self.get_person(person_id)
+
+    async def get_person(self, person_id: str) -> Optional[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM people WHERE id = $1", person_id)
+        return _person_row(_pg_plain(row)) if row else None
+
+    async def list_people(self) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT p.*, (SELECT COUNT(*) FROM signins s WHERE s.person_id = p.id "
+                "AND s.revoked_at IS NULL AND s.expires_at > $1) AS active_signins "
+                "FROM people p ORDER BY last_login_at DESC", time.time())
+        return [_person_row(_pg_plain(r)) for r in rows]
+
+    async def create_signin(self, signin_id, person_id, *, now, expires_at, client) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO signins (id, person_id, created_at, last_seen_at, expires_at, client) "
+                "VALUES ($1,$2,$3,$4,$5,$6)", signin_id, person_id, now, now, expires_at, client)
+
+    async def get_signin(self, signin_id: str) -> Optional[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT s.id, s.person_id, s.created_at, s.last_seen_at, s.expires_at, s.client, "
+                "p.role, p.email, p.name FROM signins s JOIN people p ON p.id = s.person_id "
+                "WHERE s.id = $1 AND s.revoked_at IS NULL", signin_id)
+        return _pg_plain(row) if row else None
+
+    async def touch_signin(self, signin_id: str, now: float) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute("UPDATE signins SET last_seen_at = $1 WHERE id = $2", now, signin_id)
+
+    async def revoke_signin(self, signin_id: str, now: float) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE signins SET revoked_at = $1 WHERE id = $2 AND revoked_at IS NULL",
+                now, signin_id)
+        return int(result.split()[-1])
+
+    async def revoke_signins_for(self, person_id: str, now: float) -> int:
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE signins SET revoked_at = $1 WHERE person_id = $2 AND revoked_at IS NULL",
+                now, person_id)
+        return int(result.split()[-1])
 
     async def add_notification(self, row: dict[str, Any]) -> None:
         async with self._pool.acquire() as conn:

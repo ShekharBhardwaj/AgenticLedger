@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { connectionStatus, health, shareInfo, shareQr, staleLinkKey, whoami, WhoAmI } from "./api";
+import { authStatus, AuthStatus, connectionStatus, health, shareInfo, shareQr, signOut, staleLinkKey, whoami, WhoAmI } from "./api";
 import ReportsView from "./views/ReportsView";
 import RunsView from "./views/RunsView";
 import SessionsView from "./views/SessionsView";
@@ -45,6 +45,7 @@ function describeKey(w: WhoAmI): { text: string; tone: "ok" | "warn" } {
     };
   }
   if (!w.dashboard) return { text: `This key’s role (${w.role}) can’t open the dashboard.`, tone: "warn" };
+  if (w.source === "sso") return { text: `Signed in as ${w.name ?? "someone"} · ${w.role}`, tone: "ok" };
   if (w.source === "master") return { text: "Master key · full admin access", tone: "ok" };
   return { text: `${w.name ?? "unnamed key"} · ${w.role}`, tone: "ok" };
 }
@@ -56,6 +57,11 @@ function KeyPanel() {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
   const stored = localStorage.getItem("agenticledger.key");
+  // Sign in with the company identity provider, when the server offers it,
+  // and sign out when this browser holds a sign-in.
+  const [sso, setSso] = useState<AuthStatus | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => { authStatus().then(setSso).catch(() => {}); }, []);
 
   // A fresh browser on a keyed server would otherwise just see empty views —
   // open the panel unprompted when the server wants a key we don't have
@@ -83,11 +89,13 @@ function KeyPanel() {
     }
     // Identify whatever is in effect right now (stored key, or open server).
     whoami(stored)
-      .then((w) => setStatus(describeKey(w)))
+      .then((w) => { setStatus(describeKey(w)); setSignedIn(w.source === "sso"); })
       .catch((e) => setStatus(stored
         ? { text: `Saved key: ${e.message}`, tone: "warn" }
-        : { text: "This server needs a key. Paste one to unlock the dashboard.", tone: "warn" }));
-  }, [open, stored]);
+        : { text: sso?.enabled
+            ? `This server needs a sign-in or a key. Sign in with ${sso.provider}, or paste a key.`
+            : "This server needs a key. Paste one to unlock the dashboard.", tone: "warn" }));
+  }, [open, stored, sso]);
 
   const save = () => {
     const key = value.trim();
@@ -139,7 +147,19 @@ function KeyPanel() {
       </button>
       {open && (
         <div className="key-pop">
-          <div className="key-pop-title">Dashboard access key</div>
+          <div className="key-pop-title">Dashboard access</div>
+          {sso?.enabled && !signedIn && (
+            <a className="link-btn sso-btn" href={sso.login ?? "/auth/login"}
+               title="Sign in through your company identity provider; your groups decide your role">
+              Sign in with {sso.provider}
+            </a>
+          )}
+          {signedIn && (
+            <button className="link-btn sso-btn"
+                    onClick={() => { signOut().finally(() => location.reload()); }}>
+              Sign out
+            </button>
+          )}
           <input
             type="password"
             placeholder="paste key…"

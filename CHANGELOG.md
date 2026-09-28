@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Sign in with your identity provider.** OpenID Connect, code flow with
+  PKCE, ID tokens verified against the provider's keys (RS256 only, other
+  algorithms refused by name), configured with `AGENTICLEDGER_OIDC_ISSUER`,
+  `_CLIENT_ID`, an optional `_CLIENT_SECRET` and `_ROLE_MAP`. Groups map
+  to the ledger's roles and the highest wins; a person whose groups map
+  to nothing is refused with the groups named on screen and in the audit
+  trail. A sign-in is a server-side row the browser holds an httponly
+  cookie for: it ends after 12 idle hours or 7 days (both settings), on
+  Sign out, or when an admin ends it (`POST /api/people/{id}/signout`);
+  `GET /api/people` lists who has signed in. Mutating requests that ride
+  a cookie must come from the dashboard's own origin (Sec-Fetch-Site or
+  Origin), so a cross-site form cannot act as a signed-in person. Every
+  audit row for a signed-in person names them by email. Keys keep working
+  beside it for scripts and agents. `agenticledger idp` runs a test
+  identity provider on loopback with four fake people so the flow can be
+  tried without a real provider; every page of it says it is not for
+  production. The dashboard's access panel gains Sign in and Sign out.
+  `cryptography` is now a core dependency.
+
 ## [0.15.0] - 2026-09-27
 
 ### Changed

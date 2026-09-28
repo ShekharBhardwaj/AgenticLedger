@@ -83,6 +83,18 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "daily_spend": "AGENTICLEDGER_ALERT_DAILY_SPEND",
         "digest_hour": "AGENTICLEDGER_DIGEST_HOUR",
     },
+    "auth": {
+        "oidc_issuer": "AGENTICLEDGER_OIDC_ISSUER",
+        "oidc_client_id": "AGENTICLEDGER_OIDC_CLIENT_ID",
+        "oidc_client_secret": "AGENTICLEDGER_OIDC_CLIENT_SECRET",
+        "oidc_client_secret_file": "AGENTICLEDGER_OIDC_CLIENT_SECRET_FILE",
+        "oidc_role_map": "AGENTICLEDGER_OIDC_ROLE_MAP",
+        "oidc_groups_claim": "AGENTICLEDGER_OIDC_GROUPS_CLAIM",
+        "oidc_scopes": "AGENTICLEDGER_OIDC_SCOPES",
+        "oidc_provider_name": "AGENTICLEDGER_OIDC_PROVIDER_NAME",
+        "session_idle_hours": "AGENTICLEDGER_SESSION_IDLE_HOURS",
+        "session_max_hours": "AGENTICLEDGER_SESSION_MAX_HOURS",
+    },
     "audit": {
         "enabled": "AGENTICLEDGER_AUDIT_LOG",
         "strict": "AGENTICLEDGER_AUDIT_STRICT",
@@ -151,6 +163,20 @@ TEMPLATE = '''\
 # error_rate = 0.5
 # daily_spend = 50.0
 # digest_hour = 8                                   # UTC hour for the daily digest
+
+[auth]
+# Sign in with your identity provider (OpenID Connect, code flow with PKCE).
+# Groups map to the ledger's roles; a person whose groups map to nothing is
+# refused. `agenticledger idp` runs a test provider for trying this locally.
+# oidc_issuer = "https://your-org.okta.com"
+# oidc_client_id = "0oa..."
+# oidc_client_secret_file = "~/.agenticledger/oidc.secret"   # omit for a public client
+# oidc_role_map = "ledger-admins=admin,ledger-editors=editor,ledger-viewers=viewer"
+# oidc_groups_claim = "groups"
+# oidc_provider_name = "Okta"          # what the sign-in button says
+# session_idle_hours = 12
+# session_max_hours = 168
+# The redirect back from the provider uses alerts.public_url.
 
 [audit]
 # The trail of who viewed, exported, deleted or changed what. Rows are

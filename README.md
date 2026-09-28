@@ -516,6 +516,11 @@ Every LLM call is stored with:
 | `GET` | `/api/calls/{action_id}` | One call by id - follow a replay's parent back to its original |
 | `GET` | `/api/replay/targets` | Configured replay destinations (feeds the dashboard's dropdown) |
 | `GET` | `/api/replay/models` | Models a replay target actually serves (`?provider=`) |
+| `GET` | `/auth/status` | Whether sign-in is configured here, the provider's name, and where it starts. No auth. |
+| `GET` | `/auth/login` | Start the identity-provider sign-in (`?next=/app#/runs` to return somewhere specific) |
+| `POST` | `/auth/logout` | End this sign-in and clear the cookie |
+| `GET` | `/api/people` | Everyone who has signed in, with the role their groups grant and live sign-in count (admin) |
+| `POST` | `/api/people/{id}/signout` | End every sign-in of one person, now (admin) |
 | `POST` | `/api/ws/ticket` | A one-minute, single-use ticket for the live `/ws` socket, minted with a key sent in a header (viewer) |
 | `GET` | `/api/whoami` | What is the key I'm holding? Name, role, and team (for team cards) - the dashboard's ⚿ panel uses this |
 | `POST` | `/api/replay/batch` | Replay a whole run or session on another model - returns a job id |
@@ -629,6 +634,8 @@ env-always-wins rule.
 | `AGENTICLEDGER_HOST` | No | `0.0.0.0` | Host to bind to. Use `127.0.0.1` to restrict to localhost only. |
 | `AGENTICLEDGER_PORT` | No | `8000` | Port to run on. |
 | `AGENTICLEDGER_API_KEY` | No | _(none)_ | Master admin key. When set, the dashboard, read, and management endpoints require authentication; the key grants the `admin` role and bootstraps API tokens (below). Skip for local dev; set when the proxy is on a server - you choose the value. |
+| `AGENTICLEDGER_OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` | No | _(none)_ | Sign in with an identity provider (OpenID Connect, code flow with PKCE). `_ROLE_MAP` (`group=role,...`) decides roles; unmapped people are refused. `_GROUPS_CLAIM` (`groups`), `_SCOPES`, `_PROVIDER_NAME` optional. The redirect uses `AGENTICLEDGER_PUBLIC_URL`. |
+| `AGENTICLEDGER_SESSION_IDLE_HOURS` / `_MAX_HOURS` | No | `12` / `168` | How long a sign-in lives: idle limit, and the absolute limit. |
 | `AGENTICLEDGER_INGEST_KEY` | No | _(none)_ | When set, the proxy forwards a request only if it carries a matching `x-agenticledger-ingest-key` header - closing the open relay. Off by default; a loud startup warning fires when unset. |
 | `AGENTICLEDGER_REPLAY_API_KEY` | No | _(none)_ | Key for same-provider replay through the proxy's own upstream - the proxy never stores agent credentials, so re-execution needs its own. |
 | `AGENTICLEDGER_REPLAY_OPENAI_KEY` / `_URL` | No | _(none)_ / provider API | Cross-provider replay target: replay **any** capture on OpenAI-format models. Point `_URL` at LM Studio (`http://localhost:1234`, any key) and replaying your captured Claude calls on a local model is **free**. |
@@ -753,6 +760,22 @@ curl -H "x-agenticledger-api-key: my-secret" http://localhost:8000/session/run-1
 ```
 
 Keys travel in headers only. A key in a query string (`?api_key=`, `?token=`) is refused with a 401 that says why: URLs end up in access logs, proxy logs, browser history and Referer headers. In a browser, paste the key into the dashboard's ⚿ panel, or open the pairing link from `agenticledger share`, which carries the key after the `#` (the URL fragment, which a browser never sends to any server).
+
+#### Sign in with your identity provider (OpenID Connect)
+
+For people, not scripts: point the ledger at your identity provider and the ⚿ panel gains a **Sign in with Okta** button (or whatever you name it). The code flow with PKCE, ID tokens verified against the provider's keys (RS256), and your groups decide the role: a person whose groups map to nothing is refused, told why, and recorded. Keys keep working beside it for agents and scripts.
+
+```bash
+AGENTICLEDGER_OIDC_ISSUER=https://your-org.okta.com
+AGENTICLEDGER_OIDC_CLIENT_ID=0oa...
+AGENTICLEDGER_OIDC_CLIENT_SECRET_FILE=/run/secrets/oidc   # omit for a public client
+AGENTICLEDGER_OIDC_ROLE_MAP=ledger-admins=admin,ledger-editors=editor,ledger-viewers=viewer
+AGENTICLEDGER_PUBLIC_URL=https://ledger.example.com          # the redirect back lands here
+```
+
+Register `https://ledger.example.com/auth/callback` as the redirect URI with the provider. A sign-in is a server-side row the browser holds a cookie for (httponly, SameSite=Lax, Secure over https): it ends after 12 idle hours or 7 days (`AGENTICLEDGER_SESSION_IDLE_HOURS`, `AGENTICLEDGER_SESSION_MAX_HOURS`), on Sign out, or when an admin ends it (`POST /api/people/{id}/signout`). Mutating requests that ride a cookie must come from the dashboard's own origin. Every audit row names the person by email. `GET /api/people` lists who has signed in, with their role and groups.
+
+To try it without a provider: `agenticledger idp` runs a test provider on loopback with four fake people (alice is an admin, dave has no mapped group), prints the four lines to set, and says on every page that it is not for production.
 
 #### Scoped API tokens (RBAC)
 

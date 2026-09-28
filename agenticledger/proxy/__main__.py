@@ -20,6 +20,19 @@ Reads config from environment variables:
     AGENTICLEDGER_PORT                  Bind port (default: 8000)
     AGENTICLEDGER_API_KEY               Master admin key; protects dashboard/API/management
                                       endpoints and bootstraps scoped API tokens (default: none)
+    AGENTICLEDGER_OIDC_ISSUER           Sign in with an identity provider (OpenID Connect, code
+                                        flow with PKCE): the issuer URL (default: off)
+    AGENTICLEDGER_OIDC_CLIENT_ID        The client id registered with the provider
+    AGENTICLEDGER_OIDC_CLIENT_SECRET    The client secret, if the provider issued one; _FILE accepted
+    AGENTICLEDGER_OIDC_ROLE_MAP         group=role pairs, comma separated; a person whose groups
+                                        map to nothing is refused (default: none, so everyone is)
+    AGENTICLEDGER_OIDC_GROUPS_CLAIM     The claim carrying groups (default: groups)
+    AGENTICLEDGER_OIDC_SCOPES           Scopes requested (default: openid profile email)
+    AGENTICLEDGER_OIDC_PROVIDER_NAME    What the sign-in button says (default: the issuer host)
+    AGENTICLEDGER_SESSION_IDLE_HOURS    A sign-in ends after this idle time (default: 12)
+    AGENTICLEDGER_SESSION_MAX_HOURS     And no later than this after sign-in (default: 168)
+    The redirect back from the provider uses AGENTICLEDGER_PUBLIC_URL.
+    `agenticledger idp` runs a local test provider for trying this.
     AGENTICLEDGER_INGEST_KEY            Require x-agenticledger-ingest-key on the proxy path,
                                       closing the open relay (default: none; open)
     AGENTICLEDGER_EXPORT_HMAC_KEY       Sign compliance exports with a tamper-evident keyed
@@ -127,6 +140,7 @@ from ..config import apply_config
 from .alerts import AlertConfig
 from .app import _secret_env, create_app
 from .notify import NotifyConfig
+from .oidc import OIDCConfig, parse_role_map
 from .otel import init_otel
 from .policy import Policy
 from .ratelimit import RateLimitConfig
@@ -207,6 +221,18 @@ app = create_app(
         latency_ms=_float_env("AGENTICLEDGER_ALERT_LATENCY_MS"),
         error_rate=_float_env("AGENTICLEDGER_ALERT_ERROR_RATE"),
         daily_spend=_float_env("AGENTICLEDGER_ALERT_DAILY_SPEND"),
+    ),
+    oidc_config=OIDCConfig(
+        issuer=os.environ.get("AGENTICLEDGER_OIDC_ISSUER") or None,
+        client_id=os.environ.get("AGENTICLEDGER_OIDC_CLIENT_ID") or None,
+        client_secret=_secret_env("AGENTICLEDGER_OIDC_CLIENT_SECRET"),
+        scopes=os.environ.get("AGENTICLEDGER_OIDC_SCOPES") or "openid profile email",
+        groups_claim=os.environ.get("AGENTICLEDGER_OIDC_GROUPS_CLAIM") or "groups",
+        role_map=parse_role_map(os.environ.get("AGENTICLEDGER_OIDC_ROLE_MAP")),
+        public_url=os.environ.get("AGENTICLEDGER_PUBLIC_URL") or None,
+        idle_seconds=float(os.environ.get("AGENTICLEDGER_SESSION_IDLE_HOURS", "12")) * 3600,
+        max_seconds=float(os.environ.get("AGENTICLEDGER_SESSION_MAX_HOURS", "168")) * 3600,
+        provider_name=os.environ.get("AGENTICLEDGER_OIDC_PROVIDER_NAME") or None,
     ),
     notify_config=NotifyConfig(
         webhook_url=os.environ.get("AGENTICLEDGER_ALERT_WEBHOOK_URL"),

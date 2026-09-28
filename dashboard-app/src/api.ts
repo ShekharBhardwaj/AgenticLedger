@@ -179,6 +179,15 @@ export function liftLoopBlock(sessionId: string): Promise<void> {
   return del(`/api/sessions/${encodeURIComponent(sessionId)}/loop-block`);
 }
 
+/** Sign in with the identity provider (0.16): is it configured, where it starts. */
+export interface AuthStatus { enabled: boolean; provider: string | null; login: string | null }
+export function authStatus(): Promise<AuthStatus> {
+  return fetch("/auth/status").then((r) => r.json());
+}
+export function signOut(): Promise<void> {
+  return fetch("/auth/logout", { method: "POST", headers: headers() }).then(() => undefined);
+}
+
 /** Ask the server what a key is — used by the ⚿ panel before saving. */
 export async function whoami(key: string | null): Promise<WhoAmI> {
   const h: Record<string, string> = key ? { "x-agenticledger-api-key": key } : {};

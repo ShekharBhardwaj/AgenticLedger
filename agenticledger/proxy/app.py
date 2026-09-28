@@ -58,7 +58,13 @@ from urllib.parse import urlparse
 
 import httpx2 as httpx
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 
 from . import providers
 from .alerts import AlertConfig, check_and_fire
@@ -100,6 +106,7 @@ from .normalize import (
     normalize_response,
 )
 from .notify import Notifier, NotifyConfig
+from .oidc import OIDCClient, OIDCConfig, OIDCError, display_name, pkce_pair, signin_row
 from .otel import emit_audit_log, emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_calls as extract_otlp_calls
@@ -332,6 +339,7 @@ def create_app(
     digest_hour: Optional[int] = None,   # UTC hour (0-23) for the daily digest webhook
     replay_api_key: Optional[str] = None,   # enables POST /api/replay when set
     replay_targets: Optional[dict] = None,  # {"openai": {"url", "key"}, "anthropic": {...}}
+    oidc_config: Optional[OIDCConfig] = None,   # sign in with an identity provider (0.16)
 ) -> FastAPI:
 
     broadcaster = _Broadcaster()
@@ -830,7 +838,18 @@ def create_app(
     # Read/management endpoints enforce auth only when a master key is configured.
     # The master key grants admin (and is the bootstrap for minting tokens); API
     # tokens grant their own role. When unset, access is open (dev UX) and __main__ warns.
-    _auth_enabled = bool(_api_key)
+    # 0.16 identity: with an identity provider configured, a browser signs
+    # in and holds a cookie that points at a server-side sign-in row;
+    # keys keep working for scripts and agents. Either one turns the gate on.
+    _oidc = OIDCClient(oidc_config) if oidc_config and oidc_config.enabled else None
+    if _oidc is not None:
+        for problem in oidc_config.problems():
+            logger.warning("Sign-in: %s", problem)
+    _auth_enabled = bool(_api_key) or _oidc is not None
+    app.state.oidc = _oidc   # tests route it at an in-process provider
+    _SIGNIN_COOKIE = "agenticledger_signin"
+    _auth_states: dict[str, dict] = {}     # state -> {verifier, nonce, created, next}
+    _signin_cache: dict[str, tuple[dict, float]] = {}   # signin id -> (row, cached at)
     # The remote guard: with no configured key, LOOPBACK callers keep the
     # zero-config open dashboard, but a caller from any other machine must
     # present the auto-generated pairing key (`agenticledger remote` prints the
@@ -867,6 +886,61 @@ def create_app(
         )
         return any(c and secrets.compare_digest(c, _pairing_key) for c in candidates)
 
+    def _public_base(request) -> str:
+        """Where a browser reaches this ledger: the operator's public URL,
+        else what the request itself says (forwarded headers honoured)."""
+        if oidc_config and oidc_config.public_url:
+            return oidc_config.public_url.rstrip("/")
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") \
+            or request.url.netloc
+        return f"{proto}://{host}"
+
+    async def _signin_principal(carrier) -> Optional[Principal]:
+        """The person behind the sign-in cookie, if the sign-in is alive:
+        not revoked, inside its absolute lifetime, and used within the idle
+        window. Looked up once a minute per sign-in, not per request."""
+        if _oidc is None:
+            return None
+        signin_id = carrier.cookies.get(_SIGNIN_COOKIE)
+        if not signin_id:
+            return None
+        now = time.time()
+        cached = _signin_cache.get(signin_id)
+        row = cached[0] if cached and now - cached[1] < 60 else None
+        if row is None:
+            row = await carrier.app.state.store.get_signin(signin_id)
+            if row is None:
+                _signin_cache.pop(signin_id, None)
+                return None
+            _signin_cache[signin_id] = (row, now)
+        if now >= row["expires_at"] or now - row["last_seen_at"] > oidc_config.idle_seconds:
+            _signin_cache.pop(signin_id, None)
+            with suppress(Exception):
+                await carrier.app.state.store.revoke_signin(signin_id, now)
+            return None
+        if now - row["last_seen_at"] > 60:
+            row["last_seen_at"] = now
+            with suppress(Exception):
+                await carrier.app.state.store.touch_signin(signin_id, now)
+        return Principal(row["role"], "sso", None, row.get("email") or row.get("name"),
+                         person_id=row["person_id"], signin_id=signin_id)
+
+    def _same_origin(request: Request) -> bool:
+        """A cookie is an ambient credential, so a mutating request must
+        come from this dashboard's own origin. Browsers say so on every
+        same-origin fetch; a request that says nothing is refused."""
+        site = request.headers.get("sec-fetch-site")
+        if site in ("same-origin", "none"):
+            return True
+        source = request.headers.get("origin") or request.headers.get("referer")
+        if not source:
+            return False
+        source_host = source.split("//", 1)[-1].split("/", 1)[0].lower()
+        own = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").lower()
+        public = _public_base(request).split("//", 1)[-1].lower()
+        return source_host in (own, public)
+
     async def _authenticate(carrier) -> Optional[Principal]:
         """Resolve a Principal from a request/websocket, or None if no valid credential.
 
@@ -875,6 +949,9 @@ def create_app(
         out what it was handed. Asymmetry here caused real bugs: minted
         tokens pasted into the dashboard's ⚿ field silently 401'd. Query
         strings are not a channel: see _URL_KEY_REFUSED."""
+        signed_in = await _signin_principal(carrier)
+        if signed_in is not None:
+            return signed_in
         candidates = [c for c in (
             carrier.headers.get("x-agenticledger-api-key"),
             _extract_token(carrier),
@@ -914,6 +991,13 @@ def create_app(
             await _audit(principal, request, "auth_failed", request.url.path,
                          f"403: requires '{role}' role")
             raise HTTPException(status_code=403, detail=f"Forbidden: requires '{role}' role")
+        if (principal.source == "sso" and request.method not in ("GET", "HEAD", "OPTIONS")
+                and not _same_origin(request)):
+            await _audit(principal, request, "csrf_refused", request.url.path,
+                         "403: cross-site request with a sign-in cookie")
+            raise HTTPException(status_code=403,
+                                detail="Refused: this request did not come from the "
+                                       "dashboard's own origin.")
         return principal
 
     async def _audit(
@@ -1114,6 +1198,136 @@ def create_app(
             return False, None
         principal, _exp = entry
         return True, principal
+
+    # ── Sign in with the identity provider (0.16) ─────────────────────────
+
+    def _html(body: str, status: int = 200) -> HTMLResponse:
+        return HTMLResponse(f"""<!doctype html><meta charset="utf-8"><title>Agentic Ledger</title>
+<style>body{{font:15px system-ui;margin:48px auto;max-width:520px;color:#222;line-height:1.5}}
+a{{color:#2f6fd0}}</style>{body}""", status_code=status)
+
+    @app.get("/auth/status")
+    async def auth_status(request: Request) -> JSONResponse:
+        """Whether sign-in exists here and where it starts. Unauthenticated:
+        the key panel needs it before anyone is signed in."""
+        return JSONResponse({
+            "enabled": _oidc is not None,
+            "provider": display_name(oidc_config) if _oidc is not None else None,
+            "login": "/auth/login" if _oidc is not None else None,
+        })
+
+    @app.get("/auth/login")
+    async def auth_login(request: Request) -> Response:
+        """Start the code flow: remember the PKCE verifier and nonce under a
+        one-time state, send the browser to the provider."""
+        if _oidc is None:
+            raise HTTPException(status_code=404, detail="Sign-in is not configured here.")
+        now = time.time()
+        for stale in [k for k, v in _auth_states.items() if now - v["created"] > 600]:
+            _auth_states.pop(stale, None)
+        state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+        verifier, challenge = pkce_pair()
+        after = request.query_params.get("next") or "/app"
+        if not after.startswith("/") or after.startswith("//"):
+            after = "/app"
+        _auth_states[state] = {"verifier": verifier, "nonce": nonce, "created": now, "next": after}
+        try:
+            url = await _oidc.authorize_url(_public_base(request) + "/auth/callback",
+                                            state, nonce, challenge)
+        except OIDCError as exc:
+            return _html(f"<h2>Sign-in is not available</h2><p>{exc}</p>", 503)
+        return RedirectResponse(url, status_code=302)
+
+    @app.get("/auth/callback")
+    async def auth_callback(request: Request) -> Response:
+        """The provider sends the browser back with a code. Exchange it,
+        verify the person, map their groups to a role, open a sign-in."""
+        if _oidc is None:
+            raise HTTPException(status_code=404, detail="Sign-in is not configured here.")
+        q = request.query_params
+        pending = _auth_states.pop(q.get("state") or "", None)
+        if pending is None or time.time() - pending["created"] > 600:
+            await _audit(None, request, "auth_failed", "/auth/callback",
+                         "sign-in state unknown or expired", actor_source="rejected")
+            return _html("<h2>That sign-in link has expired</h2>"
+                         "<p><a href=\"/auth/login\">Start again</a>.</p>", 400)
+        if q.get("error"):
+            await _audit(None, request, "auth_failed", "/auth/callback",
+                         f"provider error: {q.get('error')}", actor_source="rejected")
+            return _html(f"<h2>The identity provider said no</h2><p>{q.get('error')}: "
+                         f"{q.get('error_description') or ''}</p>", 400)
+        try:
+            who = await _oidc.sign_in(q.get("code") or "", pending["verifier"], pending["nonce"],
+                                      _public_base(request) + "/auth/callback")
+        except OIDCError as exc:
+            await _audit(None, request, "auth_failed", "/auth/callback", str(exc)[:200],
+                         actor_source="rejected")
+            return _html(f"<h2>Sign-in did not complete</h2><p>{exc}</p>"
+                         "<p><a href=\"/auth/login\">Try again</a>.</p>", 400)
+        label = who.get("email") or who.get("name") or who["subject"]
+        if who["role"] is None:
+            await _audit(None, request, "auth_refused", label,
+                         f"no role for groups {', '.join(who['groups']) or '(none)'}",
+                         actor_source="rejected")
+            groups = ", ".join(who["groups"]) or "no groups"
+            return _html(
+                f"<h2>Signed in, but not let in</h2>"
+                f"<p>{label} has no role in this ledger. The identity provider reports "
+                f"these groups: <b>{groups}</b>. Ask the ledger admin to map one of them "
+                f"to a role (AGENTICLEDGER_OIDC_ROLE_MAP), then sign in again.</p>", 403)
+        now = time.time()
+        person = await request.app.state.store.upsert_person(
+            oidc_config.issuer, who["subject"], email=who.get("email"), name=who.get("name"),
+            role=who["role"], groups=who["groups"], now=now)
+        signin_id = secrets.token_urlsafe(32)
+        await request.app.state.store.create_signin(
+            signin_id, person["id"], now=now, expires_at=now + oidc_config.max_seconds,
+            client=_effective_client_host(request))
+        principal = Principal(who["role"], "sso", None, label,
+                              person_id=person["id"], signin_id=signin_id)
+        await _audit(principal, request, "login", person["id"],
+                     f"role={who['role']} via {display_name(oidc_config)}")
+        response = RedirectResponse(pending["next"], status_code=302)
+        response.set_cookie(
+            _SIGNIN_COOKIE, signin_id, max_age=int(oidc_config.max_seconds), path="/",
+            httponly=True, samesite="lax", secure=_public_base(request).startswith("https"))
+        return response
+
+    @app.post("/auth/logout")
+    async def auth_logout(request: Request) -> Response:
+        """End this sign-in: the row is revoked, the cookie cleared."""
+        principal = await _signin_principal(request)
+        if principal is not None and principal.signin_id:
+            await _audit(principal, request, "logout", principal.person_id, "signed out")
+            await request.app.state.store.revoke_signin(principal.signin_id, time.time())
+            _signin_cache.pop(principal.signin_id, None)
+        response = JSONResponse({"signed_out": principal is not None})
+        response.delete_cookie(_SIGNIN_COOKIE, path="/")
+        return response
+
+    @app.get("/api/people")
+    async def api_people(request: Request) -> JSONResponse:
+        """Everyone the identity provider has signed in, with the role their
+        groups grant and how many sign-ins are alive (admin)."""
+        await _require(request, ROLE_ADMIN)
+        rows = await request.app.state.store.list_people()
+        return JSONResponse([{**signin_row(r), "active_signins": r.get("active_signins", 0)}
+                             for r in rows])
+
+    @app.post("/api/people/{person_id}/signout")
+    async def api_person_signout(person_id: str, request: Request) -> JSONResponse:
+        """Sign one person out everywhere, now (admin). Their next visit
+        goes back through the identity provider."""
+        principal = await _require(request, ROLE_ADMIN)
+        person = await request.app.state.store.get_person(person_id)
+        if person is None:
+            raise HTTPException(status_code=404, detail="person not found")
+        await _audit(principal, request, "signout_all", person_id,
+                     f"{person.get('email') or person.get('name')} signed out everywhere")
+        ended = await request.app.state.store.revoke_signins_for(person_id, time.time())
+        for key in [k for k, (row, _) in _signin_cache.items() if row.get("person_id") == person_id]:
+            _signin_cache.pop(key, None)
+        return JSONResponse({"person_id": person_id, "signins_ended": ended})
 
     @app.post("/api/ws/ticket")
     async def api_ws_ticket(request: Request) -> JSONResponse:
@@ -1742,6 +1956,28 @@ def create_app(
                       "present the auto-generated pairing key (agenticledger "
                       "share prints the pairing link).",
                 key="[keys] api_key / api_key_file"),
+            row("Access", "sign-in",
+                (f"{display_name(oidc_config)} ({oidc_config.issuer})"
+                 if _oidc is not None else "off"),
+                "AGENTICLEDGER_OIDC_ISSUER",
+                means="Sign in with the company identity provider (OpenID Connect). "
+                      "Groups map to roles; a person whose groups map to nothing is "
+                      "refused. Keys keep working for scripts and agents.",
+                key="[auth] oidc_issuer / oidc_client_id"),
+            row("Access", "group to role map",
+                (", ".join(f"{g}={r}" for g, r in oidc_config.role_map.items()) or None)
+                if _oidc is not None else None,
+                "AGENTICLEDGER_OIDC_ROLE_MAP",
+                means="Which identity-provider group grants which role; the highest "
+                      "wins. '*' means any signed-in person.",
+                key="[auth] oidc_role_map"),
+            row("Access", "sign-in lifetime",
+                (f"idle {oidc_config.idle_seconds / 3600:g}h, at most "
+                 f"{oidc_config.max_seconds / 3600:g}h") if _oidc is not None else None,
+                "AGENTICLEDGER_SESSION_IDLE_HOURS",
+                means="A sign-in ends after this much idle time, and no later than "
+                      "the absolute limit; an admin can end one sooner.",
+                key="[auth] session_idle_hours / session_max_hours"),
             row("Access", "ingest key (relay)",
                 key_state(bool(_ingest_key)) + ("" if _ingest_key else " — OPEN RELAY"),
                 "AGENTICLEDGER_INGEST_KEY",
@@ -2663,6 +2899,7 @@ def create_app(
             "name": principal.name,
             "team": principal.name if is_card else None,
             "dashboard": role_satisfies(principal.role, ROLE_VIEWER),
+            "person_id": principal.person_id,
         })
 
     # ── API token management (admin only) ─────────────────────────────────────

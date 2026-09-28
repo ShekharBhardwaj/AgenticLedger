@@ -493,6 +493,13 @@ def main(argv: Optional[list] = None) -> int:
                          help="Close the tunnel; the old link dies.")
     share_p.add_argument("--name", default=None,
                          help="Share a named instance instead of the everyday ledger.")
+    idp_p = sub.add_parser(
+        "idp",
+        help="Run a local TEST identity provider on loopback, for trying sign-in. "
+             "Not for production.")
+    idp_p.add_argument("--port", type=int, default=9400)
+    idp_p.add_argument("--user", action="append", default=[], metavar="NAME:GROUP,GROUP",
+                       help="add or replace a fake person (repeatable)")
     stop_p = sub.add_parser("stop", help="Stop the background proxy.")
     stop_p.add_argument("--name", default=None, help="Stop a named instance.")
     status_p = sub.add_parser("status", help="Is the proxy up, what version, is the store healthy?")
@@ -555,6 +562,12 @@ def main(argv: Optional[list] = None) -> int:
             return 0
         cfg_p.print_help()
         return 2
+    if args.subcommand == "idp":
+        from agenticledger.idp import main as idp_main
+        argv_idp = ["--port", str(args.port)]
+        for spec in args.user:
+            argv_idp += ["--user", spec]
+        return idp_main(argv_idp)
     if args.subcommand == "upgrade":
         return upgrade_command(args)
     if args.subcommand == "doctor":

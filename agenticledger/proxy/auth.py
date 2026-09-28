@@ -68,9 +68,11 @@ def generate_token() -> tuple[str, str]:
 class Principal:
     """The authenticated identity for a request."""
     role: str
-    source: str               # "open" | "master" | "token"
+    source: str               # "open" | "master" | "token" | "sso"
     token_id: Optional[str] = None
     name: Optional[str] = None
+    person_id: Optional[str] = None   # sso: the person row the identity provider vouched for
+    signin_id: Optional[str] = None   # sso: the sign-in this request rode in on
 
 
 def client_is_local(host: Optional[str]) -> bool:
