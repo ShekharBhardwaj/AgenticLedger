@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-29
+
 ### Added
 - **Sign in with your identity provider.** OpenID Connect, code flow with
   PKCE, ID tokens verified against the provider's keys (RS256 only, other
@@ -39,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before, and keys are always unscoped. The login audit row names the
   scope, `/api/people` and `/api/whoami` show it, and the access panel
   says it.
+
+### Fixed
+- **The dashboard's tab icon shows on Safari and phone home screens.**
+  The only icon offered was an SVG, which Safari and iOS bookmarks do
+  not use; a 256px PNG and an apple-touch-icon now ship beside it.
 
 ## [0.15.0] - 2026-09-27
 
@@ -1770,7 +1777,8 @@ Older releases predate this changelog. See the GitHub Releases page for history:
 https://github.com/ShekharBhardwaj/AgenticLedger/releases
 -->
 
-[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/ShekharBhardwaj/AgenticLedger/compare/v0.13.0...v0.13.1

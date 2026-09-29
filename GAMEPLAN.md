@@ -246,7 +246,43 @@ report card, settings editing from the UI.
 Build order A → B → C → D, user-zero hands on every seam, tag on the
 word — the 0.9.2 retest discipline is the permanent process now.
 
-## Where the plan stands (2026-09-27)
+## Where the plan stands (2026-09-29)
+
+**v0.15.0 "The wall holds" shipped on 2026-09-27**: pipeline green,
+PyPI and the signed images verified, user zero's machine moved to the
+released build the same hour. User zero passed the phone pairing test
+before the tag.
+
+**0.16 "Identity" is built, on main, green across the nine CI jobs.**
+Both halves of the slate shipped as written. Sign-in: OIDC with PKCE,
+RS256-verified ID tokens, groups to roles with the unmapped refused
+and recorded, server-side sign-ins behind an httponly cookie with idle
+and absolute limits, sign out, admin sign-out-everywhere, an origin
+check on every mutating request that rides a cookie, and a real person
+on every audit row. Scoping: groups to projects, enforced by one
+resolver in every read, export, report, search, replay and MCP tool,
+with out of scope answered as not found and unfiled work invisible to
+a scoped person. The rig user zero needs shipped with it, as the
+constraint required: `agenticledger idp`, a test provider on loopback.
+Decisions taken by the maintainer on the way: deny by default for the
+unmapped; scope from the directory, never a second place to
+administer people; unfiled work hidden from the scoped; `cryptography`
+as a core dependency.
+
+**What the release pass checked.** ROADMAP still listed sign-in as an
+enterprise-only item and opened by describing a single-shared-secret
+tool; both now say what shipped. The compliance set's HIPAA posture
+and control mapping describe sign-in and scoping with their tests as
+evidence. Every setting and endpoint the README names exists in the
+code.
+
+**Not built, by the plan's own gate:** SAML and SCIM wait for a team
+to name its provider.
+
+**Next: 0.17 "Platform", unchanged, plus the versioned API** that
+moved there from 0.15.
+
+## Where the plan stood (2026-09-27)
 
 **0.15 "The wall holds" is built, on main, every commit green across
 the nine CI jobs, and running on user zero's own machine.** The slate

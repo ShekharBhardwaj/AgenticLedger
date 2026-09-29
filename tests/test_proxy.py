@@ -681,7 +681,10 @@ def test_spa_served_or_explains_absence(proxy):
     import pathlib
 
     client = proxy(handler=_ok_handler())
-    built = (pathlib.Path("agenticledger/proxy/static/index.html")).is_file()
+    # Resolved from the package, not the working directory: the answer must
+    # not depend on where pytest was started.
+    import agenticledger.proxy.app as app_module
+    built = (pathlib.Path(app_module.__file__).parent / "static" / "index.html").is_file()
     resp = client.get("/app")
     if built:
         assert resp.status_code == 200

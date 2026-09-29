@@ -66,8 +66,12 @@ test("brand, deep links and Back work without a request storm", async ({ page, r
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/app#/runs/smoke-loop");
   await expect.poll(() => page.locator(".brand img").evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
-  const favicon = await page.locator('link[rel="icon"]').getAttribute("href");
-  expect((await request.get(favicon!)).ok()).toBeTruthy();
+  // Every icon the page offers must download: the SVG, the PNG Safari
+  // uses instead of it, and the phone's home-screen icon.
+  const icons = await page.locator('link[rel="icon"], link[rel="apple-touch-icon"]')
+    .evaluateAll((links) => links.map((l) => (l as HTMLLinkElement).getAttribute("href")));
+  expect(icons.length).toBeGreaterThanOrEqual(3);
+  for (const href of icons) expect((await request.get(href!)).ok()).toBeTruthy();
   await expect(page.getByRole("region", { name: "Recorded run timeline" })).toContainText("Stuck loop suspected");
   await page.getByRole("button", { name: /^Iteration 1:/ }).click();
   await expect(page).toHaveURL(/#\/sessions\/smoke-loop-s1$/);
