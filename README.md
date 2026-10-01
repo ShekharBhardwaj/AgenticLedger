@@ -295,6 +295,18 @@ http://localhost:8000, and see it in Sessions.
    caller's identity and re-signs with its own credentials. Full guide:
    [docs/integrations/bedrock.md](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/bedrock.md).
 
+**AWS Bedrock through a company gateway**
+
+Many companies front Bedrock with a gateway that does the authentication itself; Claude Code is then configured with `CLAUDE_CODE_SKIP_BEDROCK_AUTH=1` and `ANTHROPIC_BEDROCK_BASE_URL` pointing at the gateway, usually from a managed settings file. The ledger sits in front of that gateway and forwards each call exactly as the agent sent it, headers included: no signing, no AWS credentials on your side.
+
+1. Tell the ledger where the gateway is (the host `ANTHROPIC_BEDROCK_BASE_URL` pointed at before):
+   ```bash
+   agenticledger config set proxy.bedrock_gateway_url https://bedrock-gateway.company.example
+   agenticledger stop && agenticledger start
+   ```
+2. Point Claude Code at the ledger instead: `ANTHROPIC_BEDROCK_BASE_URL=http://localhost:8000`. If that value lives in the IT-managed settings file (`/Library/Application Support/ClaudeCode/managed-settings.json`), it overrides everything else and IT has to change it; if it is in `~/.claude/settings.json`, edit it there.
+3. `/health` and the ⚙ Settings panel read "forwarding as sent to the gateway at ...". Calls appear with the Bedrock mark and the region-prefixed model id.
+
 **Azure OpenAI**
 
 1. Set the upstream to your resource:
@@ -627,6 +639,7 @@ env-always-wins rule.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
+| `AGENTICLEDGER_BEDROCK_GATEWAY_URL` | No | _(none)_ | Your company's Bedrock gateway. Bedrock-shaped calls are forwarded there exactly as the agent sent them, headers included; the ledger signs nothing and needs no AWS credentials. |
 | `AGENTICLEDGER_UPSTREAM_URL` | No | _(unset: route by call format)_ | LLM endpoint to forward requests to. Accepts OpenAI, Anthropic, LiteLLM, OpenRouter, or any OpenAI-compatible URL. Omit it and the proxy routes each call by its wire format: Anthropic-shaped calls to Anthropic, Bedrock paths to Bedrock, everything else to OpenAI. |
 | `AGENTICLEDGER_TLS` | No | _(off)_ | `1` adds a dashboard-only https listener with a self-generated certificate (the phone warns once). The agent port stays plain http. |
 | `AGENTICLEDGER_TLS_PORT` | No | `8443` | Port for the https dashboard listener. |

@@ -174,3 +174,46 @@ def test_anonymous_agents_never_share_a_fallback_session(proxy, aws_env):
     # And the stranger's call did not inherit openclaw-main.
     anon = sessions[anon_sessions[0]]
     assert anon.get("run_id") != "openclaw-main"
+
+
+def test_gateway_mode_forwards_bedrock_calls_as_sent(proxy, monkeypatch):
+    """A company gateway does Bedrock's authentication itself: the ledger
+    forwards the call with the agent's own headers, signs nothing, and
+    needs no AWS credentials. Found on user zero's company laptop."""
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+                "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent")
+    monkeypatch.setenv("AWS_CONFIG_FILE", "/nonexistent")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    client = proxy(handler=lambda r: httpx.Response(200, json=_anthropic_json()),
+                   bedrock_gateway_url="https://gateway.corp.test")
+    # The gateway client is the one that must reach the mock upstream.
+    client.app.state.client_bedrock_gateway = httpx.AsyncClient(
+        transport=httpx.MockTransport(client.upstream), base_url="https://gateway.corp.test")
+    resp = client.post(f"/{INVOKE}", json=BODY,
+                       headers={"x-agenticledger-session-id": "gw-1",
+                                "authorization": "Bearer corp-gateway-token",
+                                "x-corp-trace": "abc"})
+    assert resp.status_code == 200, resp.text
+    sent = client.upstream.requests[-1]
+    assert sent.url.host == "gateway.corp.test" and sent.url.path.endswith("/invoke")
+    assert sent.headers["authorization"] == "Bearer corp-gateway-token"
+    assert sent.headers["x-corp-trace"] == "abc"
+    assert "x-amz-date" not in sent.headers and "x-agenticledger-session-id" not in sent.headers
+    record = client.get(f"/explain/{resp.headers['x-agenticledger-action-id']}").json()
+    assert record["provider"] == "bedrock" and record["model_id"] == MODEL
+    assert "forwarding as sent to the gateway" in client.get("/health").json()["bedrock"]
+
+
+def test_without_credentials_the_refusal_names_gateway_mode(proxy, monkeypatch):
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+                "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent")
+    monkeypatch.setenv("AWS_CONFIG_FILE", "/nonexistent")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    client = proxy(handler=lambda r: httpx.Response(200, json=_anthropic_json()))
+    resp = client.post(f"/{INVOKE}", json=BODY)
+    assert resp.status_code == 502
+    assert "AGENTICLEDGER_BEDROCK_GATEWAY_URL" in resp.json()["error"]["message"]

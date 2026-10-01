@@ -48,6 +48,7 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "port": "AGENTICLEDGER_PORT",
         "host": "AGENTICLEDGER_HOST",
         "upstream_url": "AGENTICLEDGER_UPSTREAM_URL",
+        "bedrock_gateway_url": "AGENTICLEDGER_BEDROCK_GATEWAY_URL",
         "db": "AGENTICLEDGER_DSN",
         "completion_promise": "AGENTICLEDGER_COMPLETION_PROMISE",
     },
@@ -126,6 +127,7 @@ TEMPLATE = '''\
 [proxy]
 # port = 8000
 # upstream_url = "https://api.openai.com"   # or https://api.anthropic.com, or LM Studio
+# bedrock_gateway_url = "https://bedrock-gateway.company.example"   # Bedrock through your gateway, forwarded as sent
 # db = "sqlite:///agenticledger.db"         # or postgresql://...
 # completion_promise = "COMPLETE"           # lets loops declare victory
 

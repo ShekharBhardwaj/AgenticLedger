@@ -177,10 +177,14 @@ def _print_summary(run_id: str, iterations: int, status: Optional[dict], reason:
         # The worst kind of nothing: the loop "completed" but no call ever
         # reached the ledger. Say it plainly — the user was sent to stare
         # at an empty dashboard twice before this line existed.
-        print("  ⚠ no calls reached the ledger. The command likely failed "
-              "before calling any model — its own output above has the "
-              "reason. (Common: broken cloud credentials in this shell; "
-              "try running the command bare first.)", file=sys.stderr)
+        print("  ⚠ no calls reached the ledger. Two usual reasons: the command "
+              "failed before calling any model (its own output above has the "
+              "reason; broken cloud credentials in this shell are common), or "
+              "it answered without going through the ledger because its base "
+              "URL is set somewhere that wins over the environment: a managed "
+              "or user settings file, or a company gateway. Check with "
+              "ANTHROPIC_LOG=debug, and see the Bedrock section of the README "
+              "for gateway mode.", file=sys.stderr)
     else:
         print(f"  dashboard:  open the proxy URL and filter run {run_id}", file=sys.stderr)
 

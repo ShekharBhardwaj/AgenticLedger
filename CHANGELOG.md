@@ -42,7 +42,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scope, `/api/people` and `/api/whoami` show it, and the access panel
   says it.
 
+- **Bedrock through a company gateway.** `AGENTICLEDGER_BEDROCK_GATEWAY_URL`
+  names a gateway that does Bedrock's authentication itself (the
+  `CLAUDE_CODE_SKIP_BEDROCK_AUTH` setup many companies ship); Bedrock
+  shaped calls are forwarded there exactly as the agent sent them,
+  headers included, with no signing and no AWS credentials on the
+  ledger's side. `/health` says "forwarding as sent to the gateway".
+  Found on a company laptop where the agent answered while the ledger
+  saw nothing.
+
 ### Fixed
+- **The run wrapper's "no calls reached the ledger" line no longer
+  assumes the command failed.** When the agent answered but the ledger
+  saw nothing, the usual cause is a base URL set in a managed or user
+  settings file, or a company gateway; the line now says so and points
+  at the check.
 - **The dashboard's tab icon shows on Safari and phone home screens.**
   The only icon offered was an SVG, which Safari and iOS bookmarks do
   not use; a 256px PNG and an apple-touch-icon now ship beside it.

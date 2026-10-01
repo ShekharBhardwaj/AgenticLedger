@@ -37,6 +37,10 @@ Reads config from environment variables:
     AGENTICLEDGER_SESSION_MAX_HOURS     And no later than this after sign-in (default: 168)
     The redirect back from the provider uses AGENTICLEDGER_PUBLIC_URL.
     `agenticledger idp` runs a local test provider for trying this.
+    AGENTICLEDGER_BEDROCK_GATEWAY_URL   Your company's Bedrock gateway (the host Claude Code's
+                                        ANTHROPIC_BEDROCK_BASE_URL pointed at). Bedrock-shaped calls
+                                        are forwarded there as sent, headers included; the ledger
+                                        signs nothing and needs no AWS credentials (default: none)
     AGENTICLEDGER_INGEST_KEY            Require x-agenticledger-ingest-key on the proxy path,
                                       closing the open relay (default: none; open)
     AGENTICLEDGER_EXPORT_HMAC_KEY       Sign compliance exports with a tamper-evident keyed
@@ -200,6 +204,7 @@ app = create_app(
     upstream_url=upstream_url,
     dsn=dsn,
     upstream_auto=upstream_auto,
+    bedrock_gateway_url=os.environ.get("AGENTICLEDGER_BEDROCK_GATEWAY_URL") or None,
     budget_session=_float_env("AGENTICLEDGER_BUDGET_SESSION"),
     budget_user=_float_env("AGENTICLEDGER_BUDGET_USER"),
     budget_status=int(os.environ.get("AGENTICLEDGER_BUDGET_STATUS", "429")),

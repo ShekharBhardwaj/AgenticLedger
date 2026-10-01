@@ -310,6 +310,7 @@ def create_app(
     upstream_url: str,
     dsn: str,
     upstream_auto: bool = False,   # no upstream configured: route by wire format
+    bedrock_gateway_url: Optional[str] = None,   # a company gateway that does Bedrock's auth itself
     budget_session: Optional[float] = None,
     budget_agent: Optional[float] = None,
     budget_daily: Optional[float] = None,
@@ -474,6 +475,14 @@ def create_app(
         app.state.client_bedrock = httpx.AsyncClient(
             base_url=app.state.bedrock_signer.endpoint, timeout=httpx.Timeout(120.0),
         ) if app.state.bedrock_signer else None
+        # Gateway mode: the company fronts Bedrock with a gateway that does
+        # its own authentication (Claude Code's CLAUDE_CODE_SKIP_BEDROCK_AUTH
+        # world). Bedrock-shaped calls go there exactly as the agent sent
+        # them, headers included; the ledger signs nothing and needs no
+        # AWS credentials. Found on user zero's company laptop.
+        app.state.client_bedrock_gateway = httpx.AsyncClient(
+            base_url=bedrock_gateway_url.rstrip("/"), timeout=httpx.Timeout(120.0),
+        ) if bedrock_gateway_url else None
         app.state.replay_clients = {
             prov: httpx.AsyncClient(base_url=cfg["url"], timeout=httpx.Timeout(120.0))
             for prov, cfg in (replay_targets or {}).items()
@@ -524,6 +533,8 @@ def create_app(
             await app.state.client_anthropic.aclose()
         if getattr(app.state, "client_bedrock", None) is not None:
             await app.state.client_bedrock.aclose()
+        if getattr(app.state, "client_bedrock_gateway", None) is not None:
+            await app.state.client_bedrock_gateway.aclose()
         for rc in app.state.replay_clients.values():
             await rc.aclose()
 
@@ -1060,7 +1071,10 @@ def create_app(
         # the service (and with what credentials) is otherwise invisible,
         # and that invisibility cost an hour of digging on a real machine.
         signer = getattr(app.state, "bedrock_signer", None)
-        if signer is not None:
+        gateway = getattr(app.state, "client_bedrock_gateway", None)
+        if gateway is not None:
+            bedrock = f"forwarding as sent to the gateway at {gateway.base_url}"
+        elif signer is not None:
             bedrock = f"signing as the ledger in {signer.region}"
         elif BedrockSigner.last_failure:
             bedrock = f"off — {BedrockSigner.last_failure}"
@@ -3616,10 +3630,17 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         # Azure OpenAI has no default host: its upstream is the user's own
         # resource. Under zero-config routing we would forward to
         # api.openai.com and hand back a baffling 404, so refuse with the fix.
-        if is_llm_path and _is_bedrock(path) and getattr(request.app.state, "bedrock_signer", None) is None:
+        _gateway = getattr(request.app.state, "client_bedrock_gateway", None)
+        if (is_llm_path and _is_bedrock(path) and _gateway is None
+                and getattr(request.app.state, "bedrock_signer", None) is None):
             _retry_bedrock_signer(request.app)
-        if is_llm_path and _is_bedrock(path) and getattr(request.app.state, "bedrock_signer", None) is None:
-            return await _refuse_configured(BedrockSigner.why_unavailable())
+        if (is_llm_path and _is_bedrock(path) and _gateway is None
+                and getattr(request.app.state, "bedrock_signer", None) is None):
+            return await _refuse_configured(
+                BedrockSigner.why_unavailable()
+                + "; or, if your agent reaches Bedrock through a company gateway that "
+                "does its own authentication, set AGENTICLEDGER_BEDROCK_GATEWAY_URL to "
+                "that gateway and the ledger forwards each call as sent")
         if is_llm_path and upstream_auto and providers.for_path(path).name == "azure-openai":
             return await _refuse_configured(
                 "Azure OpenAI calls need an explicit upstream: set "
@@ -4085,6 +4106,9 @@ def _upstream_client(app, path: str) -> httpx.AsyncClient:
     client. Explicit configuration never creates the second client, so an
     explicit upstream always wins."""
     if _is_bedrock(path):
+        gateway = getattr(app.state, "client_bedrock_gateway", None)
+        if gateway is not None:
+            return gateway
         bedrock = getattr(app.state, "client_bedrock", None)
         if bedrock is not None:
             return bedrock
