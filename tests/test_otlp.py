@@ -256,3 +256,67 @@ def test_tool_result_log_events_become_tool_executions(proxy):
     assert tools[0]["tool_name"] == "Bash"
     assert tools[0]["latency_ms"] == 742
     assert tools[0]["is_error"] == 1
+
+
+def _cc_event(name, ts, **attrs):
+    def val(v):
+        if isinstance(v, bool):
+            return {"boolValue": v}
+        if isinstance(v, int):
+            return {"intValue": str(v)}
+        if isinstance(v, float):
+            return {"doubleValue": v}
+        return {"stringValue": str(v)}
+    return {"timeUnixNano": str(ts), "attributes": [
+        {"key": "event.name", "value": {"stringValue": name}},
+        *({"key": k, "value": val(v)} for k, v in attrs.items()),
+    ]}
+
+
+def _cc_payload(*records):
+    return {"resourceLogs": [{"scopeLogs": [{"logRecords": list(records)}]}]}
+
+
+def test_claude_code_api_request_telemetry_becomes_calls_when_asked(proxy):
+    """Telemetry-only mode: on a laptop where the proxy cannot sit in the
+    path (a managed base URL), Claude Code's own api_request events are
+    the record. Metadata level, Claude Code's own cost, Bedrock ids
+    recognised, redelivery deduplicated."""
+    payload = _cc_payload(
+        _cc_event("claude_code.api_request", 1753500001000000000,
+                  model="us.anthropic.claude-sonnet-4-5-20250929-v1:0", cost_usd=0.0123,
+                  duration_ms=1840, input_tokens=1200, output_tokens=85,
+                  cache_read_tokens=900, cache_creation_tokens=0, **{"session.id": "cc-managed-1"}),
+        _cc_event("claude_code.api_error", 1753500005000000000,
+                  model="us.anthropic.claude-sonnet-4-5-20250929-v1:0", error="rate limited",
+                  status_code=429, duration_ms=300, **{"session.id": "cc-managed-1"}),
+        _cc_event("claude_code.user_prompt", 1753500006000000000, prompt_length=42,
+                  **{"session.id": "cc-managed-1"}),
+    )
+    client = proxy(telemetry_calls=True)
+    assert client.post("/v1/logs", json=payload).status_code == 200
+    assert client.post("/v1/logs", json=payload).status_code == 200   # redelivered batch
+    rows = client.get("/session/cc-managed-1").json()
+    assert len(rows) == 2, [r["error_detail"] for r in rows]
+    ok = [r for r in rows if r["status_code"] == 200][0]
+    assert ok["provider"] == "bedrock" and ok["model_id"].startswith("us.anthropic.")
+    assert ok["tokens_in"] == 1200 and ok["tokens_out"] == 85
+    assert ok["cache_read_tokens"] == 900 and abs(ok["cost_usd"] - 0.0123) < 1e-9
+    assert ok["latency_ms"] == 1840 and ok["agent_name"] == "claude-code"
+    assert ok["messages"] in ([], None) and ok.get("content") in (None, "")
+    err = [r for r in rows if r["status_code"] != 200][0]
+    assert err["status_code"] == 429 and "rate limited" in err["error_detail"]
+    sessions = {s["session_id"]: s for s in client.get("/api/sessions").json()}
+    assert sessions["cc-managed-1"]["call_count"] == 2
+    rows_text = client.get("/api/settings").json()["rows"]
+    assert any(r["label"] == "telemetry calls" and r["value"] == "on" for r in rows_text)
+
+
+def test_claude_code_api_request_telemetry_is_ignored_by_default(proxy):
+    payload = _cc_payload(_cc_event("claude_code.api_request", 1753500001000000000,
+                                    model="claude-sonnet-4-5", cost_usd=0.01, duration_ms=10,
+                                    input_tokens=10, output_tokens=5,
+                                    **{"session.id": "cc-quiet"}))
+    client = proxy()
+    assert client.post("/v1/logs", json=payload).status_code == 200
+    assert client.get("/session/cc-quiet").status_code == 404

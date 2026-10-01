@@ -639,6 +639,7 @@ env-always-wins rule.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
+| `AGENTICLEDGER_TELEMETRY_CALLS` | No | _(off)_ | Record Claude Code's own `api_request` telemetry (sent to `/v1/logs`) as calls: model, tokens, cache, cost, latency, no prompt. For machines where a managed setting keeps the proxy out of the request path; see the [Claude Code guide](https://github.com/ShekharBhardwaj/AgenticLedger/blob/main/docs/integrations/claude-code.md). Leave off when the proxy is in the path. |
 | `AGENTICLEDGER_BEDROCK_GATEWAY_URL` | No | _(none)_ | Your company's Bedrock gateway. Bedrock-shaped calls are forwarded there exactly as the agent sent them, headers included; the ledger signs nothing and needs no AWS credentials. |
 | `AGENTICLEDGER_UPSTREAM_URL` | No | _(unset: route by call format)_ | LLM endpoint to forward requests to. Accepts OpenAI, Anthropic, LiteLLM, OpenRouter, or any OpenAI-compatible URL. Omit it and the proxy routes each call by its wire format: Anthropic-shaped calls to Anthropic, Bedrock paths to Bedrock, everything else to OpenAI. |
 | `AGENTICLEDGER_TLS` | No | _(off)_ | `1` adds a dashboard-only https listener with a self-generated certificate (the phone warns once). The agent port stays plain http. |

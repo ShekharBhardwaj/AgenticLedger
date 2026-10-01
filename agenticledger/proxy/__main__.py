@@ -41,6 +41,10 @@ Reads config from environment variables:
                                         ANTHROPIC_BEDROCK_BASE_URL pointed at). Bedrock-shaped calls
                                         are forwarded there as sent, headers included; the ledger
                                         signs nothing and needs no AWS credentials (default: none)
+    AGENTICLEDGER_TELEMETRY_CALLS       Record Claude Code's own api_request telemetry (sent to
+                                        /v1/logs) as calls: tokens, cost, latency, no prompt. For
+                                        machines where the proxy cannot sit in the request path;
+                                        leave off otherwise or calls are counted twice (default: off)
     AGENTICLEDGER_INGEST_KEY            Require x-agenticledger-ingest-key on the proxy path,
                                       closing the open relay (default: none; open)
     AGENTICLEDGER_EXPORT_HMAC_KEY       Sign compliance exports with a tamper-evident keyed
@@ -205,6 +209,7 @@ app = create_app(
     dsn=dsn,
     upstream_auto=upstream_auto,
     bedrock_gateway_url=os.environ.get("AGENTICLEDGER_BEDROCK_GATEWAY_URL") or None,
+    telemetry_calls=os.environ.get("AGENTICLEDGER_TELEMETRY_CALLS", "").lower() in ("1", "true", "yes", "on"),
     budget_session=_float_env("AGENTICLEDGER_BUDGET_SESSION"),
     budget_user=_float_env("AGENTICLEDGER_BUDGET_USER"),
     budget_status=int(os.environ.get("AGENTICLEDGER_BUDGET_STATUS", "429")),

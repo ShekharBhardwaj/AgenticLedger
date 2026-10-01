@@ -207,6 +207,85 @@ def _span_to_call(span: dict, attrs: dict, service: Optional[str]) -> Optional[d
         return None
 
 
+def extract_api_requests(payload: dict) -> list[dict]:
+    """Claude Code's own record of each model call, when the proxy cannot
+    be in the path (a managed ANTHROPIC_BEDROCK_BASE_URL, a gateway the
+    agent is pinned to). `claude_code.api_request` and `claude_code.api_error`
+    log events carry model, tokens, cache tokens, cost and duration, never
+    the prompt, so the call lands at metadata level: everything Loop Lens
+    and the reports need, nothing the ledger can refuse. Opt-in through
+    AGENTICLEDGER_TELEMETRY_CALLS: someone running the proxy as well would
+    otherwise record every call twice."""
+    calls: list[dict] = []
+    for rl in payload.get("resourceLogs") or []:
+        resource = _attr_map((rl.get("resource") or {}).get("attributes"))
+        for sl in rl.get("scopeLogs") or []:
+            for rec in sl.get("logRecords") or []:
+                attrs = _attr_map(rec.get("attributes"))
+                name = str(attrs.get("event.name")
+                           or (rec.get("body") or {}).get("stringValue", ""))
+                if name not in ("claude_code.api_request", "claude_code.api_error"):
+                    continue
+                call = _api_request_to_call(name, rec, attrs, resource)
+                if call is not None:
+                    calls.append(call)
+    return calls
+
+
+def _api_request_to_call(name: str, rec: dict, attrs: dict, resource: dict) -> Optional[dict]:
+    try:
+        ts_ns = int(rec.get("timeUnixNano") or rec.get("observedTimeUnixNano") or 0)
+        timestamp = ts_ns / 1e9 if ts_ns else 0.0
+        session_id = str(_first(attrs, "session.id") or resource.get("session.id")
+                         or f"cc-{ts_ns // 10**9}")
+        model = str(attrs.get("model") or "unknown")
+        duration = attrs.get("duration_ms")
+        # One id per event, stable across OTLP's at-least-once redelivery.
+        action_id = str(uuid.uuid5(_NS, f"cc-event:{session_id}:{ts_ns}:{model}:{name}"))
+        errored = name == "claude_code.api_error"
+        tokens_in = _as_int(attrs.get("input_tokens"))
+        tokens_out = _as_int(attrs.get("output_tokens"))
+        cache_read = _as_int(attrs.get("cache_read_tokens"))
+        cache_write = _as_int(attrs.get("cache_creation_tokens"))
+        # Claude Code reports the price it was charged, cache discounts
+        # included; the packs stand in when it does not.
+        reported = attrs.get("cost_usd")
+        cost = (float(reported) if isinstance(reported, (int, float)) and not errored
+                else (compute_cost(model, tokens_in, tokens_out, provider="")
+                      if not errored else 0.0))
+        req = CanonicalRequest(messages=[], model_id=model, provider=_provider_for(model),
+                               timestamp=timestamp)
+        resp = CanonicalResponse(
+            content=None, tool_calls=None, stop_reason=None,
+            tokens_in=tokens_in, tokens_out=tokens_out,
+            latency_ms=float(duration) if duration is not None else 0.0,
+            cost_usd=cost, cache_read_tokens=cache_read, cache_write_tokens=cache_write,
+        )
+        status_code = _as_int(attrs.get("status_code")) if errored else 200
+        meta = {
+            "session_id": session_id,
+            "agent_name": "claude-code",
+            "user_id": _opt_str(_first(attrs, "user.email", "user.id")
+                                or _first(resource, "user.email", "user.id")),
+            "framework": "claude-code",
+            "app_id": "claude-code",
+            "environment": str(attrs.get("deployment.environment", "development")),
+            "status_code": status_code or (500 if errored else 200),
+            "error_detail": (_opt_str(attrs.get("error")) or "api_error") if errored else None,
+        }
+        return {"action_id": action_id, "req": req, "resp": resp, "meta": meta}
+    except Exception:
+        logger.warning("Failed to map a Claude Code api_request event; skipped", exc_info=True)
+        return None
+
+
+def _provider_for(model: str) -> str:
+    low = model.lower()
+    if "anthropic." in low and "claude" in low:
+        return "bedrock"
+    return "anthropic" if "claude" in low else "otlp"
+
+
 def _as_int(value) -> Optional[int]:
     try:
         return int(value) if value is not None else None

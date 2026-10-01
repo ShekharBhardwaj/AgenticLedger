@@ -109,6 +109,7 @@ from .notify import Notifier, NotifyConfig
 from .oidc import OIDCClient, OIDCConfig, OIDCError, display_name, pkce_pair, signin_row
 from .otel import emit_audit_log, emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
+from .otlp_ingest import extract_api_requests as extract_otlp_api_requests
 from .otlp_ingest import extract_calls as extract_otlp_calls
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
 from .policy import LIST_FIELDS, Policy, check_policies, parse_list, refusal_type
@@ -311,6 +312,7 @@ def create_app(
     dsn: str,
     upstream_auto: bool = False,   # no upstream configured: route by wire format
     bedrock_gateway_url: Optional[str] = None,   # a company gateway that does Bedrock's auth itself
+    telemetry_calls: bool = False,   # record Claude Code's api_request telemetry as calls
     budget_session: Optional[float] = None,
     budget_agent: Optional[float] = None,
     budget_daily: Optional[float] = None,
@@ -2144,6 +2146,14 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                       "through uncounted (the log names the model); refuse turns "
                       "it away while any budget applies.",
                 key="[budgets] unpriced"),
+            row("Capture", "telemetry calls", "on" if telemetry_calls else "off",
+                "AGENTICLEDGER_TELEMETRY_CALLS",
+                means="Record Claude Code's own api_request telemetry (sent to "
+                      "/v1/logs) as calls, for machines where the proxy cannot sit "
+                      "in the request path. Metadata only: tokens, cost, latency, "
+                      "no prompt. Leave off when the proxy is in the path, or every "
+                      "call is counted twice.",
+                key="[proxy] telemetry_calls"),
             row("Capture", "level", _capture_level, "AGENTICLEDGER_CAPTURE_LEVEL",
                 means="full stores prompts and answers; metadata stores only the "
                       "numbers (tokens, cost, latency)."),
@@ -3340,6 +3350,28 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                     apply_tool_execution_policy(events, _capture_level, _redactor)
                     with suppress(Exception):
                         await request.app.state.store.save_tool_executions(events)
+                if telemetry_calls:
+                    # Telemetry-only mode: the agent's own account of each
+                    # model call, for laptops where the proxy cannot sit in
+                    # the request path. Metadata level, no refusals.
+                    store = request.app.state.store
+                    for call in extract_otlp_api_requests(payload):
+                        meta = call["meta"]
+                        status_code = meta.pop("status_code", 200)
+                        error_detail = meta.pop("error_detail", None)
+                        try:
+                            await store.save(call["action_id"], call["req"], call["resp"],
+                                             status_code=status_code,
+                                             error_detail=error_detail, **meta)
+                            app.state.capture_persisted += 1
+                            with suppress(Exception):
+                                await broadcaster.broadcast({
+                                    "type": "call", "action_id": call["action_id"],
+                                    "session_id": meta.get("session_id"),
+                                    "status_code": status_code, "budget_warning": False,
+                                })
+                        except Exception:
+                            pass   # at-least-once delivery: duplicates are expected
         return _otlp_ack(request)
 
     @app.post("/v1/metrics")

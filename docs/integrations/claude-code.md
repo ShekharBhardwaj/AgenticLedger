@@ -40,6 +40,35 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000
 Tool executions (name, duration, success) land in the same sessions at
 `GET /api/sessions/{id}/tools`.
 
+## When the proxy cannot be in the path
+
+On a company laptop, Claude Code's base URL often lives in the IT-managed
+settings file (`/Library/Application Support/ClaudeCode/managed-settings.json`),
+which overrides the environment, your own settings and the ledger's run
+wrapper. The agent then answers while the ledger sees nothing. You cannot
+route around a managed setting, and should not try; but Claude Code's
+own telemetry is yours to point anywhere, and the ledger can record from
+it:
+
+```bash
+agenticledger config set proxy.telemetry_calls true
+agenticledger stop && agenticledger start
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8000
+```
+
+Every `claude_code.api_request` and `api_error` event becomes a call in
+the ledger: model (Bedrock ids recognised), tokens, cache tokens, the
+cost Claude Code was charged, latency, and the session, with tool
+executions beside them. What this mode cannot give you is stated plainly:
+no prompt or response content (the events carry none), and no refusals
+(the ledger is not in the path, so budgets and stops cannot act). Loop
+Lens, Sessions, Reports and notifications work on the record as it is.
+Leave `telemetry_calls` off wherever the proxy is in the path, or every
+call is counted twice.
+
 ## Loops and guardrails
 
 ```bash

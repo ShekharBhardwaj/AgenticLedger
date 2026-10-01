@@ -51,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found on a company laptop where the agent answered while the ledger
   saw nothing.
 
+- **Telemetry-only recording for managed laptops.** When an IT-managed
+  settings file pins Claude Code's base URL and the proxy cannot sit in
+  the request path, `AGENTICLEDGER_TELEMETRY_CALLS=1` records Claude
+  Code's own `api_request` and `api_error` telemetry (sent to `/v1/logs`
+  by user-level settings) as calls: model with Bedrock ids recognised,
+  tokens, cache tokens, the cost Claude Code was charged, latency, the
+  session, beside the tool executions the ledger already took from the
+  same stream. Metadata only and no refusals, stated plainly in the
+  guide; off by default so the proxy path never double counts.
+
 ### Fixed
 - **The run wrapper's "no calls reached the ledger" line no longer
   assumes the command failed.** When the agent answered but the ledger
