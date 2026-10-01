@@ -66,6 +66,26 @@ _KEY_MAP: dict[str, dict[str, str]] = {
         "user": "AGENTICLEDGER_BUDGET_USER",
         "status": "AGENTICLEDGER_BUDGET_STATUS",
         "unpriced": "AGENTICLEDGER_BUDGET_UNPRICED",
+        "action": "AGENTICLEDGER_BUDGET_ACTION",
+    },
+    "capture": {
+        "level": "AGENTICLEDGER_CAPTURE_LEVEL",
+        "redact": "AGENTICLEDGER_REDACT",
+        "redact_patterns": "AGENTICLEDGER_REDACT_PATTERNS",
+        "retention_days": "AGENTICLEDGER_RETENTION_DAYS",
+        "async": "AGENTICLEDGER_ASYNC_CAPTURE",
+    },
+    "loops": {
+        "action": "AGENTICLEDGER_LOOP_ACTION",
+        "max_steps": "AGENTICLEDGER_LOOP_MAX_STEPS",
+        "repeat_threshold": "AGENTICLEDGER_LOOP_REPEAT_THRESHOLD",
+        "run_gap_seconds": "AGENTICLEDGER_LOOP_RUN_GAP_SECONDS",
+    },
+    "limits": {
+        "rpm": "AGENTICLEDGER_RATE_LIMIT_RPM",
+        "session_rpm": "AGENTICLEDGER_RATE_LIMIT_SESSION_RPM",
+        "agent_rpm": "AGENTICLEDGER_RATE_LIMIT_AGENT_RPM",
+        "user_rpm": "AGENTICLEDGER_RATE_LIMIT_USER_RPM",
     },
     "policy": {
         "allow_models": "AGENTICLEDGER_ALLOW_MODELS",
@@ -144,6 +164,25 @@ TEMPLATE = '''\
 # user = 10.0         # per-user daily ceiling
 # status = 429        # or 402 — HTTP answer when a wall blocks a call
 # unpriced = "allow"  # or "refuse": a model with no price cannot be counted
+# action = "block"    # or "warn" | "both": what a breached budget does
+
+[capture]
+# level = "full"              # or "metadata": no prompts, responses or tools at rest
+# redact = "all"              # or a list: email,ssn,credit_card,ip,api_key
+# retention_days = 30         # purge captured calls older than this
+# async = false               # true: capture off the request path, bounded queue
+
+[loops]
+# action = "warn"             # or "block" | "off": what a stuck loop does
+# max_steps = 50              # flag (and in block mode stop) threads past this
+# repeat_threshold = 3        # identical tool calls in a row before a flag
+# run_gap_seconds = 900       # how long a quiet loop still counts as the same run
+
+[limits]
+# rpm = 600                   # requests per minute, whole ledger
+# session_rpm = 20            # per session_id
+# agent_rpm = 60              # per agent_name
+# user_rpm = 60               # per user_id
 
 [policy]
 # Allow and deny lists for models and providers. Refuse only: a call that

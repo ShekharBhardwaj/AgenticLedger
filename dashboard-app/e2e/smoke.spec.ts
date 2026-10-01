@@ -281,6 +281,27 @@ test("a call link reopens the session with that call expanded, and the lists kno
   await expect(page.getByRole("button", { name: /Load older/ })).toHaveCount(0);
 });
 
+test("a setting changed in the dashboard lands in the config file and asks for a restart", async ({ page, request }) => {
+  await page.goto("/app#/settings");
+  try {
+    await page.getByRole("button", { name: "Change circuit breaker", exact: true }).click();
+    await page.getByLabel("New value for circuit breaker").selectOption("block");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.locator(".restart-banner")).toContainText("Restart the ledger to apply");
+    await expect(page.locator(".setting-pending")).toContainText("block on restart");
+    const cfg = await (await request.get("/api/config")).json();
+    expect(cfg.values["loops.action"]).toBe("block");
+    expect(cfg.restart_required).toBe(true);
+    // A secret is written but never shown back.
+    await request.put("/api/config", { data: { key: "keys.api_key", value: "smoke-secret" } });
+    const after = await (await request.get("/api/config")).json();
+    expect(after.values["keys.api_key"]).toBe("set (hidden)");
+  } finally {
+    await request.put("/api/config", { data: { key: "loops.action", value: null } });
+    await request.put("/api/config", { data: { key: "keys.api_key", value: null } });
+  }
+});
+
 test("light appearance persists across reload and navigation", async ({ page }) => {
   await page.goto("/app#/settings");
   await page.getByRole("radio", { name: "Light", exact: true }).click();

@@ -273,6 +273,20 @@ def _operator_name(principal: Optional[Principal]) -> str:
         principal.source, "the operator")
 
 
+def _reexec() -> None:
+    """Replace this process with a fresh proxy: same pid, same environment,
+    config file read again. What `agenticledger start` and `serve` run."""
+    os.execv(sys.executable, [sys.executable, "-m", "agenticledger.proxy"])
+
+
+def _toml_loads(text: str) -> dict:
+    if sys.version_info >= (3, 11):
+        import tomllib
+        return tomllib.loads(text)
+    import tomli  # pragma: no cover - 3.10 only
+    return tomli.loads(text)
+
+
 def _record_capture_drop(app: FastAPI, action_id: Optional[str]) -> None:
     """A call was served to the agent but could not be recorded. Never re-raise —
     observability must not break the proxy — but make the loss visible."""
@@ -1989,6 +2003,142 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                              "calls_deleted": deleted_calls,
                              "labels_unfiled": unfiled})
 
+    # ── Settings you can change from the dashboard ───────────────────────
+    # The page writes the same config file `agenticledger config set` does,
+    # then offers one restart. Environment variables still win over the
+    # file, and a row says so when they do; secrets are written but never
+    # echoed back.
+
+    def _config_key_for(env: Optional[str], key_hint: str) -> Optional[str]:
+        from ..config import _KEY_MAP
+        if env:
+            for section, keys in _KEY_MAP.items():
+                for name, var in keys.items():
+                    if var == env:
+                        return f"{section}.{name}"
+        hint = (key_hint or "").strip()
+        if hint.startswith("["):
+            section, _, rest = hint[1:].partition("]")
+            name = rest.strip().split()[0] if rest.strip() else ""
+            if name and section in _KEY_MAP and name in _KEY_MAP[section]:
+                return f"{section}.{name}"
+        return None
+
+    def _is_secret_key(dotted: Optional[str]) -> bool:
+        if not dotted:
+            return False
+        name = dotted.split(".", 1)[-1]
+        if name.endswith("_file") or name in ("oidc_client_id", "oidc_groups_claim"):
+            return False
+        return any(part in name for part in ("key", "secret"))
+
+    _CHOICES = {
+        "budgets.action": ["block", "warn", "both"],
+        "budgets.status": ["429", "402"],
+        "budgets.unpriced": ["allow", "refuse"],
+        "capture.level": ["full", "metadata"],
+        "capture.async": ["true", "false"],
+        "loops.action": ["warn", "block", "off"],
+        "alerts.format": ["auto", "generic", "slack", "discord", "pagerduty"],
+        "audit.strict": ["true", "false"],
+        "audit.stdout": ["true", "false"],
+        "audit.enabled": ["true", "false"],
+        "proxy.telemetry_calls": ["true", "false"],
+    }
+
+    def _config_target() -> "Path":
+        """The file the running proxy loaded, else the one every directory
+        falls back to; never a file the running proxy is not reading."""
+        from ..config import loaded_path
+        return loaded_path or (Path.home() / ".agenticledger" / "config.toml")
+
+    @app.get("/api/config")
+    async def api_config(request: Request) -> JSONResponse:
+        """The config file in effect and what it holds (secrets masked),
+        plus whether changes are waiting on a restart."""
+        await _require(request, ROLE_ADMIN)
+        from ..config import _KEY_MAP, loaded_path
+        target = _config_target()
+        values: dict[str, str] = {}
+        if target.is_file():
+            try:
+                data = _toml_loads(target.read_text(encoding="utf-8"))
+            except Exception:
+                data = {}
+            for section, keys in data.items():
+                if not isinstance(keys, dict):
+                    continue
+                for name, raw in keys.items():
+                    dotted = f"{section}.{name}"
+                    if section in _KEY_MAP and name in _KEY_MAP[section]:
+                        values[dotted] = "set (hidden)" if _is_secret_key(dotted) else str(raw)
+        return JSONResponse({
+            "path": str(target), "exists": target.is_file(),
+            "loaded": loaded_path is not None and loaded_path == target,
+            "restart_required": bool(getattr(app.state, "config_dirty", False)),
+            "values": values,
+        })
+
+    @app.put("/api/config")
+    async def api_config_set(request: Request) -> JSONResponse:
+        """Set one key in the config file (null clears it). Takes effect on
+        the next restart; the answer says so, and says when an environment
+        variable will keep winning."""
+        principal = await _require(request, ROLE_ADMIN)
+        from ..config import _split_key, applied_from_file, set_value
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        dotted = str(payload.get("key") or "").strip()
+        value = payload.get("value")
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            raise HTTPException(status_code=400, detail="value must be a string, number, boolean or null")
+        try:
+            section, name = _split_key(dotted)
+        except SystemExit as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        if section == "env":
+            raise HTTPException(status_code=400, detail="set a named key, not the [env] escape hatch")
+        text = None if value is None else (str(value).lower() if isinstance(value, bool) else str(value))
+        choices = _CHOICES.get(dotted)
+        if text is not None and choices and text.strip().lower() not in choices:
+            raise HTTPException(status_code=400,
+                                detail=f"{dotted} must be one of: {', '.join(choices)}")
+        if text is not None and not text.strip():
+            text = None
+        from ..config import _KEY_MAP
+        env = _KEY_MAP[section][name]
+        secret = _is_secret_key(dotted)
+        await _audit(principal, request, "config_set", dotted,
+                     "cleared" if text is None else ("set (hidden)" if secret else f"set to {text[:120]}"))
+        target = set_value(dotted, text.strip() if text else None, path=str(_config_target()))
+        app.state.config_dirty = True
+        env_wins = env in os.environ and env not in applied_from_file
+        return JSONResponse({
+            "key": dotted, "value": ("set (hidden)" if secret and text else text),
+            "path": str(target), "restart_required": True, "env_wins": env_wins,
+            "env": env,
+        })
+
+    @app.post("/api/restart")
+    async def api_restart(request: Request) -> JSONResponse:
+        """Restart this ledger in place so the config file is read again.
+        The process re-executes itself after the answer is sent; the pid
+        and the environment stay, the dashboard polls /health and reloads."""
+        principal = await _require(request, ROLE_ADMIN)
+        await _audit(principal, request, "restart", None, "restart requested from the dashboard")
+        hook = getattr(request.app.state, "restart_hook", None) or _reexec
+
+        async def _later() -> None:
+            await asyncio.sleep(0.5)
+            with suppress(Exception):
+                await _notifier.flush(timeout=3.0)
+            hook()
+
+        asyncio.get_running_loop().create_task(_later())
+        return JSONResponse({"restarting": True})
+
     @app.get("/api/settings")
     async def api_settings(request: Request) -> JSONResponse:
         """What is this proxy actually running with? Read-only, admin-only,
@@ -2020,13 +2170,19 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             return "set (hidden)" if present else "not set"
 
         def row(section: str, label: str, value, env: Optional[str] = None,
-                means: str = "", key: str = "") -> dict:
+                means: str = "", key: str = "", choices: Optional[list] = None) -> dict:
             """One settings row. `means` explains it in plain words and `key`
-            names where to set it — the page should not need a translator."""
+            names where to set it; the page should not need a translator.
+            `config_key` (section.key) is what the dashboard's editor writes;
+            None when the row is informational only."""
             set_with = " · ".join(x for x in (key, env) if x)
+            dotted = _config_key_for(env, key)
             return {"section": section, "label": label,
                     "value": "—" if value is None else str(value),
-                    "source": src(env), "means": means, "set_with": set_with}
+                    "source": src(env), "means": means, "set_with": set_with,
+                    "config_key": dotted, "env": env,
+                    "choices": choices or _CHOICES.get(dotted or ""),
+                    "secret": _is_secret_key(dotted)}
 
         try:
             from importlib.metadata import version as _v
@@ -2248,7 +2404,11 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                         "AGENTICLEDGER_DIGEST_HOUR",
                         means="Hour of day to post a last-24h spend summary to the "
                               "webhook above."))
-        return JSONResponse({"rows": rows})
+        from ..config import loaded_path as _loaded
+        return JSONResponse({"rows": rows,
+                             "config_path": str(_config_target()),
+                             "config_loaded": _loaded is not None,
+                             "restart_required": bool(getattr(app.state, "config_dirty", False))})
 
     @app.get("/api/calls/{action_id}")
     async def api_get_call(action_id: str, request: Request) -> JSONResponse:

@@ -155,6 +155,19 @@ export function resumeAllCalls(): Promise<void> {
   return del("/api/stop");
 }
 
+/** Settings you can change from the dashboard: written to the config file,
+ *  applied on the next restart. */
+export interface ConfigSetResult {
+  key: string; value: string | null; path: string; restart_required: boolean;
+  env_wins: boolean; env: string;
+}
+export function setConfigValue(key: string, value: string | null): Promise<ConfigSetResult> {
+  return put<ConfigSetResult>("/api/config", { key, value });
+}
+export function restartLedger(): Promise<{ restarting: boolean }> {
+  return post("/api/restart", {});
+}
+
 /** Notifications: the delivery history and the test button (#123). */
 export interface NotificationRow {
   id: string; timestamp: string; type: string; target_kind: string | null;

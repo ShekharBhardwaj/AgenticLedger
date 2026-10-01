@@ -280,6 +280,17 @@ table.grid, .rtable { background: var(--bg-card); border: 1px solid var(--border
 .sidebar .title-with-chip .title-text { display: block; line-height: 1.5; }
 .sidebar .run-chip { display: inline-block; margin: 6px 0 0; max-width: 100%; vertical-align: middle; }
 
+/* Settings you can change from the dashboard. */
+.setting-value { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.setting-change { padding: 2px 8px; font-size: 11px; }
+.setting-pending { font-family: var(--sans); }
+.setting-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+.setting-editor input, .setting-editor select { font: inherit; font-size: 12px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); min-width: 160px; }
+.setting-editor .link-btn { padding: 4px 9px; font-size: 11px; }
+.setting-note { font-family: var(--sans); font-size: 12px; max-width: 420px; }
+.restart-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 10px 0 14px; padding: 10px 14px; background: var(--warning-bg); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); border-radius: 8px; }
+.restart-banner .link-btn { color: var(--amber); white-space: nowrap; }
+
 /* 0.16: sign in with the identity provider, from the access panel. */
 .sso-btn { display: block; width: 100%; box-sizing: border-box; text-align: center; margin: 0 0 10px; text-decoration: none; }
 

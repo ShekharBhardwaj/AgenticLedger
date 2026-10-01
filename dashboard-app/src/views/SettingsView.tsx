@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { fmtAgo, get, listNotifications, NotificationList, post, sendTestNotification } from "../api";
+import { fmtAgo, get, health, listNotifications, NotificationList, post, restartLedger, sendTestNotification, setConfigValue } from "../api";
 
 interface SettingRow {
   section: string; label: string; value: string; source: string;
   means: string; set_with: string;
+  config_key: string | null; env: string | null; choices: string[] | null; secret: boolean;
+}
+
+interface SettingsBody {
+  rows: SettingRow[]; config_path: string; config_loaded: boolean; restart_required: boolean;
 }
 
 type ThemePref = "dark" | "light" | "system";
@@ -46,14 +51,38 @@ function AppearancePicker() {
 /** #50 — the oven window: what the proxy is actually running with.
  *  Read-only; secrets arrive pre-masked from the server. */
 export default function SettingsView() {
-  const [rows, setRows] = useState<SettingRow[] | null>(null);
+  const [body, setBody] = useState<SettingsBody | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Edits are written to the config file and wait for one restart; the
+  // banner carries that state for every row at once.
+  const [pending, setPending] = useState<Record<string, string>>({});
+  const [restart, setRestart] = useState<"idle" | "working" | "waiting" | "failed">("idle");
 
   useEffect(() => {
-    get<{ rows: SettingRow[] }>("/api/settings")
-      .then((r) => setRows(r.rows))
+    get<SettingsBody>("/api/settings")
+      .then((r) => setBody(r))
       .catch((e) => setError(e.message));
   }, []);
+  const rows = body?.rows ?? null;
+  const restartNeeded = Boolean(body?.restart_required) || Object.keys(pending).length > 0;
+
+  const doRestart = () => {
+    setRestart("working");
+    restartLedger()
+      .then(() => {
+        setRestart("waiting");
+        // The process re-executes; poll until it answers again, then reload.
+        const started = Date.now();
+        const poll = () => {
+          health().then(() => location.reload()).catch(() => {
+            if (Date.now() - started > 60_000) setRestart("failed");
+            else window.setTimeout(poll, 1000);
+          });
+        };
+        window.setTimeout(poll, 1500);
+      })
+      .catch(() => setRestart("failed"));
+  };
 
   if (error) {
     return (
@@ -72,12 +101,27 @@ export default function SettingsView() {
       <h2 className="page-title">Settings</h2>
       <AppearancePicker />
       <div className="muted" style={{ marginBottom: 8, maxWidth: 760 }}>
-        What the proxy is running with: read-only, secrets hidden. Each row
-        says where its value came from: <b>file</b> = your agenticledger.toml ·{" "}
+        What the proxy is running with, secrets hidden. Each row says where
+        its value came from: <b>file</b> = the config file ·{" "}
         <b>env</b> = typed or exported, which always wins · <b>default</b> =
-        built-in. To change something, edit the config file and restart
-        (<span className="mono">agenticledger stop &amp;&amp; agenticledger start</span>).
+        built-in. Change a value with its <b>Change</b> link: it is written to{" "}
+        <span className="mono">{body?.config_path}</span> and takes effect
+        when you restart, which the banner offers.
       </div>
+      {restartNeeded && (
+        <div className="restart-banner" role="status">
+          <span>
+            {restart === "waiting" ? "Restarting, the page reloads when the ledger is back."
+              : restart === "failed" ? "The ledger did not come back within a minute. Check `agenticledger status` in a terminal."
+              : "Saved to the config file. Restart the ledger to apply the change."}
+          </span>
+          {restart !== "waiting" && (
+            <button className="link-btn" disabled={restart === "working"} onClick={doRestart}>
+              {restart === "working" ? "restarting…" : "Restart now"}
+            </button>
+          )}
+        </div>
+      )}
       {sections.map((sec) => (
         <div key={sec}>
           <div className="section-title">{sec}</div>
@@ -95,7 +139,10 @@ export default function SettingsView() {
                       </div>
                     )}
                   </td>
-                  <td className="mono">{r.value}</td>
+                  <td className="mono">
+                    <ValueCell row={r} pending={r.config_key ? pending[r.config_key] : undefined}
+                               onSaved={(key, shown) => setPending((p) => ({ ...p, [key]: shown }))} />
+                  </td>
                   <td><span className={`badge src-${r.source}`}>{r.source}</span></td>
                 </tr>
               ))}
@@ -251,6 +298,63 @@ function AuditTrail() {
         </>
       )}
     </section>
+  );
+}
+
+/** The value column: the running value, and for rows the config file can
+ *  set, a Change link that opens an editor (a choice list, a password box
+ *  for secrets, a text field otherwise). Saved values show beside the
+ *  running one until the restart applies them. */
+function ValueCell({ row, pending, onSaved }: {
+  row: SettingRow; pending?: string; onSaved: (key: string, shown: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!row.config_key) return <>{row.value}</>;
+  const key = row.config_key;
+  const save = (value: string | null) => {
+    setBusy(true); setNote(null);
+    setConfigValue(key, value)
+      .then((res) => {
+        onSaved(key, value === null ? "cleared" : (res.value ?? value));
+        setEditing(false);
+        if (res.env_wins) {
+          setNote(`Saved, but ${res.env} is set in the environment the ledger runs in, and the environment wins. Change it where the ledger is started.`);
+        }
+      })
+      .catch((e) => setNote(`Not saved: ${e.message}`))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className="setting-value">
+      <span>{row.value}</span>
+      {pending && <span className="badge src-file setting-pending" title="written to the config file; applies on restart">{pending} on restart</span>}
+      {!editing ? (
+        <button className="link-btn setting-change" onClick={() => { setDraft(""); setEditing(true); }}
+                aria-label={`Change ${row.label}`}>Change</button>
+      ) : (
+        <form className="setting-editor" onSubmit={(e) => { e.preventDefault(); save(draft); }}>
+          {row.choices ? (
+            <select aria-label={`New value for ${row.label}`} value={draft}
+                    onChange={(e) => setDraft(e.target.value)} autoFocus>
+              <option value="">pick a value</option>
+              {row.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          ) : (
+            <input aria-label={`New value for ${row.label}`} type={row.secret ? "password" : "text"}
+                   value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus
+                   placeholder={row.secret ? "paste the key" : "new value"} />
+          )}
+          <button className="link-btn" type="submit" disabled={busy || !draft}>Save</button>
+          <button className="link-btn" type="button" disabled={busy} onClick={() => save(null)}
+                  title="Remove this key from the config file (the default or the environment applies again)">Clear</button>
+          <button className="link-btn" type="button" onClick={() => setEditing(false)}>Cancel</button>
+        </form>
+      )}
+      {note && <div className="muted setting-note">{note}</div>}
+    </div>
   );
 }
 

@@ -15,6 +15,10 @@ export default defineConfig({
   webServer: {
     command:
       `cd .. && ${PY} scripts/seed_smoke_ledger.py ${DB} && ` +
+      // Its own HOME: the settings editor writes a config file there, never
+      // into the developer's real ~/.agenticledger.
+      `mkdir -p dashboard-app/test-results/home && touch dashboard-app/test-results/home/config.toml && ` +
+      `HOME=$(pwd)/dashboard-app/test-results/home AGENTICLEDGER_CONFIG=$(pwd)/dashboard-app/test-results/home/config.toml ` +
       `AGENTICLEDGER_PORT=${PORT} AGENTICLEDGER_DSN=sqlite:///${DB} ` +
       `AGENTICLEDGER_LOOP_ACTION=warn ${PY} -m agenticledger.proxy`,
     url: `http://127.0.0.1:${PORT}/health`,

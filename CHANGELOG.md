@@ -61,6 +61,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same stream. Metadata only and no refusals, stated plainly in the
   guide; off by default so the proxy path never double counts.
 
+- **Settings you can change from the dashboard.** Every row on the
+  Settings page that the config file can set has a Change link: a
+  choice list where the values are fixed, a password box for secrets,
+  a text field otherwise. The value is written to the config file the
+  running ledger loaded (`PUT /api/config`, audited; secrets written but
+  never echoed), the page says it waits on a restart, and Restart now
+  (`POST /api/restart`) re-executes the ledger in place and reloads the
+  page when it is back. A row set by the environment says so, because
+  the environment keeps winning. The config file gained sections for
+  what only variables could set before: `[capture]`, `[loops]`,
+  `[limits]` and `budgets.action`.
+
 ### Fixed
 - **The run wrapper's "no calls reached the ledger" line no longer
   assumes the command failed.** When the agent answered but the ledger
