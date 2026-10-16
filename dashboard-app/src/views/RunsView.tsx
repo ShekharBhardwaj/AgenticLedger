@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { plural,
   del as apiDel,
   FlaggedCall, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
-  getPage, Iteration, listQuery, LiveCall, liveUpdates, post, Run, runStatusInfo,
+  getPage, getRunCalls, Iteration, listQuery, LiveCall, liveUpdates, post, Run, RunCall, runStatusInfo,
  listProjects,
 } from "../api";
+import { LoopAnatomy } from "../Anatomy";
 import CompareView from "./CompareView";
 import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, TimeSortToggle, timeSorted } from "./LabelBits";
 import { setLabel } from "../api";
@@ -128,6 +129,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
     );
   const [detail, setDetail] = useState<Run | null>(null);
   const [iterations, setIterations] = useState<Iteration[]>([]);
+  const [anatomy, setAnatomy] = useState<RunCall[]>([]);
   const [flags, setFlags] = useState<FlaggedCall[]>([]);
   // Premium spec 7.1: Overview | Activity | Cache, with What-if/Replay as
   // secondary tools rather than permanently expanded panels.
@@ -245,13 +247,15 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
   const liveCallCount = runs.find((r) => r.run_id === selected)?.call_count ?? 0;
 
   useEffect(() => {
-    if (!selected) { setDetail(null); setIterations([]); setFlags([]); return; }
+    if (!selected) { setDetail(null); setIterations([]); setAnatomy([]); setFlags([]); return; }
     let alive = true;
     const id = selected;
     const fresh = () => alive && id === selectedRef.current;
     get<Run>(`/api/runs/${encodeURIComponent(id)}`).then((v) => { if (fresh()) setDetail(v); }).catch(() => { if (fresh()) setDetail(null); });
     get<Iteration[]>(`/api/runs/${encodeURIComponent(id)}/iterations`)
       .then((v) => { if (fresh()) setIterations(v); }).catch(() => { if (fresh()) setIterations([]); });
+    getRunCalls(id)
+      .then((v) => { if (fresh()) setAnatomy(v); }).catch(() => { if (fresh()) setAnatomy([]); });
     get<FlaggedCall[]>(`/api/runs/${encodeURIComponent(id)}/flags`)
       .then((v) => { if (fresh()) setFlags(v); }).catch(() => { if (fresh()) setFlags([]); });
     return () => { alive = false; };
@@ -893,6 +897,9 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
 
             {subview === "overview" && iterations.length > 0 && (
               <>
+                <div className="section-title">Anatomy: how this loop moves</div>
+                <LoopAnatomy lanes={[{ id: detail.run_id, run: detail, calls: anatomy }]} onOpenSession={onOpenSession} />
+
                 <div className="run-overview-grid">
                   <CostChart title="Cost per iteration" unit="Iteration" points={iterations.map((it) => ({
                     id: String(it.iteration), label: it.iteration == null ? "—" : String(it.iteration),

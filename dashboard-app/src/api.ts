@@ -442,6 +442,31 @@ export function runStatusInfo(status: string): string {
   }
 }
 
+/** One call in a run's anatomy: slim, in recorded order, with what the
+ *  model read (context) and what it did next (tools or an answer). */
+export interface RunCall {
+  action_id: string;
+  session_id: string | null;
+  iteration: number | null;
+  timestamp: string;
+  model_id: string | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+  cost_usd: number | null;
+  latency_ms: number | null;
+  stop_reason: string | null;
+  status_code: number | null;
+  loop_flags: string | null;
+  tools: string[];
+  has_text: boolean;
+}
+
+export function getRunCalls(runId: string): Promise<RunCall[]> {
+  return get<RunCall[]>(`/api/runs/${encodeURIComponent(runId)}/calls`);
+}
+
 export interface Iteration {
   iteration: number | null;
   call_count: number;

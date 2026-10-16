@@ -1408,6 +1408,38 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
 
     # ── API ──────────────────────────────────────────────────────────────────
 
+    def _anatomy_row(c: dict) -> dict:
+        tools = c.get("tool_calls") or []
+        if isinstance(tools, str):
+            with suppress(Exception):
+                tools = json.loads(tools)
+        names = []
+        for t in tools if isinstance(tools, list) else []:
+            if not isinstance(t, dict):
+                continue
+            name = t.get("name") or (t.get("function") or {}).get("name")
+            if name:
+                names.append(str(name))
+        content = c.get("content")
+        return {
+            "action_id": c.get("action_id"),
+            "session_id": c.get("session_id"),
+            "iteration": c.get("iteration"),
+            "timestamp": c.get("timestamp"),
+            "model_id": c.get("model_id"),
+            "tokens_in": c.get("tokens_in"),
+            "tokens_out": c.get("tokens_out"),
+            "cache_read_tokens": c.get("cache_read_tokens"),
+            "cache_write_tokens": c.get("cache_write_tokens"),
+            "cost_usd": c.get("cost_usd"),
+            "latency_ms": c.get("latency_ms"),
+            "stop_reason": c.get("stop_reason"),
+            "status_code": c.get("status_code"),
+            "loop_flags": c.get("loop_flags"),
+            "tools": names,
+            "has_text": bool(content and str(content).strip()),
+        }
+
     def _annotate_labels(rows: list, labels: dict, key: str,
                          rules: Optional[dict] = None,
                          run_projects: Optional[dict] = None) -> list:
@@ -3040,6 +3072,17 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         await _run_in_scope(request, principal, run_id)
         iterations = await request.app.state.store.get_run_iterations(run_id)
         return JSONResponse(iterations)
+
+    @app.get("/api/runs/{run_id}/calls")
+    async def api_run_calls(run_id: str, request: Request) -> JSONResponse:
+        """The anatomy of a run: every call in order, slim. Enough to draw
+        the loop's shape (which conversation, which iteration, how much
+        context the model read, what it did next) without shipping
+        message bodies. Full calls stay at /session/{id}."""
+        principal = await _require(request, ROLE_VIEWER)
+        await _run_in_scope(request, principal, run_id)
+        calls = await request.app.state.store.get_run_calls(run_id)
+        return JSONResponse([_anatomy_row(c) for c in calls])
 
     @app.get("/api/runs/{run_id}/cache-audit")
     async def api_run_cache_audit(run_id: str, request: Request) -> JSONResponse:

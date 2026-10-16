@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.16.0] - 2026-09-29
 
 ### Added
+- **Loop anatomy, replayed.** A run's overview and Compare now open with
+  a stage that replays the recorded calls one at a time: the context pile
+  fills to what the model read, a pulse goes into the model, the move
+  goes out to the tool it called (or to its answer), and the result
+  either rejoins the conversation or is dropped because the next call
+  starts fresh. Two runs play side by side from the same start on one
+  height scale, with play, pause, step and speed, running counters, and
+  a strip of every call to jump from. A sentence under each run is
+  derived from its calls (conversations, iterations, calls, how the
+  context behaved). `GET /api/runs/{id}/calls` returns the slim rows
+  behind it, no message bodies. `examples/loop-anatomy/` records a Ralph
+  loop and a ReAct loop on the same task, tools and model, with a
+  ten-minute talk track for presenting the two.
 - **Sign in with your identity provider.** OpenID Connect, code flow with
   PKCE, ID tokens verified against the provider's keys (RS256 only, other
   algorithms refused by name), configured with `AGENTICLEDGER_OIDC_ISSUER`,

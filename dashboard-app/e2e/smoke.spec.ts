@@ -50,6 +50,21 @@ test("Compare runs mounts with named A and B columns", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /Compare runs/ })).toBeVisible();
   await expect(page.locator("table.rtable th").nth(1)).toContainText("A ·");
   await expect(page.locator("table.rtable th").nth(2)).toContainText("B ·");
+  // The anatomy replays both runs side by side, from their recorded calls.
+  await expect(page.locator(".anat-lane")).toHaveCount(2);
+  await expect(page.locator(".anat-lane .anat-chip").first()).toBeVisible();
+  await expect(page.locator(".anat-pos")).toContainText("call 1 of");
+  await page.getByRole("button", { name: "step ›" }).click();
+  await expect(page.locator(".anat-pos")).toContainText("call 2 of");
+});
+
+test("a run's overview replays its anatomy", async ({ page }) => {
+  await page.goto("/app");
+  await page.locator(".sidebar .card").filter({ hasText: "Smoke loop" }).click();
+  const lane = page.locator(".anat-lane");
+  await expect(lane).toHaveCount(1);
+  await expect(lane.locator(".anat-shape")).toContainText("3 conversations");
+  await expect(lane.locator(".anat-move")).toContainText("Bash");
 });
 
 test("Reports renders its tiles", async ({ page }) => {

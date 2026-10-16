@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Call, fmtNum, fmtTime, fmtUsd, get, Iteration, Run } from "../api";
+import { Call, fmtNum, fmtTime, fmtUsd, get, getRunCalls, Iteration, Run, RunCall } from "../api";
 import { LabelMark } from "../LabelMarks";
+import { LoopAnatomy } from "../Anatomy";
 
 /** Side-by-side diff of two loop runs — the change-the-prompt-and-rerun
  *  workflow: did the new run get cheaper, shorter, less flagged? */
@@ -9,10 +10,12 @@ function useRun(id: string) {
   const [detail, setDetail] = useState<Run | null>(null);
   const [iterations, setIterations] = useState<Iteration[]>([]);
   const [firstCall, setFirstCall] = useState<Call | null>(null);
+  const [calls, setCalls] = useState<RunCall[]>([]);
   useEffect(() => {
     get<Run>(`/api/runs/${encodeURIComponent(id)}`).then(setDetail).catch(() => setDetail(null));
     get<Iteration[]>(`/api/runs/${encodeURIComponent(id)}/iterations`)
       .then(setIterations).catch(() => setIterations([]));
+    getRunCalls(id).then(setCalls).catch(() => setCalls([]));
   }, [id]);
   useEffect(() => {
     const sid = iterations[0]?.session_id;
@@ -21,7 +24,7 @@ function useRun(id: string) {
       .then((rows) => setFirstCall(pickSubstantive(rows)))
       .catch(() => setFirstCall(null));
   }, [iterations]);
-  return { detail, iterations, firstCall };
+  return { detail, iterations, firstCall, calls };
 }
 
 /** The call whose prompt is worth diffing. Claude Code sessions carry
@@ -307,6 +310,10 @@ function ConfigDrift({ a, b }: { a: Call | null; b: Call | null }) {
   );
 }
 
+function sumCache(calls: RunCall[]): number | null {
+  return calls.length ? calls.reduce((n, c) => n + (c.cache_read_tokens ?? 0), 0) : null;
+}
+
 function durationMin(r: Run | null): number | null {
   if (!r?.started_at || !r?.last_call_at) return null;
   const ms = new Date(r.last_call_at).getTime() - new Date(r.started_at).getTime();
@@ -389,6 +396,7 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
     { label: "llm calls", a: ra.detail?.call_count ?? null, b: rb.detail?.call_count ?? null, fmt: fmtNum },
     { label: "tokens in", a: ra.detail?.total_tokens_in ?? null, b: rb.detail?.total_tokens_in ?? null, fmt: fmtNum },
     { label: "tokens out", a: ra.detail?.total_tokens_out ?? null, b: rb.detail?.total_tokens_out ?? null, fmt: fmtNum },
+    { label: "cache reads", a: sumCache(ra.calls), b: sumCache(rb.calls), fmt: fmtNum },
     { label: "flagged calls", a: ra.detail?.flagged_calls ?? null, b: rb.detail?.flagged_calls ?? null, fmt: String, lowerIsBetter: true },
     {
       label: "duration",
@@ -415,6 +423,13 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
         {rb.detail && <> ({fmtTime(rb.detail.started_at)})</>}
       </div>
 
+      <div className="section-title">Anatomy: how each loop moves</div>
+      <LoopAnatomy
+        lanes={[{ id: a, run: ra.detail, calls: ra.calls }, { id: b, run: rb.detail, calls: rb.calls }]}
+        onOpenSession={onOpenSession}
+      />
+
+      <div className="section-title">Results</div>
       <table className="rtable" style={{ maxWidth: 640, marginTop: 16 }}>
         <thead>
           <tr>
