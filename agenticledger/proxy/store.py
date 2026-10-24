@@ -270,6 +270,14 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def reprice_unpriced(self, price) -> int:
+        """Give a cost to every call recorded without one, using ``price``
+        (model_id, tokens_in, tokens_out, cache_read, cache_write, provider)
+        -> cost or None. Calls that still have no price stay as they are.
+        Returns how many calls were priced."""
+        ...
+
+    @abstractmethod
     async def get(self, action_id: str) -> Optional[dict[str, Any]]: ...
 
     @abstractmethod
@@ -1041,6 +1049,24 @@ class _SqliteStore(Store):
             (since_ts,),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
+
+    async def reprice_unpriced(self, price) -> int:
+        async with self._db.execute(
+            "SELECT action_id, model_id, provider, tokens_in, tokens_out, "
+            "cache_read_tokens, cache_write_tokens FROM llm_calls "
+            "WHERE cost_usd IS NULL AND (tokens_in IS NOT NULL OR tokens_out IS NOT NULL)"
+        ) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+        updates = []
+        for r in rows:
+            cost = price(r["model_id"], r["tokens_in"], r["tokens_out"],
+                         r["cache_read_tokens"], r["cache_write_tokens"], r["provider"] or "")
+            if cost is not None:
+                updates.append((cost, r["action_id"]))
+        if updates:
+            await self._db.executemany("UPDATE llm_calls SET cost_usd = ? WHERE action_id = ?", updates)
+            await self._db.commit()
+        return len(updates)
 
     async def get_run_calls(self, run_id: str) -> list[dict[str, Any]]:
         async with self._db.execute(
@@ -2100,6 +2126,22 @@ class _PostgresStore(Store):
             d["cost_usd"] = float(d["cost_usd"] or 0)
             out.append(d)
         return out
+
+    async def reprice_unpriced(self, price) -> int:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT action_id, model_id, provider, tokens_in, tokens_out, "
+                "cache_read_tokens, cache_write_tokens FROM llm_calls "
+                "WHERE cost_usd IS NULL AND (tokens_in IS NOT NULL OR tokens_out IS NOT NULL)")
+            updates = []
+            for r in rows:
+                cost = price(r["model_id"], r["tokens_in"], r["tokens_out"],
+                             r["cache_read_tokens"], r["cache_write_tokens"], r["provider"] or "")
+                if cost is not None:
+                    updates.append((cost, r["action_id"]))
+            if updates:
+                await conn.executemany("UPDATE llm_calls SET cost_usd = $1 WHERE action_id = $2", updates)
+        return len(updates)
 
     async def get_run_calls(self, run_id: str) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:

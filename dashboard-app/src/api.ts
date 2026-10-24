@@ -164,6 +164,11 @@ export interface ConfigSetResult {
 export function setConfigValue(key: string, value: string | null): Promise<ConfigSetResult> {
   return put<ConfigSetResult>("/api/config", { key, value });
 }
+/** Price the calls recorded before their model had a price. */
+export function repriceCalls(): Promise<{ repriced: number }> {
+  return post<{ repriced: number }>("/api/pricing/reprice", {});
+}
+
 export function restartLedger(): Promise<{ restarting: boolean }> {
   return post("/api/restart", {});
 }

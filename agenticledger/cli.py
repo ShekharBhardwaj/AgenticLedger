@@ -372,6 +372,34 @@ def _pop_run_name(argv: list) -> Optional[str]:
     return None
 
 
+def _pricing_reprice(args) -> int:
+    """Ask the running ledger to price its unpriced calls."""
+    proxy = args.proxy
+    if args.name:
+        from agenticledger import service
+        service.use_instance(args.name)
+        port_file = service.PID_FILE.parent / "proxy.port"
+        if not port_file.is_file():
+            print(f"instance [{args.name}] is not running (no port recorded)", file=sys.stderr)
+            return 1
+        proxy = f"http://localhost:{port_file.read_text().strip()}"
+    headers = {}
+    key = os.environ.get("AGENTICLEDGER_API_KEY")
+    if key:
+        headers["x-agenticledger-api-key"] = key
+    try:
+        resp = httpx.post(f"{proxy.rstrip('/')}/api/pricing/reprice", headers=headers, timeout=120)
+    except Exception as exc:
+        print(f"could not reach the ledger at {proxy}: {exc}", file=sys.stderr)
+        return 1
+    if resp.status_code != 200:
+        print(f"the ledger refused ({resp.status_code}): {resp.text[:200]}", file=sys.stderr)
+        return 1
+    n = resp.json().get("repriced", 0)
+    print(f"{n} call{'s' if n != 1 else ''} priced")
+    return 0
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="agenticledger",
@@ -462,6 +490,12 @@ def main(argv: Optional[list] = None) -> int:
         help="Fetch the latest price packs from the repository into "
              "~/.agenticledger/pricing/ (overrides built-ins; restart to apply). "
              "Network is touched only when you run it.")
+    reprice_p = pricing_sub.add_parser(
+        "reprice",
+        help="Price the calls recorded before their model had a price "
+             "(after a pack update or an override). Asks the running ledger.")
+    reprice_p.add_argument("--proxy", default=os.environ.get("AGENTICLEDGER_URL", "http://localhost:8000"))
+    reprice_p.add_argument("--name", default=None, help="A named instance instead of the everyday ledger.")
 
     upgrade_p = sub.add_parser(
         "upgrade",
@@ -583,6 +617,8 @@ def main(argv: Optional[list] = None) -> int:
             service.use_instance(args.name)
         return service.share(stop=args.stop, wifi=args.wifi, rotate=args.rotate)
     if args.subcommand == "pricing":
+        if args.pricing_cmd == "reprice":
+            return _pricing_reprice(args)
         from .pricing_update import update
         return update()
 

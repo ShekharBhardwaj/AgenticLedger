@@ -1,12 +1,17 @@
 {
   "provider": "openai",
-  "checked": "2026-08-04",
+  "checked": "2026-10-17",
   "pricing_page": "https://platform.openai.com/docs/pricing",
   "notes": [
     "Prices are USD per million tokens: {\"input\": in, \"output\": out}.",
     "Patterns are matched as substrings of the model id, longest match wins,",
     "so gateway prefixes (openrouter, bedrock) resolve to the same rate.",
-    "o3 was repriced in June 2025."
+    "o3 was repriced in June 2025.",
+    "gpt-6-astra: standard tier from OpenAI's launch announcement (10 in, 50 out),",
+    "cached input 1.00 and cache writes 12.50 per third-party pricing pages; long",
+    "context, batch, flex and fast tiers are not modelled.",
+    "gpt-6-sol and gpt-6-luna: standard rates as listed on OpenRouter at launch",
+    "(2 in, 10 out; 0.10 in, 0.50 out); batch and EU-region tiers are not modelled."
   ],
   "models": {
     "gpt-4o":        {"input": 2.50,  "output": 10.00},
@@ -17,6 +22,9 @@
     "gpt-4-turbo":   {"input": 10.00, "output": 30.00},
     "gpt-4":         {"input": 30.00, "output": 60.00},
     "gpt-3.5-turbo": {"input": 0.50,  "output": 1.50},
+    "gpt-6-astra":   {"input": 10.00, "output": 50.00, "cache_read": 1.00, "cache_write": 12.50},
+    "gpt-6-sol":     {"input": 2.00,  "output": 10.00},
+    "gpt-6-luna":    {"input": 0.10,  "output": 0.50},
     "gpt-5":         {"input": 1.25,  "output": 10.00},
     "gpt-5-mini":    {"input": 0.25,  "output": 2.00},
     "gpt-5-nano":    {"input": 0.05,  "output": 0.40},

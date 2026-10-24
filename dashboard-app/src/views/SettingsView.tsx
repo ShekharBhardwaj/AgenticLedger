@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fmtAgo, get, health, listNotifications, NotificationList, post, restartLedger, sendTestNotification, setConfigValue } from "../api";
+import { fmtAgo, get, health, listNotifications, NotificationList, post, repriceCalls, restartLedger, sendTestNotification, setConfigValue } from "../api";
 
 interface SettingRow {
   section: string; label: string; value: string; source: string;
@@ -57,6 +57,7 @@ export default function SettingsView() {
   // banner carries that state for every row at once.
   const [pending, setPending] = useState<Record<string, string>>({});
   const [restart, setRestart] = useState<"idle" | "working" | "waiting" | "failed">("idle");
+  const [reprice, setReprice] = useState<string | null>(null);
 
   useEffect(() => {
     get<SettingsBody>("/api/settings")
@@ -107,6 +108,18 @@ export default function SettingsView() {
         built-in. Change a value with its <b>Change</b> link: it is written to{" "}
         <span className="mono">{body?.config_path}</span> and takes effect
         when you restart, which the banner offers.
+      </div>
+      <div className="muted reprice-row" style={{ marginBottom: 16, maxWidth: 760 }}>
+        Calls recorded before their model had a price show as unpriced. After a
+        price pack update or an override, give them one:{" "}
+        <button className="link-btn" onClick={() => {
+          setReprice("working");
+          repriceCalls().then((r) => setReprice(`${r.repriced} ${r.repriced === 1 ? "call" : "calls"} priced`))
+            .catch((e) => setReprice(`could not reprice: ${e.message}`));
+        }} disabled={reprice === "working"}>
+          {reprice === "working" ? "pricing…" : "Reprice unpriced calls"}
+        </button>
+        {reprice && reprice !== "working" && <span className="reprice-result"> {reprice}</span>}
       </div>
       {restartNeeded && (
         <div className="restart-banner" role="status">

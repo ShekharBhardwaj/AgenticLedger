@@ -74,3 +74,18 @@ return to the built-in prices.
 still override everything at startup, for private models and negotiated
 rates. Overrides use the list form: `{"my-model": [in, out]}` or
 `[in, out, cache_read, cache_write]`.
+
+## Calls recorded before a price existed
+
+A call made before its model was in the table is stored with no cost and
+shows as unpriced. Once a price exists (a pack update, a new release, or
+an override), give those calls one: the **Reprice unpriced calls** button
+on the Settings page, or
+
+```bash
+agenticledger pricing reprice            # the everyday ledger
+agenticledger pricing reprice --name demo
+```
+
+Only calls with no cost are touched; nothing already priced changes. The
+action is written to the audit trail with the count.

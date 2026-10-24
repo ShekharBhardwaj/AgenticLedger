@@ -2180,6 +2180,18 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             "env": env,
         })
 
+    @app.post("/api/pricing/reprice")
+    async def api_pricing_reprice(request: Request) -> JSONResponse:
+        """Price the calls that were recorded before their model had a
+        price: a new pack entry, an override, or a refreshed pack. Only
+        calls with no cost are touched; what is already priced stays."""
+        principal = await _require(request, ROLE_ADMIN)
+        from .pricing import compute_cost
+        count = await request.app.state.store.reprice_unpriced(compute_cost)
+        await _audit(principal, request, "reprice", None,
+                     f"{count} call{'s' if count != 1 else ''} priced")
+        return JSONResponse({"repriced": count})
+
     @app.post("/api/restart")
     async def api_restart(request: Request) -> JSONResponse:
         """Restart this ledger in place so the config file is read again.

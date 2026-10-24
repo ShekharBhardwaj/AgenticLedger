@@ -1,0 +1,17 @@
+{
+  "provider": "typesafe",
+  "checked": "2026-10-23",
+  "pricing_page": "https://openrouter.ai/typesafe",
+  "notes": [
+    "Prices are USD per million tokens: {\"input\": in, \"output\": out}.",
+    "Jev is TypeSafe's decision model, reached through OpenRouter as",
+    "typesafe/jev-1.13, typesafe/jev-1.14 or typesafe/jev-latest; one rate",
+    "for the family, output tokens free, as listed on OpenRouter."
+  ],
+  "models": {
+    "jev": {
+      "input": 0.042,
+      "output": 0.0
+    }
+  }
+}
