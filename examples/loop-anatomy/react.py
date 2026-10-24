@@ -13,8 +13,18 @@ import time
 if "--case" in sys.argv:
     os.environ["LOOP_CASE"] = sys.argv[sys.argv.index("--case") + 1]
 
-from common import (PROMISE, REACT_RULE, SYSTEM, TASK, Recorder, converse,  # noqa: E402
-                    label_name, make_workspace, report, run_name)
+from common import (  # noqa: E402
+    PROMISE,
+    REACT_RULE,
+    SYSTEM,
+    TASK,
+    Recorder,
+    converse,
+    label_name,
+    make_workspace,
+    report,
+    run_name,
+)
 
 PROMPT = TASK + REACT_RULE
 
