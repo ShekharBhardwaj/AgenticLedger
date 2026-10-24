@@ -16,11 +16,13 @@ from .azure import AzureProvider
 from .base import Provider
 from .bedrock import BedrockProvider
 from .bedrock_converse import BedrockConverseProvider
+from .decisions import DecisionsProvider
 from .openai import OpenAIProvider
 from .responses import ResponsesProvider
 
 PROVIDERS: tuple[Provider, ...] = (
     ResponsesProvider(),
+    DecisionsProvider(),  # OpenRouter's /api/alpha/decisions (Jev and other decision models)
     BedrockProvider(),  # model/<id>/invoke paths; Anthropic-shaped bodies, binary streams
     BedrockConverseProvider(),  # model/<id>/converse paths; Converse bodies, direct-JSON frames
     AnthropicProvider(),

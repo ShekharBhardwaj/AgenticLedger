@@ -4022,7 +4022,7 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         try:
             upstream_resp = await client.request(
                 method=request.method,
-                url=f"/{path}",
+                url=_upstream_path(client, path),
                 content=body_bytes,
                 headers=forward_headers,
                 params=query,
@@ -4141,7 +4141,7 @@ async def _streaming_proxy(
 
     stream_ctx = client.stream(
         method=request.method,
-        url=f"/{path}",
+        url=_upstream_path(client, path),
         content=body_bytes,
         headers=forward_headers,
         params=query,
@@ -4374,6 +4374,18 @@ def _wire_format(path: str) -> str:
                  if any(p.startswith(pre) for pre in prefixes)), "")
 
 
+def _upstream_path(client: httpx.AsyncClient, path: str) -> str:
+    """The path to send upstream. A client whose base URL already ends
+    with the request path's first segment (base .../api, path api/alpha/
+    decisions, as OpenRouter's Decisions SDK sends it) must not get that
+    segment twice."""
+    base_path = str(client.base_url.path or "").rstrip("/")
+    first, _, rest = path.partition("/")
+    if base_path and rest and base_path.endswith("/" + first):
+        return "/" + rest
+    return "/" + path
+
+
 def _upstream_client(app, path: str) -> httpx.AsyncClient:
     """Zero-config routing: Anthropic-format knocks go to the Anthropic
     client when it exists (auto mode); everything else uses the default
@@ -4423,7 +4435,7 @@ def _outbound_headers(app, client: httpx.AsyncClient, path: str, method: str,
     signer = getattr(app.state, "bedrock_signer", None)
     if signer is None or not _is_bedrock(path):
         return headers
-    url = str(client.base_url).rstrip("/") + f"/{path}"
+    url = str(client.base_url).rstrip("/") + _upstream_path(client, path)
     if query:
         url += "?" + httpx.QueryParams(query).__str__()
     return signer.sign(method, url, headers, body)
