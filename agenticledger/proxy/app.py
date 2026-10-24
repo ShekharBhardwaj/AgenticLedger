@@ -1703,7 +1703,12 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         q = request.query_params
         since, until = _time_param(request, "since"), _time_param(request, "until")
         scope = await _scope_for(request, principal)
-        sessions = scope.keep(await store.list_sessions(limit=_HISTORY_CAP))
+        sessions = await store.list_sessions(limit=_HISTORY_CAP)
+        # Sessions the proxy never saw a call for but the agent's own record
+        # did (hooks behind a managed gateway) list beside the rest.
+        sessions = sorted(sessions + await store.list_event_only_sessions(limit=_HISTORY_CAP),
+                          key=lambda s: s.get("last_call_at") or "", reverse=True)
+        sessions = scope.keep(sessions)
         sessions = _annotate_labels(
             sessions, await store.get_labels("session"), "session_id",
             await store.get_project_rules(),

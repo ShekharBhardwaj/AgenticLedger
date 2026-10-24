@@ -304,6 +304,13 @@ class Store(ABC):
     async def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]: ...
 
     @abstractmethod
+    async def list_event_only_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Sessions the agent's own record knows (hooks, telemetry,
+        transcript) but the proxy never saw a model call for: the shape
+        behind a managed gateway. Same row shape as list_sessions, with
+        call_count 0 and an event_count."""
+
+    @abstractmethod
     async def search(self, query: str, limit: int = 50) -> list[dict[str, Any]]: ...
 
     @abstractmethod
@@ -1005,6 +1012,25 @@ class _SqliteStore(Store):
             rows = await cur.fetchall()
         return [_sqlite_session_row(r) for r in rows]
 
+    async def list_event_only_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            """
+            SELECT e.session_id,
+                   COUNT(*)         AS event_count,
+                   MIN(e.timestamp) AS started_at,
+                   MAX(e.timestamp) AS last_call_at,
+                   MAX(e.source)    AS source
+            FROM agent_events e
+            WHERE NOT EXISTS (SELECT 1 FROM llm_calls c WHERE c.session_id = e.session_id)
+            GROUP BY e.session_id
+            ORDER BY last_call_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_event_only_session_row(dict(r)) for r in rows]
+
     async def search(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
         pattern = f"%{query}%"
         async with self._db.execute(
@@ -1695,6 +1721,31 @@ def _sqlite_session_row(row) -> dict[str, Any]:
     return d
 
 
+# Who the on-machine record came from, when the proxy saw no call to name
+# the agent itself. Hooks and transcripts are Claude Code's; telemetry
+# names its own service.
+_EVENT_SOURCE_AGENT = {"hook": "claude-code", "transcript": "claude-code", "otel": "claude-code"}
+
+
+def _event_only_session_row(d: dict) -> dict[str, Any]:
+    """A session row shaped like list_sessions, for a session that exists
+    only in the agent's own record. Timestamps may be unix (sqlite) or
+    already strings/datetimes (postgres); _unix_to_iso handles both."""
+    started, last = d.get("started_at"), d.get("last_call_at")
+    return {
+        "session_id": d["session_id"],
+        "call_count": 0,
+        "event_count": int(d.get("event_count") or 0),
+        "started_at": _unix_to_iso(started) if isinstance(started, (int, float)) else started,
+        "last_call_at": _unix_to_iso(last) if isinstance(last, (int, float)) else last,
+        "total_latency_ms": None, "total_tokens_in": None, "total_tokens_out": None,
+        "total_cost_usd": None, "model_id": None,
+        "agent_name": _EVENT_SOURCE_AGENT.get(d.get("source") or ""),
+        "user_id": None, "environment": None, "team": None, "app_id": None, "run_id": None,
+        "error_count": 0, "blocked_count": 0,
+    }
+
+
 def _agent_event_tuple(e: dict) -> tuple:
     return (
         e["id"], e["session_id"], e.get("agent_id"), e.get("agent_type"), e["event"], e.get("outcome"),
@@ -2150,6 +2201,25 @@ class _PostgresStore(Store):
                 limit,
             )
         return [_pg_session_row(r) for r in rows]
+
+    async def list_event_only_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT e.session_id::text,
+                       COUNT(*)         AS event_count,
+                       MIN(e.timestamp) AS started_at,
+                       MAX(e.timestamp) AS last_call_at,
+                       MAX(e.source)    AS source
+                FROM agent_events e
+                WHERE NOT EXISTS (SELECT 1 FROM llm_calls c WHERE c.session_id = e.session_id)
+                GROUP BY e.session_id
+                ORDER BY last_call_at DESC
+                LIMIT $1
+                """,
+                limit,
+            )
+        return [_event_only_session_row(_pg_plain(r)) for r in rows]
 
     async def search(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
         pattern = f"%{query}%"

@@ -146,6 +146,13 @@ test("the Activity tab shows what the agent did on its machine, from its hooks",
   await rows.filter({ hasText: "Bash ran" }).getByRole("button").click();
   await expect(page.locator(".activity-pre").first()).toContainText("date");
   await expect(page.locator(".activity-body")).toContainText("Oct 23");
+  // a session the proxy never saw a call for still lists, and opens on Activity
+  await page.goto("/app#/sessions");
+  const card = page.locator(".sidebar .card").filter({ hasText: "gateway-only-s1" });
+  await expect(card).toContainText("3 events");
+  await card.click();
+  await expect(page.getByRole("tab", { name: /^Activity/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".activity-row")).toHaveCount(3);
   // a session without hooks never shows the tab
   await page.goto("/app#/sessions/smoke-loop-s1");
   await expect(page.getByRole("tab", { name: "Calls", exact: true })).toBeVisible();

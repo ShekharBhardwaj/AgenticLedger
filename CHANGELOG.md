@@ -22,7 +22,10 @@ it is tagged; the date is set then, not before.
   empty 200, so the ledger can never block or rewrite the agent, and they
   work when a managed gateway keeps the proxy off the model path.
   Retention and session deletion now cover agent events and derived tool
-  executions, not only the model calls.
+  executions, not only the model calls. A session the proxy never saw a
+  call for (Claude Code behind a managed gateway) still lists in Sessions,
+  with its event count, and opens on Activity.
+- `agenticledger start --name <x>` now prints the matching stop command.
 - **Every agent gets a name.** Headerless callers are now told apart by
   their instructions: the stable system prompt is fingerprinted into
   `unnamed-<fingerprint>`, so two agents with different jobs are two rows

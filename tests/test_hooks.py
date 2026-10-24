@@ -8,6 +8,8 @@ import time
 
 import httpx2 as httpx
 
+from agenticledger.proxy.hooks_ingest import event_from_hook
+
 from .conftest import anthropic_response
 
 SESSION = "11111111-2222-4333-8444-555555555555"
@@ -124,3 +126,25 @@ def test_retention_and_deletion_cover_agent_events(proxy):
                 headers={"x-agenticledger-session-id": SESSION})
     assert client.delete(f"/api/sessions/{SESSION}", headers={"sec-fetch-site": "same-origin"}).status_code == 200
     assert client.get(f"/api/sessions/{SESSION}/events").json() == []
+
+
+async def test_hook_only_session_lists_beside_proxied_ones(tmp_path):
+    """Behind a managed gateway the proxy sees no call, only the hooks.
+    The session still appears in the list, with its event count, and
+    sorts by its last event."""
+    from agenticledger.proxy.store import Store
+    store = await Store.connect(f"sqlite:///{tmp_path / 'h.db'}")
+    try:
+        now = time.time()
+        ev = [event_from_hook({"hook_event_name": "PostToolUse", "session_id": "gw-1",
+                               "tool_name": "Bash", "tool_input": {"command": "ls"},
+                               "tool_response": "a"}, now - 10),
+              event_from_hook({"hook_event_name": "Stop", "session_id": "gw-1"}, now - 5)]
+        await store.save_agent_events(ev)
+        rows = await store.list_event_only_sessions()
+        assert [r["session_id"] for r in rows] == ["gw-1"]
+        assert rows[0]["call_count"] == 0 and rows[0]["event_count"] == 2
+        assert rows[0]["agent_name"] == "claude-code"
+        assert rows[0]["last_call_at"].startswith("20")  # ISO, like the proxied rows
+    finally:
+        await store.close()

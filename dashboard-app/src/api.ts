@@ -520,6 +520,8 @@ export interface Iteration {
 export interface Session {
   session_id: string;
   call_count: number;
+  /** Agent events (hooks, telemetry, transcript); set when the proxy saw no calls. */
+  event_count?: number | null;
   started_at: string;
   last_call_at: string;
   run_id: string | null;

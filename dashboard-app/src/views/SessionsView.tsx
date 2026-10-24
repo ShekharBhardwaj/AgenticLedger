@@ -527,8 +527,12 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
     return () => { alive = false; };
   }, [selected]);
 
-  // The Activity tab exists only while the session has agent events.
-  useEffect(() => { if (mode === "activity" && events.length === 0) setMode("overview"); }, [mode, events.length]);
+  // The Activity tab exists only while the session has agent events, and
+  // a session the proxy saw no calls for (hooks behind a gateway) opens on it.
+  useEffect(() => {
+    if (mode === "activity" && events.length === 0) setMode("overview");
+    else if (mode === "overview" && calls.length === 0 && events.length > 0) setMode("activity");
+  }, [mode, events.length, calls.length]);
 
   useEffect(() => {
     if (!query.trim()) { setResults(null); setSearchError(null); return; }
@@ -685,7 +689,7 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
             )}
             <div className="card-meta-row">
               <span className="dim">{fmtAgo(s.last_call_at ?? s.started_at)}</span>
-              <span className="dim">{s.call_count} calls</span>
+              <span className="dim">{s.call_count === 0 && s.event_count ? plural(s.event_count, "event") : `${s.call_count} calls`}</span>
               <span className="card-cost">{fmtUsd(s.total_cost_usd)}</span>
             </div>
             <div className="card-sub">
@@ -760,14 +764,15 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
         {results !== null && (
           <div className="section-title">{results.length} search results</div>
         )}
-        {results === null && selected && shown.length > 0 && (
+        {results === null && selected && (shown.length > 0 || events.length > 0) && (
           <div className="subview-row session-views"><div className="subtabs" role="tablist" aria-label="Session views">
-            {(["overview", "calls", "flow", "trace", "activity"] as Mode[]).filter((m) => m !== "activity" || events.length > 0).map((m) => (
+            {(["overview", "calls", "flow", "trace", "activity"] as Mode[])
+              .filter((m) => (m === "activity" ? events.length > 0 : shown.length > 0)).map((m) => (
               <button key={m} role="tab" aria-selected={mode === m} className={`subtab ${mode === m ? "active" : ""}`} onClick={() => setMode(m)}>
                 {m === "overview" ? "Overview" : m === "calls" ? "Calls" : m === "flow" ? "Flow" : m === "trace" ? "Trace" : `Activity (${events.length})`}
               </button>
             ))}
-          </div><span className="view-count">{shown.length} captured calls</span></div>
+          </div><span className="view-count">{shown.length > 0 ? `${shown.length} captured calls` : "no calls reached the proxy"}</span></div>
         )}
         {results === null && selected && shown.length > 0 && <SessionMetrics calls={calls} />}
         {results === null && selected && mode === "overview" && calls.length > 0 && (
@@ -792,6 +797,8 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
           </div>
         ) : sessions.length === 0 && results === null ? (
           <WiringGuide />
+        ) : results === null && selected && mode === "activity" && events.length > 0 ? (
+          <ActivityView events={events} />
         ) : shown.length === 0 ? (
           <div className="empty">
             {results !== null ? "No matches." : "Select a session to inspect its calls."}
@@ -811,8 +818,6 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
           ))
         ) : mode === "flow" ? (
           <FlowView calls={calls} />
-        ) : mode === "activity" ? (
-          <ActivityView events={events} />
         ) : (
           <TraceView calls={calls} />
         )}

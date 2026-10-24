@@ -75,6 +75,16 @@ async def seed(path: Path) -> None:
         {"hook_event_name": "SessionEnd", "session_id": "smoke-loop-s3", "reason": "prompt_input_exit"},
     ]
     events = [event_from_hook(body, t0 + i * 7) for i, body in enumerate(hooks)]
+    # And a session the proxy never saw: Claude Code behind a managed
+    # gateway, where only the hooks reach the ledger.
+    gateway = [
+        {"hook_event_name": "SessionStart", "session_id": "gateway-only-s1", "source": "startup"},
+        {"hook_event_name": "PostToolUse", "session_id": "gateway-only-s1", "tool_name": "Read",
+         "tool_use_id": "tu_9", "tool_input": {"file_path": "/work/app/README.md"},
+         "tool_response": "# App\n", "duration_ms": 12},
+        {"hook_event_name": "Stop", "session_id": "gateway-only-s1", "last_assistant_message": "Read it."},
+    ]
+    events += [event_from_hook(body, now - 40 + i * 5) for i, body in enumerate(gateway)]
     await store.save_agent_events([e for e in events if e])
 
     # A long-finished run with a blocked refusal on its record.

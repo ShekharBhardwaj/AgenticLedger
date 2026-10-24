@@ -250,7 +250,7 @@ def start() -> int:
                   f"(pid {proc.pid})")
             print(f"  dashboard: http://localhost:{port}/app")
             print(f"  logs:      agenticledger logs   ({LOG_FILE})")
-            print( "  stop:      agenticledger stop")
+            print( "  stop:      agenticledger stop" + (f" --name {INSTANCE}" if INSTANCE else ""))
             return 0
         if proc.poll() is not None:
             break
