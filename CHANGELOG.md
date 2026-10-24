@@ -7,9 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.16.0] - 2026-09-29
+Everything below is on main and not yet tagged. It becomes 0.16.0 when
+it is tagged; the date is set then, not before.
 
 ### Added
+- **Every agent gets a name.** Headerless callers are now told apart by
+  their instructions: the stable system prompt is fingerprinted into
+  `unnamed-<fingerprint>`, so two agents with different jobs are two rows
+  in the reports and two sessions in the record instead of one shared
+  anonymous bucket. OpenRouter's `X-Title` names the agent and
+  `HTTP-Referer` the app; OpenAI's `user` field fills the user.
+  `POST /api/redetect` applies this to history.
+- **Untagged batches show in Loop Lens.** An inferred run now appears
+  once it has five or more calls, not only on a second iteration, so a
+  script that never sent a run id still gets its job on the board. Single
+  stray calls stay out.
+- **OpenRouter Decisions recorded.** Calls to `/api/alpha/decisions`
+  (TypeSafe's Jev and other decision models) are captured: questions as
+  the system prompt, state as the message, answers with their confidence
+  as the reply, and the cost OpenRouter charged as the cost. The SDK's
+  `/api/...` path no longer doubles the `/api` an OpenRouter upstream
+  already carries.
+- **Reprice unpriced calls.** Calls recorded before their model had a
+  price can be priced later: the Settings page button, `agenticledger
+  pricing reprice [--name instance]`, or `POST /api/pricing/reprice`.
+  Only unpriced calls are touched; the count goes to the audit trail.
+- **Prices for GPT-6 Astra, Sol and Luna** (OpenAI) and **Jev** (TypeSafe,
+  via OpenRouter) in the pricing packs.
 - **Loop anatomy, replayed.** A run's overview and Compare now open with
   a stage that replays the recorded calls one at a time: the context pile
   fills to what the model read, a pulse goes into the model, the move
