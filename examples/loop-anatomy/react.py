@@ -1,23 +1,22 @@
 """ReAct: one conversation that keeps going. Every step the model thinks,
 calls a tool, reads the result, and the whole exchange stays in its
-context for the next step. Run it, then ralph.py, then compare the two in
-the ledger.
+context. Run it, then ralph.py, then compare the two in the ledger.
 
-    python react.py [--max-calls 40]
+    python react.py [--case textkit|dispute] [--max-calls 40]
 """
 
 import argparse
+import os
+import sys
 import time
 
-from common import PROMISE, TASK, Recorder, converse, make_workspace, report
+if "--case" in sys.argv:
+    os.environ["LOOP_CASE"] = sys.argv[sys.argv.index("--case") + 1]
 
-SYSTEM = "You are a careful software engineer working with the tools you are given."
+from common import (PROMISE, REACT_RULE, SYSTEM, TASK, Recorder, converse,  # noqa: E402
+                    label_name, make_workspace, report, run_name)
 
-PROMPT = TASK + f"""
-How you work: one continuous conversation. Think, call a tool, read the
-result, and repeat until every test passes. Then reply with exactly
-{PROMISE} and nothing else.
-"""
+PROMPT = TASK + REACT_RULE
 
 
 class StepCounter:
@@ -35,13 +34,14 @@ class StepCounter:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--case", default=os.environ.get("LOOP_CASE", "textkit"))
     ap.add_argument("--max-calls", type=int, default=40)
     args = ap.parse_args()
 
-    run_id = f"react-{time.strftime('%m%d-%H%M%S')}"
+    run_id = run_name("react")
     ws = make_workspace(run_id)
     rec = Recorder(run_id, "react")
-    rec.label("ReAct", icon="brain", color="blue")
+    rec.label(label_name("ReAct"), icon="brain", color="blue")
     counter = StepCounter(rec)
     rec.ask = counter.ask
     started = time.time()

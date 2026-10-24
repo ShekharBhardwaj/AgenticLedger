@@ -34,8 +34,11 @@ function useRun(id: string) {
  *  biggest prompt. */
 function pickSubstantive(rows: Call[]): Call | null {
   if (!rows.length) return null;
-  const maxIn = Math.max(...rows.map((r) => r.tokens_in ?? 0));
-  return rows.find((r) => (r.tokens_in ?? 0) >= Math.max(65, maxIn * 0.5)) ?? rows[0];
+  // What the model read includes cache traffic: with prompt caching on,
+  // tokens_in alone is a handful for every call.
+  const read = (r: Call) => (r.tokens_in ?? 0) + (r.cache_read_tokens ?? 0) + (r.cache_write_tokens ?? 0);
+  const maxIn = Math.max(...rows.map(read));
+  return rows.find((r) => read(r) >= Math.max(65, maxIn * 0.5)) ?? rows[0];
 }
 
 // ── Prompt drift ─────────────────────────────────────────────────────────────
@@ -184,13 +187,19 @@ function wordDiff(a: string, b: string): { del: JSX.Element; add: JSX.Element } 
   return { del: <>{delEls}</>, add: <>{addEls}</> };
 }
 
+/** The person's opening words. Claude Code puts its own context blocks
+ *  (<system-reminder> ... with CLAUDE.md and paths) in front of them;
+ *  those differ run to run and are not the task, so they are skipped. */
 function firstUserText(call: Call | null): string {
   const msgs = Array.isArray(call?.messages) ? (call!.messages as any[]) : [];
   const first = msgs.find((msg) => msg?.role === "user");
   const content = first?.content;
   if (typeof content === "string") return content;
-  if (Array.isArray(content))
-    return content.map((block) => (typeof block === "string" ? block : block?.text ?? "")).join("\n");
+  if (Array.isArray(content)) {
+    const texts = content.map((block) => (typeof block === "string" ? block : block?.text ?? ""))
+      .filter((t) => t && !t.trimStart().startsWith("<system-reminder>"));
+    return texts.join("\n");
+  }
   return "";
 }
 
@@ -371,10 +380,11 @@ function Ribbon({ id, run, iterations, maxCost, onOpenSession }: {
   );
 }
 
-export default function CompareView({ a, b, onClose, onOpenSession }: {
+export default function CompareView({ a, b, onClose, onSwap, onOpenSession }: {
   a: string;
   b: string;
   onClose: () => void;
+  onSwap?: () => void;
   onOpenSession: (s: string) => void;
 }) {
   const ra = useRun(a);
@@ -411,7 +421,12 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
     <>
       <h2 className="page-title">
         Compare runs
-        <button className="link-btn" style={{ marginLeft: 12 }} onClick={onClose}>
+        {onSwap && (
+          <button className="link-btn" style={{ marginLeft: 12 }} onClick={onSwap} title="Put B on the left and A on the right">
+            ⇆ swap sides
+          </button>
+        )}
+        <button className="link-btn" style={{ marginLeft: 8 }} onClick={onClose}>
           ✕ close
         </button>
       </h2>
@@ -423,14 +438,14 @@ export default function CompareView({ a, b, onClose, onOpenSession }: {
         {rb.detail && <> ({fmtTime(rb.detail.started_at)})</>}
       </div>
 
-      <div className="section-title">Anatomy: how each loop moves</div>
+      <div className="section-title">Anatomy</div>
       <LoopAnatomy
         lanes={[{ id: a, run: ra.detail, calls: ra.calls }, { id: b, run: rb.detail, calls: rb.calls }]}
         onOpenSession={onOpenSession}
       />
 
       <div className="section-title">Results</div>
-      <table className="rtable" style={{ maxWidth: 640, marginTop: 16 }}>
+      <table className="rtable cmp-results" style={{ marginTop: 16 }}>
         <thead>
           <tr>
             <th>metric</th>

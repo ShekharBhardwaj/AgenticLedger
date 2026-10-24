@@ -1423,12 +1423,26 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             with suppress(Exception):
                 tools = json.loads(tools)
         names = []
+        paths = []
         for t in tools if isinstance(tools, list) else []:
             if not isinstance(t, dict):
                 continue
             name = t.get("name") or (t.get("function") or {}).get("name")
             if name:
                 names.append(str(name))
+            # File-like arguments, so the stage can show which file a call
+            # touched without shipping the arguments themselves.
+            args = t.get("arguments")
+            if args is None:
+                args = (t.get("function") or {}).get("arguments")
+            if isinstance(args, str):
+                with suppress(Exception):
+                    args = json.loads(args)
+            if isinstance(args, dict):
+                for key in ("path", "file", "filename", "file_path", "filepath"):
+                    val = args.get(key)
+                    if isinstance(val, str) and val and val not in paths:
+                        paths.append(val)
         content = c.get("content")
         return {
             "action_id": c.get("action_id"),
@@ -1446,7 +1460,11 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             "status_code": c.get("status_code"),
             "loop_flags": c.get("loop_flags"),
             "tools": names,
+            "paths": paths,
             "has_text": bool(content and str(content).strip()),
+            # A 429 can be the provider's rate limit or the ledger's own
+            # refusal; the record says which, so the dashboard can too.
+            "wall": str(c.get("error_detail") or "").startswith("blocked:"),
         }
 
     def _annotate_labels(rows: list, labels: dict, key: str,

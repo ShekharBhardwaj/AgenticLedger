@@ -1,37 +1,36 @@
 """Ralph: a fresh conversation every iteration. The model has no memory of
-the last iteration; the files on disk (and a progress notebook it writes)
-are the only things that carry over. Run it, then react.py, then compare
-the two in the ledger.
+the last iteration; the files on disk (and a notebook it writes) are the
+only things that carry over. Run it, then react.py, then compare the two
+in the ledger.
 
-    python ralph.py [--max-iterations 8] [--max-calls 12]
+    python ralph.py [--case textkit|dispute] [--max-iterations 8] [--max-calls 12]
 """
 
 import argparse
+import os
+import sys
 import time
 
-from common import PROMISE, TASK, Recorder, converse, make_workspace, report
+if "--case" in sys.argv:
+    os.environ["LOOP_CASE"] = sys.argv[sys.argv.index("--case") + 1]
 
-SYSTEM = "You are a careful software engineer working with the tools you are given."
+from common import (PROMISE, RALPH_RULE, SYSTEM, TASK, Recorder, converse,  # noqa: E402
+                    judge, label_name, make_workspace, report, run_name)
 
-PROMPT = TASK + f"""
-How you work: this is a loop that starts you over with an empty memory on
-every iteration. progress.md is your notebook. Read it first, run the
-tests, fix ONE thing, then write to progress.md what you did and what is
-still failing, and stop. If every test passes, reply with exactly
-{PROMISE} and nothing else.
-"""
+PROMPT = TASK + RALPH_RULE
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--case", default=os.environ.get("LOOP_CASE", "textkit"))
     ap.add_argument("--max-iterations", type=int, default=8)
     ap.add_argument("--max-calls", type=int, default=12, help="per iteration")
     args = ap.parse_args()
 
-    run_id = f"ralph-{time.strftime('%m%d-%H%M%S')}"
+    run_id = run_name("ralph")
     ws = make_workspace(run_id)
     rec = Recorder(run_id, "ralph")
-    rec.label("Ralph", icon="wrench", color="orange")
+    rec.label(label_name("Ralph"), icon="wrench", color="orange")
     started = time.time()
     why = "max iterations"
 
@@ -42,6 +41,9 @@ def main() -> None:
                               session_id=f"{run_id}-i{it}", max_calls=args.max_calls, log=print)
         if PROMISE in text:
             why = "completion promise"
+            break
+        if judge(ws)[0]:
+            why = "done, judged by the case"
             break
         if stop.startswith("refused"):
             why = stop

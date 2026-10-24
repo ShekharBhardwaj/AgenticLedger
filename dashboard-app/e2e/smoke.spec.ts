@@ -52,10 +52,17 @@ test("Compare runs mounts with named A and B columns", async ({ page }) => {
   await expect(page.locator("table.rtable th").nth(2)).toContainText("B ·");
   // The anatomy replays both runs side by side, from their recorded calls.
   await expect(page.locator(".anat-lane")).toHaveCount(2);
-  await expect(page.locator(".anat-lane .anat-chip").first()).toBeVisible();
+  await expect(page.locator(".anat-lane .anat-conv").first()).toBeVisible();
   await expect(page.locator(".anat-pos")).toContainText("call 1 of");
   await page.getByRole("button", { name: "step ›" }).click();
   await expect(page.locator(".anat-pos")).toContainText("call 2 of");
+  // Every lane steps through its own calls, forwards and back together.
+  const counters = page.locator(".anat-lane .anat-counters");
+  await expect(counters.nth(0)).toContainText("call 2 /");
+  await expect(counters.nth(1)).toContainText("call 2 /");
+  await page.getByRole("button", { name: "‹ step" }).click();
+  await expect(counters.nth(0)).toContainText("call 1 /");
+  await expect(counters.nth(1)).toContainText("call 1 /");
 });
 
 test("a run's overview replays its anatomy", async ({ page }) => {
@@ -64,7 +71,7 @@ test("a run's overview replays its anatomy", async ({ page }) => {
   const lane = page.locator(".anat-lane");
   await expect(lane).toHaveCount(1);
   await expect(lane.locator(".anat-shape")).toContainText("3 conversations");
-  await expect(lane.locator(".anat-move")).toContainText("Bash");
+  await expect(lane.locator(".anat-caption .clause.did")).toContainText("calls Bash");
 });
 
 test("Reports renders its tiles", async ({ page }) => {

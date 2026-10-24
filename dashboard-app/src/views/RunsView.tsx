@@ -413,6 +413,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             a={compare[0]}
             b={compare[1]}
             onClose={() => setCompare([])}
+            onSwap={() => setCompare((c) => [c[1], c[0]])}
             onOpenSession={onOpenSession}
           />
         ) : !detail && !loaded ? (
@@ -897,7 +898,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
 
             {subview === "overview" && iterations.length > 0 && (
               <>
-                <div className="section-title">Anatomy: how this loop moves</div>
+                <div className="section-title">Anatomy</div>
                 <LoopAnatomy lanes={[{ id: detail.run_id, run: detail, calls: anatomy }]} onOpenSession={onOpenSession} />
 
                 <div className="run-overview-grid">

@@ -33,6 +33,8 @@ def test_run_calls_describe_the_loop_shape(proxy):
     assert rows[0]["stop_reason"] == "tool_use" and rows[0]["tokens_in"] == 900
     assert rows[1]["tools"] == [] and rows[1]["has_text"] is True
     assert rows[1]["tokens_in"] == 2100 and rows[1]["session_id"] == "s1"
+    assert rows[0]["wall"] is False
+    assert rows[0]["paths"] == ["progress.md"] and rows[1]["paths"] == []
     # Slim: no message bodies ride along.
     assert "messages" not in rows[0] and "content" not in rows[0]
     assert client.get("/api/runs/nope/calls").status_code == 404

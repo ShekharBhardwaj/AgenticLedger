@@ -460,7 +460,9 @@ export interface RunCall {
   status_code: number | null;
   loop_flags: string | null;
   tools: string[];
+  paths: string[];         // file-like arguments of the tool calls (path, file, filename)
   has_text: boolean;
+  wall?: boolean;          // a 429/402 that was the ledger's own refusal, not the provider's
 }
 
 export function getRunCalls(runId: string): Promise<RunCall[]> {
