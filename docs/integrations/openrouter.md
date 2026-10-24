@@ -29,23 +29,30 @@ model call. The questions become the system prompt, the state the user
 message, the answers the reply, and the cost is the one OpenRouter
 charged, taken from the response rather than estimated.
 
-The OpenRouter SDK takes the ledger's address per call:
+The OpenRouter SDK's `decisions.create` ignores the client's server
+URL (an SDK quirk), so pin the ledger's address once, together with the
+ledger's headers, and call through that:
 
 ```python
+import functools
 from openrouter import OpenRouter
 
 client = OpenRouter(api_key=openrouter_api_key)
-response = client.alpha.decisions.create(
-    model="typesafe/jev-1.13",
-    state=state,
-    questions=questions,
+decide = functools.partial(
+    client.alpha.decisions.create,
     server_url="http://localhost:8010",       # the ledger; it forwards to OpenRouter
+    http_headers={
+        "x-agenticledger-run-id": "jev-batch-1",   # groups the calls in the Loop Lens
+        "x-agenticledger-session-id": "jev-s1",
+        "x-agenticledger-agent-name": "jev-decider",
+    },
 )
+
+response = decide(model="typesafe/jev-1.13", state=state, questions=questions)
 ```
 
-Run and session ids ride the same headers as every other wire
-(`x-agenticledger-run-id`, `x-agenticledger-session-id`), or the
-`/r/<run>/<iteration>` prefix on the server URL.
+Add `x-agenticledger-iteration` the same way when one run has rounds.
+The `/r/<run>/<iteration>` prefix on the server URL works too.
 
 ## Naming your agents
 
