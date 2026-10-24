@@ -2693,7 +2693,8 @@ class _PostgresStore(Store):
                 "DELETE FROM llm_calls WHERE timestamp < to_timestamp($1)", cutoff_ts
             )
             await conn.execute("DELETE FROM agent_events WHERE timestamp < to_timestamp($1)", cutoff_ts)
-            await conn.execute("DELETE FROM tool_executions WHERE timestamp < to_timestamp($1)", cutoff_ts)
+            # tool_executions keeps unix seconds (DOUBLE PRECISION), not TIMESTAMPTZ.
+            await conn.execute("DELETE FROM tool_executions WHERE timestamp < $1", cutoff_ts)
         return int(result.split()[-1])  # "DELETE N"
 
     async def delete_user(self, user_id: str) -> int:

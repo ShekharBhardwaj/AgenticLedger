@@ -3,7 +3,6 @@ proxy cannot see, joined to the proxied calls on the session id. The
 endpoint never fails the agent, retention bounds the events, and the
 ingest key gates them like telemetry."""
 
-import asyncio
 import time
 
 import httpx2 as httpx
@@ -104,26 +103,29 @@ def test_ingest_key_gates_hooks_like_telemetry(proxy, monkeypatch):
 
 
 def test_retention_and_deletion_cover_agent_events(proxy):
-    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()))
-    store = client.app.state.store
+    """The retention worker (0-day window, fast tick) purges agent events
+    the way it purges calls, and deleting a session takes its events too."""
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()),
+                   retention_days=0, retention_interval_seconds=0.05)
     client.post("/v1/hooks/claude-code", json=_hook("Stop"))
     client.post("/v1/hooks/claude-code", json=dict(_hook("Stop"), session_id="other-session"))
-    assert len(client.get(f"/api/sessions/{SESSION}/events").json()) == 1
+    deadline = time.time() + 3.0
+    while time.time() < deadline:
+        mine = client.get(f"/api/sessions/{SESSION}/events").json()
+        other = client.get("/api/sessions/other-session/events").json()
+        if mine == [] and other == []:
+            break
+        time.sleep(0.05)
+    assert mine == [] and other == [], "retention worker did not purge the agent events"
 
-    async def purge_all():
-        await store.purge_older_than(time.time() + 60)
-        return await store.get_agent_events(SESSION), await store.get_agent_events("other-session")
 
-    loop = asyncio.new_event_loop()
-    try:
-        mine, other = loop.run_until_complete(purge_all())
-    finally:
-        loop.close()
-    assert mine == [] and other == []
+def test_deleting_a_session_takes_its_agent_events(proxy):
+    client = proxy(handler=lambda r: httpx.Response(200, json=anthropic_response()))
     client.post("/v1/hooks/claude-code", json=_hook("Stop"))
     client.post("/v1/messages", json={"model": "claude-sonnet-5", "max_tokens": 8,
                                       "messages": [{"role": "user", "content": "hi"}]},
                 headers={"x-agenticledger-session-id": SESSION})
+    assert len(client.get(f"/api/sessions/{SESSION}/events").json()) == 1
     assert client.delete(f"/api/sessions/{SESSION}", headers={"sec-fetch-site": "same-origin"}).status_code == 200
     assert client.get(f"/api/sessions/{SESSION}/events").json() == []
 
