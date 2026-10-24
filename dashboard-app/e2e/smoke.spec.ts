@@ -134,6 +134,24 @@ test("session overview, all inspector tabs, Flow and Trace retain captured data"
   await expect(page.locator(".whatif")).toBeVisible();
 });
 
+test("the Activity tab shows what the agent did on its machine, from its hooks", async ({ page }) => {
+  await page.goto("/app#/sessions/smoke-loop-s3");
+  await page.getByRole("tab", { name: /^Activity/ }).click();
+  const rows = page.locator(".activity-row");
+  await expect(rows).toHaveCount(8);
+  await expect(page.locator(".activity-summary")).toContainText("1 tool run, 1 denied");
+  await expect(rows.filter({ hasText: "Bash denied" })).toBeVisible();
+  await expect(rows.filter({ hasText: "sub-agent started: Explore" })).toBeVisible();
+  // a tool run opens to its input and output
+  await rows.filter({ hasText: "Bash ran" }).getByRole("button").click();
+  await expect(page.locator(".activity-pre").first()).toContainText("date");
+  await expect(page.locator(".activity-body")).toContainText("Oct 23");
+  // a session without hooks never shows the tab
+  await page.goto("/app#/sessions/smoke-loop-s1");
+  await expect(page.getByRole("tab", { name: "Calls", exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Activity/ })).toHaveCount(0);
+});
+
 test("unknown prices remain explicit in the new metrics and chart", async ({ page }) => {
   await page.route("**/session/smoke-loop-s1", async (route) => {
     const response = await route.fetch();

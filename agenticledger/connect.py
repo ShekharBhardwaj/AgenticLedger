@@ -24,7 +24,20 @@ def _proxy_url(port: str) -> str:
     return f"http://localhost:{port}"
 
 
-def connect(framework: str, port: str = "8000", app_id: Optional[str] = None) -> int:
+# The hook events the ledger records: what ran, what was asked or
+# denied, sub-agents, compaction, the session's start and end. PreToolUse
+# is left out on purpose (PostToolUse carries the same input plus the
+# result), as is anything that fires per keystroke or per message shown.
+HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PostToolUseFailure",
+               "PermissionRequest", "PermissionDenied", "SubagentStart", "SubagentStop",
+               "Stop", "PreCompact", "PostCompact", "SessionEnd")
+_HOOK_MARK = "_agenticledger"
+
+
+def connect(framework: str, port: str = "8000", app_id: Optional[str] = None,
+            hooks: bool = False, remove_hooks: bool = False) -> int:
+    if framework == "claude-code" and (hooks or remove_hooks):
+        return _connect_claude_hooks(port, remove=remove_hooks)
     if framework in ("claude-code", "bmad"):
         return _connect_claude_settings(port, app_id or framework)
     if framework == "openclaw":
@@ -59,6 +72,69 @@ def _connect_claude_settings(port: str, app_id: str) -> int:
     print(f"Wrote {path} — Claude Code in this project now goes through the "
           f"ledger at {_proxy_url(port)}, tagged app '{app_id}'.")
     print("Restart Claude Code in this project to apply.")
+    return 0
+
+
+def hook_entry(url: str) -> dict:
+    """One http hook pointing at the ledger. The ingest key, when the
+    ledger has one, rides a header filled from the environment at hook
+    time (Claude Code interpolates only variables listed in
+    allowedEnvVars), so the settings file never holds the secret."""
+    return {
+        "type": "http",
+        "url": url,
+        "timeout": 5,
+        "headers": {"x-agenticledger-ingest-key": "$AGENTICLEDGER_INGEST_KEY"},
+        "allowedEnvVars": ["AGENTICLEDGER_INGEST_KEY"],
+        _HOOK_MARK: True,
+    }
+
+
+def _connect_claude_hooks(port: str, remove: bool = False) -> int:
+    """Claude Code hooks for the on-machine record, written to the USER
+    settings (~/.claude/settings.json) so they follow the person into
+    every project. They work even when IT pins Claude Code's model traffic
+    to a gateway, because hooks never touch the model path. Entries the
+    ledger wrote are marked and replaced on re-run; other hooks are kept."""
+    path = Path.home() / ".claude" / "settings.json"
+    url = f"{_proxy_url(port)}/v1/hooks/claude-code"
+
+    def mutate(cfg: dict) -> None:
+        hooks = cfg.setdefault("hooks", {})
+        for event in list(hooks.keys()):
+            groups = hooks.get(event) or []
+            kept = []
+            for group in groups:
+                if not isinstance(group, dict):
+                    kept.append(group)
+                    continue
+                inner = [h for h in (group.get("hooks") or [])
+                         if not (isinstance(h, dict) and h.get(_HOOK_MARK))]
+                if inner or not group.get("hooks"):
+                    group = dict(group, hooks=inner) if group.get("hooks") is not None else group
+                    kept.append(group)
+            if kept:
+                hooks[event] = kept
+            else:
+                hooks.pop(event, None)
+        if remove:
+            if not hooks:
+                cfg.pop("hooks", None)
+            return
+        for event in HOOK_EVENTS:
+            hooks.setdefault(event, []).append({"hooks": [hook_entry(url)]})
+
+    _merge_json(path, mutate)
+    if remove:
+        print(f"Removed the ledger's hooks from {path}.")
+        return 0
+    print(f"Wrote {path} (backup: settings.json.ledger-bak)")
+    print(f"  {len(HOOK_EVENTS)} hooks -> {url}")
+    print("  recorded: tools run (input, output, duration, failures), permissions asked")
+    print("  or denied, sub-agents, compaction, session start and end.")
+    print("  If the ledger has an ingest key, export AGENTICLEDGER_INGEST_KEY in the")
+    print("  shell that starts Claude Code; the hooks read it from there.")
+    print("Open a new Claude Code session to apply. Undo: agenticledger connect claude-code --remove-hooks")
     return 0
 
 

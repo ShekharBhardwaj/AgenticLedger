@@ -25,7 +25,38 @@ claude
   housekeeping calls (titles, summaries) are excluded so step counts stay
   honest; `/compact` re-links instead of breaking the thread.
 
-## Optional: the on-machine audit trail
+## The on-machine record, through hooks (works behind a managed gateway)
+
+The proxy sees what Claude Code sends to the model. It cannot see what
+Claude Code does on the machine: which tool ran, with what input, what
+came back, how long it took, whether it failed, what permission was asked
+or denied and under which rule, when a sub-agent started and stopped,
+when the context was compacted. Claude Code reports all of that through
+hooks, and the ledger records them as the session's **Activity**:
+
+```bash
+agenticledger connect claude-code --hooks
+```
+
+That writes twelve http hooks into your user settings
+(`~/.claude/settings.json`), each posting to
+`http://localhost:8000/v1/hooks/claude-code`. Existing hooks are kept, the
+ledger's own entries are marked and replaced on re-run, and
+`--remove-hooks` takes them out. The hook's session id is the same id the
+proxy records for that session's model calls, so the Sessions page shows
+both halves side by side: the calls the model answered, and the Activity
+tab with what the agent did between them. Every hook gets an empty 200;
+the ledger never blocks or rewrites what the agent does.
+
+Hooks never touch the model path. When IT pins `ANTHROPIC_BASE_URL` to a
+company gateway and the proxy cannot sit in front of it, the hooks still
+deliver the full on-machine record, and `telemetry_calls` (below) adds
+the per-call cost and tokens. If your ledger has an ingest key, export
+`AGENTICLEDGER_INGEST_KEY` in the shell that starts Claude Code; the hook
+headers read it from there and the settings file never holds it. In a
+managed environment, `allowedHttpHookUrls` must permit the ledger's URL.
+
+## Optional: the on-machine audit trail through telemetry
 
 The proxy sees LLM calls; Claude Code's telemetry sees what ran on the
 machine. Send both to the ledger:

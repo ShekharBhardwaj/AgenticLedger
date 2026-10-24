@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from agenticledger.proxy.hooks_ingest import event_from_hook  # noqa: E402
 from agenticledger.proxy.normalize import CanonicalRequest, CanonicalResponse  # noqa: E402
 from agenticledger.proxy.store import Store  # noqa: E402
 
@@ -55,6 +56,26 @@ async def seed(path: Path) -> None:
     await call("smoke-loop", 3, "smoke-loop-s3", now - 100,
                flags='["repeat_tool_call"]', tool="Bash")
     await store.set_label("run", "smoke-loop", name="Smoke loop")
+
+    # The agent's own record for the third session, as Claude Code hooks
+    # would post it: a tool run, a denied one, a sub-agent, the end.
+    t0 = now - 180
+    hooks = [
+        {"hook_event_name": "SessionStart", "session_id": "smoke-loop-s3", "source": "startup", "cwd": "/work/app"},
+        {"hook_event_name": "UserPromptSubmit", "session_id": "smoke-loop-s3", "prompt": "fix the failing date test"},
+        {"hook_event_name": "PostToolUse", "session_id": "smoke-loop-s3", "tool_name": "Bash",
+         "tool_use_id": "tu_1", "tool_input": {"command": "date"}, "tool_response": "Thu Oct 23 09:00:00 2026",
+         "duration_ms": 412},
+        {"hook_event_name": "PermissionDenied", "session_id": "smoke-loop-s3", "tool_name": "Bash",
+         "tool_use_id": "tu_2", "tool_input": {"command": "rm -rf build"},
+         "reason": "Permission rule deny: Bash(rm -rf*)"},
+        {"hook_event_name": "SubagentStart", "session_id": "smoke-loop-s3", "agent_id": "sub-1", "agent_type": "Explore"},
+        {"hook_event_name": "SubagentStop", "session_id": "smoke-loop-s3", "agent_id": "sub-1", "agent_type": "Explore"},
+        {"hook_event_name": "Stop", "session_id": "smoke-loop-s3", "last_assistant_message": "Done: the test passes."},
+        {"hook_event_name": "SessionEnd", "session_id": "smoke-loop-s3", "reason": "prompt_input_exit"},
+    ]
+    events = [event_from_hook(body, t0 + i * 7) for i, body in enumerate(hooks)]
+    await store.save_agent_events([e for e in events if e])
 
     # A long-finished run with a blocked refusal on its record.
     for it in (1, 2):

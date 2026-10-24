@@ -474,6 +474,33 @@ export function getRunCalls(runId: string): Promise<RunCall[]> {
   return get<RunCall[]>(`/api/runs/${encodeURIComponent(runId)}/calls`);
 }
 
+/** One thing the agent did on its machine, as its own hooks (or telemetry,
+ *  or transcript) reported it: a tool run with input, output and duration,
+ *  a permission asked or denied, a sub-agent, compaction, session start or end. */
+export interface AgentEvent {
+  id: string;
+  session_id: string;
+  agent_id: string | null;
+  agent_type: string | null;
+  event: string;
+  outcome: string | null;
+  tool_name: string | null;
+  tool_use_id: string | null;
+  tool_input: string | null;
+  tool_response: string | null;
+  reason: string | null;
+  duration_ms: number | null;
+  prompt_id: string | null;
+  cwd: string | null;
+  source: string;
+  detail: Record<string, unknown> | null;
+  timestamp: string;
+}
+
+export function getSessionEvents(sessionId: string): Promise<AgentEvent[]> {
+  return get<AgentEvent[]>(`/api/sessions/${encodeURIComponent(sessionId)}/events`);
+}
+
 export interface Iteration {
   iteration: number | null;
   call_count: number;

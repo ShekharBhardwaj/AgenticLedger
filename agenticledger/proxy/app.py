@@ -86,6 +86,7 @@ from .auth import (
 from .bedrock_auth import BedrockSigner
 from .detect import detect_agent
 from .export import build_export, render_html_report
+from .hooks_ingest import event_from_hook
 from .loops import (
     DEFAULT_REPEAT_THRESHOLD,
     DEFAULT_RUN_GAP_SECONDS,
@@ -3068,6 +3069,20 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             headers={"Content-Disposition": f'attachment; filename="agenticledger-models-{days}d.csv"'},
         )
 
+    @app.get("/api/sessions/{session_id}/events")
+    async def api_session_events(session_id: str, request: Request) -> JSONResponse:
+        """The agent's own record of a session: what it ran on its machine,
+        what was asked or denied, sub-agents, compaction, start and end.
+        From hooks today; from telemetry and transcripts as they arrive."""
+        principal = await _require(request, ROLE_VIEWER)
+        scope = await _scope_for(request, principal)
+        if not scope.unscoped:
+            head = await _session_row(request.app.state.store, session_id)
+            if head is None or not scope.allows_row(head):
+                raise HTTPException(status_code=404, detail="session_id not found")
+        events = await request.app.state.store.get_agent_events(session_id)
+        return JSONResponse(events)
+
     @app.get("/api/sessions/{session_id}/tools")
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:
         """Derived tool executions for a session — the proxy pairs each
@@ -3615,6 +3630,37 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                         except Exception:
                             pass   # at-least-once delivery: duplicates are expected
         return _otlp_ack(request)
+
+    @app.post("/v1/hooks/claude-code")
+    async def hooks_claude_code(request: Request) -> Response:
+        """Claude Code hook events (http-type hooks) become agent events:
+        tools run with their input, output and duration, permissions asked
+        or denied, sub-agents, compaction, session start and end. The
+        session id is the one the proxy records for the same session, so
+        the two halves of the record meet. Always an empty 200: the ledger
+        records, it never steers the agent, and a hook that could fail
+        would be a hook that could block."""
+        denied = await _check_ingest_gate(request)
+        if denied:
+            return denied
+        try:
+            body = json.loads(await request.body() or b"{}")
+        except Exception:
+            return Response(status_code=200)
+        event = event_from_hook(body, time.time())
+        if event is None:
+            return Response(status_code=200)
+        try:
+            await request.app.state.store.save_agent_events([event])
+        except Exception as exc:  # recording must never fail the agent
+            logger.warning("agent event not recorded: %s", exc)
+            return Response(status_code=200)
+        with suppress(Exception):
+            await broadcaster.broadcast({
+                "type": "agent_event", "session_id": event["session_id"],
+                "event": event["event"], "tool_name": event.get("tool_name"),
+            })
+        return Response(status_code=200)
 
     @app.post("/v1/metrics")
     async def otlp_metrics_ack(request: Request) -> Response:

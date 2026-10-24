@@ -11,6 +11,18 @@ Everything below is on main and not yet tagged. It becomes 0.16.0 when
 it is tagged; the date is set then, not before.
 
 ### Added
+- **The agent's own record, through Claude Code hooks.** `agenticledger
+  connect claude-code --hooks` installs http hooks in the user's Claude
+  Code settings; `POST /v1/hooks/claude-code` records what the agent did
+  on its machine (tools run with input, output, duration and failures,
+  permissions asked or denied with the rule, sub-agents, compaction,
+  session start and end) as agent events joined to the session's model
+  calls. The Sessions page gains an **Activity** tab;
+  `GET /api/sessions/{id}/events` returns the record. Hooks always get an
+  empty 200, so the ledger can never block or rewrite the agent, and they
+  work when a managed gateway keeps the proxy off the model path.
+  Retention and session deletion now cover agent events and derived tool
+  executions, not only the model calls.
 - **Every agent gets a name.** Headerless callers are now told apart by
   their instructions: the stable system prompt is fingerprinted into
   `unnamed-<fingerprint>`, so two agents with different jobs are two rows

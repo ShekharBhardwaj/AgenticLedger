@@ -3,8 +3,7 @@ import {
   Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
   getCall, getPage, interactionTags, liftLoopBlock, listProjects, listQuery, liveUpdates, LoopBlock,
   loopBlockState, post, ReplayResult,
-  replayModels, replayTargets, ReplayTarget, Session, toolNames,
-} from "../api";
+  replayModels, replayTargets, ReplayTarget, Session, toolNames, AgentEvent, getSessionEvents, plural } from "../api";
 import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, RUN_PREFIX, TimeSortToggle, timeSorted } from "./LabelBits";
 import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
@@ -142,7 +141,7 @@ import TraceView from "./TraceView";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
 
-type Mode = "overview" | "calls" | "flow" | "trace";
+type Mode = "overview" | "calls" | "flow" | "trace" | "activity";
 
 /** Zero-state that diagnoses instead of shrugging: wrong wiring produces
  *  silence, so the silence itself must say what to check. The dashboard's
@@ -475,6 +474,8 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [selected]);
   const [calls, setCalls] = useState<Call[]>([]);
+  // The agent's own record (hooks, telemetry, transcript) for the selected session.
+  const [events, setEvents] = useState<AgentEvent[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);   // sessions fetch failed
@@ -501,6 +502,7 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
     // keep an open session view fresh too
     setSelected((cur) => {
       if (cur) get<Call[]>(`/session/${encodeURIComponent(cur)}`).then(setCalls).catch(() => {});
+      if (cur) getSessionEvents(cur).then(setEvents).catch(() => setEvents([]));
       return cur;
     });
   }, []);
@@ -511,15 +513,22 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
   }, [refresh]);
 
   useEffect(() => {
-    if (!selected) { setCalls([]); return; }
+    if (!selected) { setCalls([]); setEvents([]); return; }
     let alive = true;
     const id = selected;
+    setEvents([]);
     // Discard an out-of-order response for a session no longer selected.
     get<Call[]>(`/session/${encodeURIComponent(id)}`)
       .then((v) => { if (alive && id === selected) setCalls(v); })
       .catch(() => { if (alive && id === selected) setCalls([]); });
+    getSessionEvents(id)
+      .then((v) => { if (alive && id === selected) setEvents(v); })
+      .catch(() => { if (alive && id === selected) setEvents([]); });
     return () => { alive = false; };
   }, [selected]);
+
+  // The Activity tab exists only while the session has agent events.
+  useEffect(() => { if (mode === "activity" && events.length === 0) setMode("overview"); }, [mode, events.length]);
 
   useEffect(() => {
     if (!query.trim()) { setResults(null); setSearchError(null); return; }
@@ -753,9 +762,9 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
         )}
         {results === null && selected && shown.length > 0 && (
           <div className="subview-row session-views"><div className="subtabs" role="tablist" aria-label="Session views">
-            {(["overview", "calls", "flow", "trace"] as Mode[]).map((m) => (
+            {(["overview", "calls", "flow", "trace", "activity"] as Mode[]).filter((m) => m !== "activity" || events.length > 0).map((m) => (
               <button key={m} role="tab" aria-selected={mode === m} className={`subtab ${mode === m ? "active" : ""}`} onClick={() => setMode(m)}>
-                {m === "overview" ? "Overview" : m === "calls" ? "Calls" : m === "flow" ? "Flow" : "Trace"}
+                {m === "overview" ? "Overview" : m === "calls" ? "Calls" : m === "flow" ? "Flow" : m === "trace" ? "Trace" : `Activity (${events.length})`}
               </button>
             ))}
           </div><span className="view-count">{shown.length} captured calls</span></div>
@@ -802,10 +811,85 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
           ))
         ) : mode === "flow" ? (
           <FlowView calls={calls} />
+        ) : mode === "activity" ? (
+          <ActivityView events={events} />
         ) : (
           <TraceView calls={calls} />
         )}
       </div>
+    </div>
+  );
+}
+
+/** What the agent did on its machine, in order: the record its own hooks
+ *  (or telemetry, or transcript) sent, beside the model calls the proxy
+ *  saw. Tool runs show input, output and duration; permissions show the
+ *  decision and the rule; sub-agents, compaction and the session's start
+ *  and end are the beats between. Nothing here is inferred. */
+function ActivityView({ events }: { events: AgentEvent[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const tools = events.filter((e) => e.event === "PostToolUse" || e.event === "PostToolUseFailure");
+  const denied = events.filter((e) => e.outcome === "denied").length;
+  const failed = events.filter((e) => e.outcome === "failed").length;
+  const subagents = new Set(events.filter((e) => e.agent_id).map((e) => e.agent_id)).size;
+  const label = (e: AgentEvent): string => {
+    switch (e.event) {
+      case "PostToolUse": return `${e.tool_name ?? "tool"} ran`;
+      case "PostToolUseFailure": return `${e.tool_name ?? "tool"} failed`;
+      case "PermissionRequest": return `asked to run ${e.tool_name ?? "a tool"}`;
+      case "PermissionDenied": return `${e.tool_name ?? "a tool"} denied`;
+      case "SessionStart": return `session started${e.detail?.source ? ` (${String(e.detail.source)})` : ""}`;
+      case "SessionEnd": return `session ended${e.detail?.reason ? ` (${String(e.detail.reason)})` : ""}`;
+      case "SubagentStart": return `sub-agent started${e.agent_type ? `: ${e.agent_type}` : ""}`;
+      case "SubagentStop": return `sub-agent stopped${e.agent_type ? `: ${e.agent_type}` : ""}`;
+      case "UserPromptSubmit": return "prompt submitted";
+      case "PreCompact": return `context compaction${e.detail?.trigger ? ` (${String(e.detail.trigger)})` : ""}`;
+      case "PostCompact": return "context compacted";
+      case "Stop": return "turn ended";
+      default: return e.event;
+    }
+  };
+  const text = (e: AgentEvent): string | null => {
+    if (e.event === "UserPromptSubmit") return (e.detail?.prompt as string) ?? null;
+    if (e.event === "Stop" || e.event === "SubagentStop") return (e.detail?.last_assistant_message as string) ?? null;
+    if (e.event === "PostCompact") return (e.detail?.compact_summary as string) ?? null;
+    return null;
+  };
+  return (
+    <div className="activity">
+      <div className="muted activity-summary">
+        {plural(tools.length, "tool run")}{failed ? `, ${failed} failed` : ""}{denied ? `, ${denied} denied` : ""}
+        {subagents ? ` · ${plural(subagents, "sub-agent")}` : ""} · recorded by the agent's own hooks on its machine
+      </div>
+      <ol className="activity-list">
+        {events.map((e) => {
+          const expandable = Boolean(e.tool_input || e.tool_response || e.reason || text(e));
+          const isOpen = open === e.id;
+          return (
+            <li key={e.id} className={`activity-row ${e.outcome ?? ""} ${e.agent_id ? "sub" : ""}`}>
+              <button type="button" className="activity-head" disabled={!expandable}
+                      onClick={() => setOpen(isOpen ? null : e.id)} aria-expanded={isOpen}>
+                <span className="activity-time mono">{fmtTime(e.timestamp)}</span>
+                <span className={`activity-dot ${e.outcome ?? ""}`} aria-hidden="true" />
+                <span className="activity-label">{label(e)}</span>
+                {e.agent_id && <span className="badge fw" title={`sub-agent ${e.agent_id}`}>{e.agent_type ?? "sub-agent"}</span>}
+                {e.outcome === "denied" && <span className="badge blocked">denied</span>}
+                {e.outcome === "failed" && <span className="badge error">failed</span>}
+                {e.duration_ms != null && <span className="muted mono activity-dur">{e.duration_ms >= 1000 ? `${(e.duration_ms / 1000).toFixed(1)} s` : `${e.duration_ms} ms`}</span>}
+                {expandable && <span className="muted activity-caret">{isOpen ? "▾" : "▸"}</span>}
+              </button>
+              {isOpen && (
+                <div className="activity-body">
+                  {e.reason && <div className="activity-reason">{e.reason}</div>}
+                  {text(e) && <pre className="activity-pre">{text(e)}</pre>}
+                  {e.tool_input && <><div className="muted">input</div><pre className="activity-pre">{e.tool_input}</pre></>}
+                  {e.tool_response && <><div className="muted">output</div><pre className="activity-pre">{e.tool_response}</pre></>}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

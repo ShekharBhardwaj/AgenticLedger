@@ -501,6 +501,8 @@ Every LLM call is stored with:
 | `parent_action_id` | Parent call in a nested agent graph |
 | `handoff_from` / `handoff_to` | Agent handoff tracking for the Flow DAG |
 
+Beside the model calls, a session can carry the agent's own record: `agenticledger connect claude-code --hooks` installs Claude Code hooks that post what the agent did on its machine (tools run with input, output and duration, permissions asked or denied, sub-agents, compaction, session start and end) to `/v1/hooks/claude-code`. It shows as the session's **Activity** tab, works behind a managed gateway, and is never used to steer the agent.
+
 ---
 
 ## API reference

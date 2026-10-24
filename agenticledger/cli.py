@@ -445,6 +445,12 @@ def main(argv: Optional[list] = None) -> int:
              "(claude-code, bmad, openclaw); no schema memorization.",
     )
     conn_p.add_argument("framework", choices=["claude-code", "bmad", "openclaw"])
+    conn_p.add_argument("--hooks", action="store_true",
+                        help="claude-code only: install the ledger's hooks in ~/.claude/settings.json "
+                             "so what the agent does on this machine (tools, permissions, sub-agents, "
+                             "compaction) is recorded too. Works behind a managed gateway.")
+    conn_p.add_argument("--remove-hooks", action="store_true",
+                        help="claude-code only: take the ledger's hooks out again.")
     conn_p.add_argument("--port", default=os.environ.get("AGENTICLEDGER_PORT", "8000"))
     conn_p.add_argument("--app-id", default=None,
                         help="App tag for captured calls (default: the framework name)")
@@ -560,7 +566,8 @@ def main(argv: Optional[list] = None) -> int:
         return mcp_main()
     if args.subcommand == "connect":
         from agenticledger.connect import connect as connect_fw
-        return connect_fw(args.framework, port=args.port, app_id=args.app_id)
+        return connect_fw(args.framework, port=args.port, app_id=args.app_id,
+                          hooks=args.hooks, remove_hooks=args.remove_hooks)
     if args.subcommand == "config":
         from agenticledger.config import find_config, get_value, set_value
         action = getattr(args, "config_action", None)

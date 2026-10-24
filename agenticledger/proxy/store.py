@@ -270,6 +270,23 @@ class Store(ABC):
         ...
 
     @abstractmethod
+    async def save_agent_events(self, events: list[dict[str, Any]]) -> None:
+        """Persist agent events (hook, telemetry or transcript records of
+        what the agent did on its machine: tools run, permissions asked or
+        denied, sub-agents, compaction, session lifecycle)."""
+        ...
+
+    @abstractmethod
+    async def get_agent_events(self, session_id: str, limit: int = 2000) -> list[dict[str, Any]]:
+        """Agent events for a session (and its sub-agents), oldest first."""
+        ...
+
+    @abstractmethod
+    async def count_agent_events(self, session_ids: list[str]) -> dict[str, int]:
+        """Agent event counts per session id."""
+        ...
+
+    @abstractmethod
     async def reprice_unpriced(self, price) -> int:
         """Give a cost to every call recorded without one, using ``price``
         (model_id, tokens_in, tokens_out, cache_read, cache_write, provider)
@@ -739,6 +756,31 @@ class _SqliteStore(Store):
         await db.execute("""
             CREATE INDEX IF NOT EXISTS tool_executions_session_idx
             ON tool_executions (session_id) WHERE session_id IS NOT NULL
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS agent_events (
+                id            TEXT PRIMARY KEY,
+                session_id    TEXT NOT NULL,
+                agent_id      TEXT,
+                agent_type    TEXT,
+                event         TEXT NOT NULL,
+                outcome       TEXT,
+                tool_name     TEXT,
+                tool_use_id   TEXT,
+                tool_input    TEXT,
+                tool_response TEXT,
+                reason        TEXT,
+                duration_ms   INTEGER,
+                prompt_id     TEXT,
+                cwd           TEXT,
+                source        TEXT NOT NULL,
+                detail        TEXT,
+                timestamp     REAL NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS agent_events_session_idx
+            ON agent_events (session_id, timestamp)
         """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS run_markers (
@@ -1353,8 +1395,45 @@ class _SqliteStore(Store):
             "DELETE FROM llm_calls WHERE session_id = ?", (session_id,)
         ) as cur:
             deleted = cur.rowcount
+        # Everything filed under the session goes with it: the agent's own
+        # record and the derived tool executions, not only the model calls.
+        await self._db.execute("DELETE FROM agent_events WHERE session_id = ?", (session_id,))
+        await self._db.execute("DELETE FROM tool_executions WHERE session_id = ?", (session_id,))
         await self._db.commit()
         return deleted
+
+    async def save_agent_events(self, events: list[dict[str, Any]]) -> None:
+        if not events:
+            return
+        await self._db.executemany(
+            """
+            INSERT OR REPLACE INTO agent_events
+                (id, session_id, agent_id, agent_type, event, outcome, tool_name, tool_use_id,
+                 tool_input, tool_response, reason, duration_ms, prompt_id, cwd, source, detail, timestamp)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            [_agent_event_tuple(e) for e in events],
+        )
+        await self._db.commit()
+
+    async def get_agent_events(self, session_id: str, limit: int = 2000) -> list[dict[str, Any]]:
+        async with self._db.execute(
+            "SELECT * FROM agent_events WHERE session_id = ? ORDER BY timestamp ASC, rowid ASC LIMIT ?",
+            (session_id, limit),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [_agent_event_row(dict(r)) for r in rows]
+
+    async def count_agent_events(self, session_ids: list[str]) -> dict[str, int]:
+        if not session_ids:
+            return {}
+        marks = ",".join("?" for _ in session_ids)
+        async with self._db.execute(
+            f"SELECT session_id, COUNT(*) AS n FROM agent_events WHERE session_id IN ({marks}) GROUP BY session_id",
+            session_ids,
+        ) as cur:
+            rows = await cur.fetchall()
+        return {r["session_id"]: r["n"] for r in rows}
 
     async def ping(self) -> None:
         await self._db.execute("SELECT 1")
@@ -1400,6 +1479,9 @@ class _SqliteStore(Store):
             "DELETE FROM llm_calls WHERE timestamp < ?", (cutoff_ts,)
         ) as cur:
             deleted = cur.rowcount
+        # Retention bounds the whole record, not only the model calls.
+        await self._db.execute("DELETE FROM agent_events WHERE timestamp < ?", (cutoff_ts,))
+        await self._db.execute("DELETE FROM tool_executions WHERE timestamp < ?", (cutoff_ts,))
         await self._db.commit()
         return deleted
 
@@ -1613,6 +1695,24 @@ def _sqlite_session_row(row) -> dict[str, Any]:
     return d
 
 
+def _agent_event_tuple(e: dict) -> tuple:
+    return (
+        e["id"], e["session_id"], e.get("agent_id"), e.get("agent_type"), e["event"], e.get("outcome"),
+        e.get("tool_name"), e.get("tool_use_id"), e.get("tool_input"), e.get("tool_response"),
+        e.get("reason"), e.get("duration_ms"), e.get("prompt_id"), e.get("cwd"), e.get("source", "hook"),
+        e.get("detail"), float(e["timestamp"]),
+    )
+
+
+def _agent_event_row(d: dict) -> dict:
+    d["timestamp"] = _to_iso(d["timestamp"]) if d.get("timestamp") is not None else None
+    if isinstance(d.get("detail"), str):
+        with contextlib.suppress(Exception):
+            d["detail"] = json.loads(d["detail"])
+    d.pop("rowid", None)
+    return d
+
+
 def _as_json_text(value) -> Optional[str]:
     """Tool arguments arrive as a JSON string (OpenAI) or a dict (Anthropic
     tool_use input) — store one canonical text form."""
@@ -1796,6 +1896,31 @@ class _PostgresStore(Store):
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS tool_executions_session_idx
                 ON tool_executions (session_id) WHERE session_id IS NOT NULL
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS agent_events (
+                    id            TEXT PRIMARY KEY,
+                    session_id    TEXT NOT NULL,
+                    agent_id      TEXT,
+                    agent_type    TEXT,
+                    event         TEXT NOT NULL,
+                    outcome       TEXT,
+                    tool_name     TEXT,
+                    tool_use_id   TEXT,
+                    tool_input    TEXT,
+                    tool_response TEXT,
+                    reason        TEXT,
+                    duration_ms   INTEGER,
+                    prompt_id     TEXT,
+                    cwd           TEXT,
+                    source        TEXT NOT NULL,
+                    detail        TEXT,
+                    timestamp     TIMESTAMPTZ NOT NULL
+                )
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS agent_events_session_idx
+                ON agent_events (session_id, timestamp)
             """)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS run_markers (
@@ -2418,7 +2543,40 @@ class _PostgresStore(Store):
             result = await conn.execute(
                 "DELETE FROM llm_calls WHERE session_id = $1", session_id
             )
+            await conn.execute("DELETE FROM agent_events WHERE session_id = $1", session_id)
+            await conn.execute("DELETE FROM tool_executions WHERE session_id = $1", session_id)
         return int(result.split()[-1])  # "DELETE N"
+
+    async def save_agent_events(self, events: list[dict[str, Any]]) -> None:
+        if not events:
+            return
+        async with self._pool.acquire() as conn:
+            await conn.executemany(
+                """
+                INSERT INTO agent_events
+                    (id, session_id, agent_id, agent_type, event, outcome, tool_name, tool_use_id,
+                     tool_input, tool_response, reason, duration_ms, prompt_id, cwd, source, detail, timestamp)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,to_timestamp($17))
+                ON CONFLICT (id) DO NOTHING
+                """,
+                [_agent_event_tuple(e) for e in events],
+            )
+
+    async def get_agent_events(self, session_id: str, limit: int = 2000) -> list[dict[str, Any]]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM agent_events WHERE session_id = $1 ORDER BY timestamp ASC LIMIT $2",
+                session_id, limit)
+        return [_agent_event_row(_pg_plain(dict(r))) for r in rows]
+
+    async def count_agent_events(self, session_ids: list[str]) -> dict[str, int]:
+        if not session_ids:
+            return {}
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT session_id, COUNT(*) AS n FROM agent_events WHERE session_id = ANY($1::text[]) GROUP BY session_id",
+                session_ids)
+        return {r["session_id"]: int(r["n"]) for r in rows}
 
     async def ping(self) -> None:
         async with self._pool.acquire() as conn:
@@ -2464,6 +2622,8 @@ class _PostgresStore(Store):
             result = await conn.execute(
                 "DELETE FROM llm_calls WHERE timestamp < to_timestamp($1)", cutoff_ts
             )
+            await conn.execute("DELETE FROM agent_events WHERE timestamp < to_timestamp($1)", cutoff_ts)
+            await conn.execute("DELETE FROM tool_executions WHERE timestamp < to_timestamp($1)", cutoff_ts)
         return int(result.split()[-1])  # "DELETE N"
 
     async def delete_user(self, user_id: str) -> int:
