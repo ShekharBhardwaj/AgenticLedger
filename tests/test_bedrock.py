@@ -168,7 +168,7 @@ def test_anonymous_agents_never_share_a_fallback_session(proxy, aws_env):
 
     sessions = {s["session_id"]: s for s in client.get("/api/sessions").json()}
     openclaw_sessions = [k for k in sessions if "openclaw" in k]
-    anon_sessions = [k for k in sessions if "unattributed" in k or "bedrock" in k]
+    anon_sessions = [k for k in sessions if "unattributed" in k or "bedrock" in k or "unnamed-" in k]
     assert openclaw_sessions and anon_sessions
     assert set(openclaw_sessions).isdisjoint(anon_sessions)
     # And the stranger's call did not inherit openclaw-main.

@@ -1,8 +1,10 @@
 {
  "detected": {
   "agent_name": "openclaw",
+  "app_id": null,
   "framework": "openclaw",
-  "session_id": null
+  "session_id": null,
+  "user_id": null
  },
  "request": {
   "max_tokens": 8192,

@@ -15,6 +15,8 @@ import json
 import re
 from typing import Optional
 
+from .canonical import digest, stable_system_text
+
 # Claude Code embeds its session UUID in the Anthropic metadata.user_id field.
 # Two wire formats exist: claude-cli 1.x sent a flat string
 # "user_<hash>_account_<uuid>_session_<uuid>"; 2.x sends a JSON blob
@@ -147,11 +149,65 @@ def detect_agent(headers, body: Optional[dict]) -> dict:
     elif agent_name is None and framework == "gemini-cli":
         agent_name = "gemini-cli"
 
+    # OpenRouter's own attribution headers: X-Title names the app that is
+    # calling (the OpenAI SDK's default_headers or the OpenRouter SDK's
+    # x_open_router_title), HTTP-Referer identifies it. The closest thing
+    # to an agent name a caller sends without knowing the ledger exists.
+    title = _header(headers, "x-title")
+    if agent_name is None and title:
+        agent_name = title[:80]
+    app_id = _header(headers, "http-referer") or None
+
+    # The end user, when the wire carries one: OpenAI's `user` field, or
+    # Anthropic's metadata.user_id when it is not Claude Code's session blob.
+    user_id: Optional[str] = None
+    if body:
+        u = body.get("user")
+        if isinstance(u, str) and u.strip():
+            user_id = u.strip()[:200]
+        elif session_id is None:
+            mu = (body.get("metadata") or {}).get("user_id") if isinstance(body.get("metadata"), dict) else None
+            if isinstance(mu, str) and mu.strip():
+                user_id = mu.strip()[:200]
+
+    # Nobody named this agent. Its instructions still tell it apart from
+    # every other agent on the ledger: the stable part of the system
+    # prompt, hashed, becomes "unnamed-<fingerprint>". Two agents with
+    # different jobs get two names and two sessions; the same agent keeps
+    # one name across calls, days and restarts. Named by evidence, and the
+    # prefix says so.
+    if agent_name is None and framework is None and body:
+        role = _role_fingerprint(body)
+        if role:
+            agent_name = f"unnamed-{role}"
+
     return {
         "framework": framework,
         "agent_name": agent_name,
         "session_id": session_id,
+        "app_id": app_id,
+        "user_id": user_id,
     }
+
+
+def _header(headers, name: str) -> str:
+    try:
+        value = headers.get(name)
+    except Exception:
+        return ""
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _role_fingerprint(body: dict) -> Optional[str]:
+    """Six hex digits of the agent's stable instructions, or None when the
+    call carries no system prompt at all (nothing to fingerprint)."""
+    texts = _system_texts(body)
+    if not texts:
+        return None
+    stable = stable_system_text("\n".join(texts)).strip()
+    if not stable:
+        return None
+    return digest(stable)[:6]
 
 
 def _system_texts(body: dict) -> list[str]:

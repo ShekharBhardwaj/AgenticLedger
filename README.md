@@ -493,7 +493,7 @@ Every LLM call is stored with:
 | `latency_ms` | End-to-end response time |
 | `status_code` | HTTP status from upstream - errors are captured too |
 | `error_detail` | Upstream error message for non-200 responses |
-| `agent_name` | From `x-agenticledger-agent-name` header, or auto-detected (e.g. `claude-code`) |
+| `agent_name` | From `x-agenticledger-agent-name`, else auto-detected (e.g. `claude-code`), else OpenRouter's `X-Title`, else `unnamed-<fingerprint>` of the agent's own instructions so headerless agents are still told apart |
 | `framework` | From `x-agenticledger-framework` header, or fingerprint-detected (e.g. `claude-code`, `gemini-cli`, `litellm`) |
 | `user_id` | From `x-agenticledger-user-id` header |
 | `app_id` | From `x-agenticledger-app-id` header |

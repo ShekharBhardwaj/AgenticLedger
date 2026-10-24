@@ -4537,9 +4537,9 @@ def _extract_meta(request: Request, body_json: Optional[dict] = None) -> dict:
     )
     return {
         "session_id":       session_id,
-        "user_id":          h.get("x-agenticledger-user-id"),
+        "user_id":          h.get("x-agenticledger-user-id") or detected.get("user_id"),
         "agent_name":       h.get("x-agenticledger-agent-name") or detected["agent_name"],
-        "app_id":           h.get("x-agenticledger-app-id"),
+        "app_id":           h.get("x-agenticledger-app-id") or detected.get("app_id"),
         "parent_action_id": h.get("x-agenticledger-parent-action-id"),
         "environment":      h.get("x-agenticledger-environment", "development"),
         "handoff_from":     h.get("x-agenticledger-handoff-from"),

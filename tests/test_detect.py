@@ -115,7 +115,59 @@ def test_unknown_traffic_detects_nothing():
         {"user-agent": "python-httpx/0.27"},
         {"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
     )
-    assert meta == {"framework": None, "agent_name": None, "session_id": None}
+    assert meta == {"framework": None, "agent_name": None, "session_id": None,
+                    "app_id": None, "user_id": None}
+
+
+def test_x_title_names_the_agent_and_the_referer_the_app():
+    """OpenRouter's attribution headers are the nearest thing to a name a
+    caller sends without knowing the ledger exists."""
+    meta = detect_agent({"x-title": "Claims handler", "http-referer": "https://claims.example.com"},
+                        {"model": "typesafe/jev-1.13", "messages": [{"role": "user", "content": "x"}]})
+    assert meta["agent_name"] == "Claims handler"
+    assert meta["app_id"] == "https://claims.example.com"
+
+
+def test_openai_user_field_becomes_the_user():
+    meta = detect_agent({}, {"model": "gpt-4o", "user": "cust-42",
+                             "messages": [{"role": "user", "content": "hi"}]})
+    assert meta["user_id"] == "cust-42"
+
+
+def test_headerless_agents_are_told_apart_by_their_instructions():
+    """No name anywhere: the stable system prompt becomes the name, so two
+    agents with different jobs never share one, and the same agent keeps
+    its name across calls."""
+    claims = {"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "You are a claims handler. Decide the claim."},
+        {"role": "user", "content": "claim 1"}]}
+    fraud = {"model": "gpt-4o", "messages": [
+        {"role": "system", "content": "You are a fraud analyst. Score the alert."},
+        {"role": "user", "content": "alert 9"}]}
+    again = dict(claims, messages=[claims["messages"][0], {"role": "user", "content": "claim 2"}])
+    a, b, c = (detect_agent({}, body)["agent_name"] for body in (claims, fraud, again))
+    assert a.startswith("unnamed-") and b.startswith("unnamed-") and a != b
+    assert c == a
+    # An explicit name still wins over the fingerprint.
+    assert detect_agent({"x-title": "Claims"}, claims)["agent_name"] == "Claims"
+
+
+def test_two_headerless_agents_land_in_separate_sessions_and_report_rows(proxy):
+    import httpx2 as httpx
+
+    from .conftest import openai_response
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
+    for system, item in (("You are a claims handler.", "claim 1"), ("You are a fraud analyst.", "alert 1"),
+                         ("You are a claims handler.", "claim 2")):
+        body = {"model": "gpt-4o", "messages": [{"role": "system", "content": system},
+                                                {"role": "user", "content": item}]}
+        assert client.post("/v1/chat/completions", json=body).status_code == 200
+    sessions = client.get("/api/sessions").json()
+    assert len(sessions) == 2 and all(s["session_id"].startswith("auto-unnamed-") for s in sessions)
+    agents = {a["agent_name"]: (a.get("calls") if a.get("calls") is not None else a.get("call_count"))
+              for a in client.get("/api/reports?days=1").json()["agents"]}
+    assert len(agents) == 2 and sorted(agents.values()) == [1, 2]
+    assert all(name.startswith("unnamed-") for name in agents)
 
 
 def test_malformed_body_shapes_tolerated():
@@ -266,7 +318,8 @@ def test_talking_about_gemini_cli_is_not_running_gemini_cli():
         "messages": [{"role": "user", "content": "Should I install Gemini CLI?"}],
     })
     assert got["framework"] is None
-    assert got["agent_name"] is None
+    # Not gemini-cli; an unrecognized agent is named by its instructions instead.
+    assert got["agent_name"] != "gemini-cli" and got["agent_name"].startswith("unnamed-")
 
 
 def test_bmad_riding_on_openclaw_upgrades_to_bmad():

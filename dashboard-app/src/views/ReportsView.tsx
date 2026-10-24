@@ -454,6 +454,14 @@ export default function ReportsView() {
           ))}
         </tbody>
       </table>
+      {report.agents.some((a) => a.agent_name.startsWith("unnamed-") || a.agent_name === "(unattributed)") && (
+        <div className="muted" style={{ marginTop: 6, maxWidth: 760 }}>
+          <span className="mono">unnamed-…</span> agents are told apart by their instructions (the stable system
+          prompt, fingerprinted); <span className="mono">(unattributed)</span> calls carried no instructions at all.
+          Name an agent with the <span className="mono">x-agenticledger-agent-name</span> header, or{" "}
+          <span className="mono">X-Title</span> when calling through OpenRouter.
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,10 @@
 {
  "detected": {
   "agent_name": "claude-code",
+  "app_id": null,
   "framework": "claude-code",
-  "session_id": "60ed6c59-06e8-4b6c-b15a-802925a22782"
+  "session_id": "60ed6c59-06e8-4b6c-b15a-802925a22782",
+  "user_id": null
  },
  "request": {
   "max_tokens": 1024,
