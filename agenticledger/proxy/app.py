@@ -46,6 +46,7 @@ import io
 import json
 import logging
 import os
+import re
 import secrets
 import sys
 import time
@@ -1169,13 +1170,16 @@ def create_app(
     # and the ⚿ key panel lives inside the page, so gating the shell would
     # lock the door with the keyhole behind it (the login-page pattern).
 
+    _SPA_PAGE_HEADERS = {"Cache-Control": "no-cache"}
+    _HASHED_ASSET = re.compile(r"-[A-Za-z0-9_-]{8,}\.(?:js|css)$")
+
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request) -> HTMLResponse:
         """The web app (React SPA). Wheel and Docker installs always ship the
         build; a source checkout without one gets told how to make it."""
         index = _SPA_DIR / "index.html"
         if index.is_file():
-            return HTMLResponse(index.read_text(encoding="utf-8"))
+            return HTMLResponse(index.read_text(encoding="utf-8"), headers=_SPA_PAGE_HEADERS)
         raise HTTPException(
             status_code=404,
             detail="Web app not built — run `npm run build` in dashboard-app/ "
@@ -1196,7 +1200,7 @@ def create_app(
                 detail="Web app not built — run `npm run build` in dashboard-app/ "
                        "(PyPI and Docker installs include it).",
             )
-        return HTMLResponse(index.read_text(encoding="utf-8"))
+        return HTMLResponse(index.read_text(encoding="utf-8"), headers=_SPA_PAGE_HEADERS)
 
     @app.get("/app/assets/{filename}")
     async def spa_asset(filename: str) -> FileResponse:
@@ -1212,7 +1216,12 @@ def create_app(
         path = entries.get(filename)
         if path is None:
             raise HTTPException(status_code=404)
-        return FileResponse(path)
+        # A content-hashed name (index-D_xj1JQl.js) never changes meaning,
+        # so it can be cached for good; the unhashed images cannot.
+        hashed = bool(_HASHED_ASSET.search(filename))
+        return FileResponse(path, headers={
+            "Cache-Control": "public, max-age=31536000, immutable" if hashed else "no-cache",
+        })
 
     # ── WebSocket (live events) ───────────────────────────────────────────────
 

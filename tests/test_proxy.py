@@ -689,6 +689,16 @@ def test_spa_served_or_explains_absence(proxy):
     if built:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
+        # The page is revalidated on every load: a rebuild renames the
+        # assets it points at, so a cached page would show nothing.
+        assert resp.headers["cache-control"] == "no-cache"
+        assert client.get("/").headers["cache-control"] == "no-cache"
+        import re
+        hashed = re.findall(r'/app/assets/(index-[A-Za-z0-9_-]+\.js)', resp.text)
+        assert hashed, "the page should reference a hashed script"
+        asset = client.get(f"/app/assets/{hashed[0]}")
+        assert asset.status_code == 200
+        assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
     else:
         assert resp.status_code == 404
         assert "npm run build" in resp.json()["detail"]
