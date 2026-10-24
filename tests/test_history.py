@@ -107,3 +107,25 @@ def test_bad_paging_and_filters_are_400_with_the_reason(history):
         resp = history.get(url)
         assert resp.status_code == 400, url
         assert words in resp.json()["detail"], url
+
+
+def test_an_untagged_batch_reaches_loop_lens_at_five_calls(proxy):
+    """No run id, no session id, one inferred iteration (a batch script:
+    the same system prompt, a different item each call): hidden while
+    small, shown as a job once it has five calls."""
+    import httpx2 as httpx
+
+    from .conftest import openai_response
+    client = proxy(handler=lambda r: httpx.Response(200, json=openai_response()))
+
+    def body(i):
+        return {"model": "gpt-4o", "messages": [
+            {"role": "system", "content": "You are a claims handler. Decide the claim."},
+            {"role": "user", "content": f"claim {i}"}]}
+
+    for i in range(4):
+        assert client.post("/v1/chat/completions", json=body(i)).status_code == 200
+    assert client.get("/api/runs").json() == []
+    assert client.post("/v1/chat/completions", json=body(4)).status_code == 200
+    runs = client.get("/api/runs").json()
+    assert len(runs) == 1 and runs[0]["run_id"].startswith("auto-run-") and runs[0]["call_count"] == 5

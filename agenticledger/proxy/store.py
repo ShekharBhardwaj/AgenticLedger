@@ -236,8 +236,10 @@ class Store(ABC):
 
     @abstractmethod
     async def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Aggregate calls by run_id, newest first. Inferred one-iteration
-        runs (auto-run-*) are hidden until a second iteration confirms a loop."""
+        """Aggregate calls by run_id, newest first. An inferred run
+        (auto-run-*) is hidden until a second iteration confirms a loop or
+        it reaches five calls, which is a job worth seeing even untagged;
+        stray single calls never become a loop on their own."""
         ...
 
     @abstractmethod
@@ -824,7 +826,7 @@ class _SqliteStore(Store):
             FROM llm_calls
             WHERE run_id IS NOT NULL
             GROUP BY run_id
-            HAVING run_id NOT LIKE 'auto-run-%' OR MAX(iteration) >= 2
+            HAVING run_id NOT LIKE 'auto-run-%' OR MAX(iteration) >= 2 OR COUNT(*) >= 5
             ORDER BY MAX(timestamp) DESC
             LIMIT ?
             """,
@@ -1870,7 +1872,7 @@ class _PostgresStore(Store):
                 FROM llm_calls
                 WHERE run_id IS NOT NULL
                 GROUP BY run_id
-                HAVING run_id NOT LIKE 'auto-run-%' OR MAX(iteration) >= 2
+                HAVING run_id NOT LIKE 'auto-run-%' OR MAX(iteration) >= 2 OR COUNT(*) >= 5
                 ORDER BY MAX(timestamp) DESC
                 LIMIT $1
                 """,
