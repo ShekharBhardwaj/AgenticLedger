@@ -31,7 +31,7 @@ import uuid
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx2 as httpx
 
@@ -99,16 +99,22 @@ class NotifyConfig:
 
 def detect_format(url: Optional[str], chosen: str = "auto") -> str:
     """The wire shape for a webhook: the operator's choice, else what the
-    host says. Unknown hosts get the plain JSON payload."""
+    host says. The host is the URL's parsed hostname, never a substring
+    match, so evil.example/hooks.slack.com does not read as Slack.
+    Unknown hosts get the plain JSON payload."""
     chosen = (chosen or "auto").strip().lower()
     if chosen in FORMATS and chosen != "auto":
         return chosen
-    host = (url or "").lower()
-    if "hooks.slack.com" in host:
+    try:
+        parts = urlsplit((url or "").strip())
+    except ValueError:
+        return "generic"
+    host = (parts.hostname or "").lower()
+    if host == "hooks.slack.com":
         return "slack"
-    if "discord.com/api/webhooks" in host or "discordapp.com/api/webhooks" in host:
+    if host in ("discord.com", "discordapp.com") and parts.path.startswith("/api/webhooks"):
         return "discord"
-    if "events.pagerduty.com" in host:
+    if host == "events.pagerduty.com":
         return "pagerduty"
     return "generic"
 

@@ -42,6 +42,7 @@ import asyncio
 import csv
 import datetime
 import hmac
+import html as _htmllib
 import io
 import json
 import logging
@@ -139,10 +140,18 @@ from .reservations import (
     estimate_call_cost,
     release_reservation,
 )
+from .steps import build_steps
 from .store import Store
 from .stream import detect_stream_error, reconstruct_from_sse
 
 logger = logging.getLogger(__name__)
+
+
+def _one_line(value: object) -> str:
+    """A request-supplied value made safe for a log line: control
+    characters could otherwise forge extra lines in the log."""
+    return re.sub(r"[\x00-\x1f\x7f]+", " ", str(value))[:200]
+
 
 # Built SPA assets (dashboard-app/ → vite build). Absent in source checkouts.
 _SPA_DIR = Path(__file__).parent / "static"
@@ -1063,7 +1072,8 @@ def create_app(
             stored = await app.state.store.add_audit(entry)
         except Exception:
             app.state.audit_dropped += 1
-            logger.warning("Audit write failed for %s %s", action, target, exc_info=True)
+            logger.warning("Audit write failed for %s %s",
+                           _one_line(action), _one_line(target), exc_info=True)
             if _audit_strict:
                 raise HTTPException(
                     status_code=503,
@@ -1278,7 +1288,12 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             url = await _oidc.authorize_url(_public_base(request) + "/auth/callback",
                                             state, nonce, challenge)
         except OIDCError as exc:
-            return _html(f"<h2>Sign-in is not available</h2><p>{exc}</p>", 503)
+            # The person at the browser gets plain words; the detail is for
+            # the operator and stays in the server log, never on the page.
+            logger.warning("Sign-in unavailable: %s", _one_line(exc))
+            return _html("<h2>Sign-in is not available</h2><p>The ledger could not "
+                         "reach the identity provider. The server log has the "
+                         "detail.</p>", 503)
         return RedirectResponse(url, status_code=302)
 
     @app.get("/auth/callback")
@@ -1297,15 +1312,17 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         if q.get("error"):
             await _audit(None, request, "auth_failed", "/auth/callback",
                          f"provider error: {q.get('error')}", actor_source="rejected")
-            return _html(f"<h2>The identity provider said no</h2><p>{q.get('error')}: "
-                         f"{q.get('error_description') or ''}</p>", 400)
+            return _html(f"<h2>The identity provider said no</h2>"
+                         f"<p>{_htmllib.escape(q.get('error') or '')}: "
+                         f"{_htmllib.escape(q.get('error_description') or '')}</p>", 400)
         try:
             who = await _oidc.sign_in(q.get("code") or "", pending["verifier"], pending["nonce"],
                                       _public_base(request) + "/auth/callback")
         except OIDCError as exc:
             await _audit(None, request, "auth_failed", "/auth/callback", str(exc)[:200],
                          actor_source="rejected")
-            return _html(f"<h2>Sign-in did not complete</h2><p>{exc}</p>"
+            return _html("<h2>Sign-in did not complete</h2><p>The ledger could not "
+                         "verify the sign-in. The audit trail has the detail.</p>"
                          "<p><a href=\"/auth/login\">Try again</a>.</p>", 400)
         label = who.get("email") or who.get("name") or who["subject"]
         if who["role"] is None:
@@ -1315,9 +1332,10 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
             groups = ", ".join(who["groups"]) or "no groups"
             return _html(
                 f"<h2>Signed in, but not let in</h2>"
-                f"<p>{label} has no role in this ledger. The identity provider reports "
-                f"these groups: <b>{groups}</b>. Ask the ledger admin to map one of them "
-                f"to a role (AGENTICLEDGER_OIDC_ROLE_MAP), then sign in again.</p>", 403)
+                f"<p>{_htmllib.escape(label)} has no role in this ledger. The identity "
+                f"provider reports these groups: <b>{_htmllib.escape(groups)}</b>. "
+                f"Ask the ledger admin to map one of them to a role "
+                f"(AGENTICLEDGER_OIDC_ROLE_MAP), then sign in again.</p>", 403)
         now = time.time()
         person = await request.app.state.store.upsert_person(
             oidc_config.issuer, who["subject"], email=who.get("email"), name=who.get("name"),

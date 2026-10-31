@@ -231,7 +231,10 @@ def test_a_stale_or_forged_callback_is_refused(sso):
     start = client.get("/auth/login", follow_redirects=False)
     state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
     bad = client.get(f"/auth/callback?code=forged&state={state}", follow_redirects=False)
-    assert bad.status_code == 400 and "refused the code exchange" in bad.text
+    # The page stays plain words; the exchange detail is for the operator
+    # and lands in the audit trail (asserted below), never on the page.
+    assert bad.status_code == 400 and "did not complete" in bad.text
+    assert "code exchange" not in bad.text
     assert "set-cookie" not in bad.headers
     sign_in(client, idp_client, "alice")
     failures = [r["details"] for r in client.get("/api/audit").json() if r["action"] == "auth_failed"]

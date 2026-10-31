@@ -150,6 +150,15 @@ it is tagged; the date is set then, not before.
 - **The dashboard's tab icon shows on Safari and phone home screens.**
   The only icon offered was an SVG, which Safari and iOS bookmarks do
   not use; a 256px PNG and an apple-touch-icon now ship beside it.
+- **Security pass on the sign-in pages, webhook detection and logs**
+  (code scanning). A failed sign-in page no longer prints the underlying
+  error on the page; the person gets plain words and the detail goes to
+  the server log and the audit trail. Provider-supplied text shown on
+  those pages is HTML-escaped. A webhook's format is now decided by the
+  URL's parsed hostname, never a substring, so a URL that merely contains
+  hooks.slack.com elsewhere gets the plain payload. Request-supplied
+  values are stripped of control characters before they reach the server
+  log, so a request cannot forge log lines.
 
 ## [0.15.0] - 2026-09-27
 

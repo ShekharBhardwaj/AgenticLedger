@@ -4,6 +4,7 @@ and a test button."""
 
 import asyncio
 import json
+from urllib.parse import urlsplit
 
 import httpx2 as httpx
 import pytest
@@ -47,6 +48,11 @@ def test_format_is_read_from_the_host_unless_forced():
     assert detect_format("https://relay.example.test/hook") == "generic"
     assert detect_format("https://hooks.slack.com/services/x", "generic") == "generic"
     assert detect_format(None, "nonsense") == "generic"
+    # The known name elsewhere in the URL is not the host: such a webhook
+    # gets the plain payload, not a Slack-shaped one.
+    assert detect_format("https://evil.example/hooks.slack.com") == "generic"
+    assert detect_format("https://hooks.slack.com.evil.example/x") == "generic"
+    assert detect_format("https://evil.example/?u=events.pagerduty.com") == "generic"
 
 
 def test_links_point_at_the_run_or_the_session():
@@ -183,7 +189,8 @@ def test_history_and_the_test_button(proxy, monkeypatch):
     assert sent["sent"] is True and sent["format"] == "slack"
     assert sent["row"]["status"] == "delivered" and sent["row"]["attempts"] == 1
     url, payload = sink.calls[0]
-    assert "hooks.slack.com" in url and payload["text"].startswith("Test notification:")
+    assert urlsplit(url).hostname == "hooks.slack.com"
+    assert payload["text"].startswith("Test notification:")
     rows = client.get("/api/notifications").json()["rows"]
     assert len(rows) == 1 and rows[0]["type"] == "test" and rows[0]["status"] == "delivered"
     assert rows[0]["timestamp"].endswith("+00:00")
