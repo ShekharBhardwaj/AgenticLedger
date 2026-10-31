@@ -15,6 +15,10 @@ Two layers of fixtures are provided:
 Plus a set of builder helpers (``openai_response``, ``anthropic_response``,
 ``openai_sse``, ``anthropic_sse``, …) so individual test modules don't each
 reinvent provider wire formats.
+
+An autouse fixture (``_isolated_pricing``) keeps every test on the built-in
+pricing packs with HOME pointed at an empty temp directory, so the machine
+running the suite can never leak its own downloaded packs into the math.
 """
 
 from __future__ import annotations
@@ -33,6 +37,50 @@ from agenticledger.proxy.app import create_app
 from agenticledger.proxy.store import Store
 
 UPSTREAM_URL = "http://upstream.test"
+
+
+# ── Pricing isolation ─────────────────────────────────────────────────────────
+#
+# agenticledger/proxy/pricing.py fills its module-level tables at import time,
+# merging any user packs from the real ~/.agenticledger/pricing/ over the
+# built-ins. On a machine with a downloaded pack the suite then asserts against
+# that machine's prices while CI asserts against the built-ins (observed
+# 2026-10-31: a stale claude-sonnet-5 introductory rate failing the goldens
+# locally, green in CI). Same class of leak the config tests closed with their
+# HOME isolation; this one covers every test, because anything that goes
+# through compute_cost prices against the shared tables.
+
+@pytest.fixture(autouse=True)
+def _isolated_pricing(monkeypatch, tmp_path):
+    """Point HOME at an empty temp directory and rebuild the pricing tables
+    from the built-in packs alone, so no test reads the machine's real
+    ~/.agenticledger/pricing/ or its ambient AGENTICLEDGER_PRICING* env.
+    Tests that want user packs or env overrides install their own and call
+    the loaders themselves (test_pricing_update.py, test_pricing.py). The
+    import-time state is restored on teardown. The dicts are mutated in
+    place, never rebound: test modules import them by reference."""
+    from agenticledger.proxy import pricing
+
+    home = tmp_path / "isolated-home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("AGENTICLEDGER_PRICING", raising=False)
+    monkeypatch.delenv("AGENTICLEDGER_PRICING_FILE", raising=False)
+
+    saved_prices = dict(pricing._PRICES)
+    saved_cache = dict(pricing._CACHE_PRICES)
+    saved_warned = set(pricing._unpriced_warned)
+    pricing._PRICES.clear()
+    pricing._CACHE_PRICES.clear()
+    pricing._unpriced_warned.clear()
+    pricing._load_packs()
+    yield
+    pricing._PRICES.clear()
+    pricing._CACHE_PRICES.clear()
+    pricing._unpriced_warned.clear()
+    pricing._PRICES.update(saved_prices)
+    pricing._CACHE_PRICES.update(saved_cache)
+    pricing._unpriced_warned.update(saved_warned)
 
 
 # ── Mock upstream LLM provider ────────────────────────────────────────────────
