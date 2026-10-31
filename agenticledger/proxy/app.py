@@ -150,7 +150,8 @@ logger = logging.getLogger(__name__)
 def _one_line(value: object) -> str:
     """A request-supplied value made safe for a log line: control
     characters could otherwise forge extra lines in the log."""
-    return re.sub(r"[\x00-\x1f\x7f]+", " ", str(value))[:200]
+    text = "".join(ch if ch.isprintable() else " " for ch in str(value)[:200])
+    return text.replace("\r", " ").replace("\n", " ")
 
 
 # Built SPA assets (dashboard-app/ → vite build). Absent in source checkouts.
