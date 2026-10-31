@@ -30,7 +30,7 @@ async def seed(path: Path) -> None:
                    status=200, error=None, cost=0.0012):
         nonlocal n
         n += 1
-        tool_calls = [{"name": tool, "arguments": '{"command": "date"}'}] if tool else None
+        tool_calls = [{"id": f"tu-{n}", "name": tool, "arguments": '{"command": "date"}'}] if tool else None
         await store.save(
             f"{n:032x}",
             CanonicalRequest(
@@ -59,22 +59,24 @@ async def seed(path: Path) -> None:
 
     # The agent's own record for the third session, as Claude Code hooks
     # would post it: a tool run, a denied one, a sub-agent, the end.
-    t0 = now - 180
+    # The s3 calls run at now-120, now-115 and now-100; the hooks straddle
+    # them so the turn holds all three and each tool hangs off its call.
+    at = [now - 124, now - 122, now - 118, now - 99, now - 112, now - 106, now - 96, now - 95]
     hooks = [
         {"hook_event_name": "SessionStart", "session_id": "smoke-loop-s3", "source": "startup", "cwd": "/work/app"},
         {"hook_event_name": "UserPromptSubmit", "session_id": "smoke-loop-s3", "prompt": "fix the failing date test"},
         {"hook_event_name": "PostToolUse", "session_id": "smoke-loop-s3", "tool_name": "Bash",
-         "tool_use_id": "tu_1", "tool_input": {"command": "date"}, "tool_response": "Thu Oct 23 09:00:00 2026",
+         "tool_use_id": "tu-5", "tool_input": {"command": "date"}, "tool_response": "Thu Oct 23 09:00:00 2026",
          "duration_ms": 412},
         {"hook_event_name": "PermissionDenied", "session_id": "smoke-loop-s3", "tool_name": "Bash",
-         "tool_use_id": "tu_2", "tool_input": {"command": "rm -rf build"},
+         "tool_use_id": "tu-7", "tool_input": {"command": "rm -rf build"},
          "reason": "Permission rule deny: Bash(rm -rf*)"},
         {"hook_event_name": "SubagentStart", "session_id": "smoke-loop-s3", "agent_id": "sub-1", "agent_type": "Explore"},
         {"hook_event_name": "SubagentStop", "session_id": "smoke-loop-s3", "agent_id": "sub-1", "agent_type": "Explore"},
         {"hook_event_name": "Stop", "session_id": "smoke-loop-s3", "last_assistant_message": "Done: the test passes."},
         {"hook_event_name": "SessionEnd", "session_id": "smoke-loop-s3", "reason": "prompt_input_exit"},
     ]
-    events = [event_from_hook(body, t0 + i * 7) for i, body in enumerate(hooks)]
+    events = [event_from_hook(body, at[i]) for i, body in enumerate(hooks)]
     # And a session the proxy never saw: Claude Code behind a managed
     # gateway, where only the hooks reach the ledger.
     gateway = [

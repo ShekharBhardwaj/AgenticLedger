@@ -11,20 +11,36 @@ Everything below is on main and not yet tagged. It becomes 0.16.0 when
 it is tagged; the date is set then, not before.
 
 ### Added
+- **The step model: one timeline per trace.** A trace (one session) is
+  now a tree of steps: model calls the proxy saw, tool runs the agent
+  reported through hooks or the ledger derived from the wire, sub-agents,
+  turns (one prompt and everything it set off), compactions, and plain
+  OpenTelemetry spans. Every step has a start, an end, a status and a
+  parent, and every link says how it was made: by an id in the data (a
+  tool_use id, a parent span, a caller's parent_action_id) or by time.
+  `GET /api/traces/{id}/steps` returns the tree; the dashboard's new
+  **Timeline** tab draws it on one axis, folds sub-agents and turns, and
+  opens each step to its input and output. OTLP ingest now keeps the
+  whole span tree (tool and agent spans included) instead of only the
+  model calls at its leaves, and a model call under a tool span hangs off
+  it.
+- **Runs, Traces, Reports.** The dashboard's navigation now says what it
+  holds. Loop Lens remains the name of the runs view and its anatomy;
+  Sessions is now Traces, and `#/sessions/...` links keep working.
 - **The agent's own record, through Claude Code hooks.** `agenticledger
   connect claude-code --hooks` installs http hooks in the user's Claude
   Code settings; `POST /v1/hooks/claude-code` records what the agent did
   on its machine (tools run with input, output, duration and failures,
   permissions asked or denied with the rule, sub-agents, compaction,
   session start and end) as agent events joined to the session's model
-  calls. The Sessions page gains an **Activity** tab;
-  `GET /api/sessions/{id}/events` returns the record. Hooks always get an
+  calls, shown on the trace's Timeline;
+  `GET /api/sessions/{id}/events` returns the raw record. Hooks always get an
   empty 200, so the ledger can never block or rewrite the agent, and they
   work when a managed gateway keeps the proxy off the model path.
   Retention and session deletion now cover agent events and derived tool
   executions, not only the model calls. A session the proxy never saw a
-  call for (Claude Code behind a managed gateway) still lists in Sessions,
-  with its event count, and opens on Activity.
+  call for (Claude Code behind a managed gateway) still lists in Traces,
+  with its event count, and opens on its Timeline.
 - `agenticledger start --name <x>` now prints the matching stop command.
 - **Every agent gets a name.** Headerless callers are now told apart by
   their instructions: the stable system prompt is fingerprinted into

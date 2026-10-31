@@ -32,7 +32,7 @@ Claude Code does on the machine: which tool ran, with what input, what
 came back, how long it took, whether it failed, what permission was asked
 or denied and under which rule, when a sub-agent started and stopped,
 when the context was compacted. Claude Code reports all of that through
-hooks, and the ledger records them as the session's **Activity**:
+hooks, and the ledger records them as steps on the trace's **Timeline**:
 
 ```bash
 agenticledger connect claude-code --hooks
@@ -43,9 +43,10 @@ That writes twelve http hooks into your user settings
 `http://localhost:8000/v1/hooks/claude-code`. Existing hooks are kept, the
 ledger's own entries are marked and replaced on re-run, and
 `--remove-hooks` takes them out. The hook's session id is the same id the
-proxy records for that session's model calls, so the Sessions page shows
-both halves side by side: the calls the model answered, and the Activity
-tab with what the agent did between them. Every hook gets an empty 200;
+proxy records for that session's model calls, so the trace's Timeline
+shows both halves as one tree: each tool run hangs off the model call
+that asked for it (by its tool_use id), sub-agents fold open to their own
+steps, and a turn groups everything one prompt set off. Every hook gets an empty 200;
 the ledger never blocks or rewrites what the agent does.
 
 Hooks never touch the model path. When IT pins `ANTHROPIC_BASE_URL` to a

@@ -601,25 +601,54 @@ table.grid, .rtable { background: var(--bg-card); border: 1px solid var(--border
 .cmp-results th, .cmp-results td { padding: 12px 16px; }
 .cmp-results td:not(:first-child), .cmp-results th:not(:first-child) { font-variant-numeric: tabular-nums; }
 
-/* ── Session activity: the agent's own record, in order ─────────────────── */
-.activity { margin-top: 6px; }
-.activity-summary { font-size: 12px; margin-bottom: 10px; }
-.activity-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
-.activity-row + .activity-row { border-top: 1px solid var(--border); }
-.activity-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; background: none; border: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-.activity-head:disabled { cursor: default; }
-.activity-head:not(:disabled):hover { background: var(--bg-hover); }
-.activity-time { font-size: 11px; color: var(--text-dim); flex: 0 0 auto; }
-.activity-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex: 0 0 auto; }
-.activity-dot.ok { background: var(--green); }
-.activity-dot.failed { background: var(--red); }
-.activity-dot.denied, .activity-dot.asked { background: var(--amber); }
-.activity-dot.started, .activity-dot.ended, .activity-dot.stopped { background: var(--accent); }
-.activity-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.activity-row.sub .activity-label { padding-left: 14px; }
-.activity-dur { font-size: 11px; flex: 0 0 auto; }
-.activity-caret { flex: 0 0 auto; font-size: 11px; }
-.activity-body { padding: 0 12px 12px 42px; display: flex; flex-direction: column; gap: 6px; }
-.activity-body .muted { font-size: 11px; }
-.activity-reason { color: var(--amber); font-size: 12px; }
+/* ── Trace timeline: every step on one axis, as a tree ──────────────────── */
+.timeline { margin-top: 6px; }
+.timeline-summary { font-size: 12px; margin-bottom: 8px; }
+.timeline-note { color: var(--amber); }
+.timeline-axis { display: flex; align-items: flex-end; height: 18px; margin-bottom: 2px; }
+.timeline-axis-label { flex: 0 0 var(--tl-label, 320px); }
+.timeline-axis-track { position: relative; flex: 1 1 auto; height: 18px; }
+.timeline-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); }
+.timeline-tick i { position: absolute; top: 0; left: 4px; font: 10px/14px var(--mono); color: var(--text-dim); font-style: normal; white-space: nowrap; }
+.timeline-tick:last-child i { left: auto; right: 4px; }
+.timeline-rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); overflow: hidden; }
+.timeline-row + .timeline-row { border-top: 1px solid var(--border); }
+.timeline-line { display: flex; align-items: center; min-height: 32px; }
+.timeline-line:hover { background: var(--bg-hover); }
+.timeline-label { flex: 0 0 var(--tl-label, 320px); display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 8px 4px calc(8px + var(--depth, 0) * 16px); }
+.timeline-caret { flex: 0 0 16px; width: 16px; background: none; border: none; color: var(--text-dim); font: 11px var(--sans); cursor: pointer; padding: 0; text-align: center; }
+.timeline-name { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 auto; background: none; border: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; padding: 2px 0; }
+.timeline-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-glyph { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 4px; font: 600 10px/18px var(--mono); text-align: center; color: #fff; background: var(--text-dim); }
+.g-call { background: var(--accent); }
+.g-tool { background: var(--green); }
+.g-agent { background: var(--purple); }
+.g-turn { background: var(--text-dim); }
+.g-compaction { background: var(--amber); }
+.g-span { background: var(--mark-gray, var(--text-dim)); }
+.timeline-track { position: relative; flex: 1 1 auto; height: 32px; cursor: pointer; border-left: 1px solid var(--border); }
+.timeline-bar { position: absolute; top: 9px; height: 14px; border-radius: 3px; background: var(--accent); opacity: 0.9; min-width: 2px; }
+.kind-tool .timeline-bar { background: var(--green); }
+.kind-agent .timeline-bar { background: var(--purple); opacity: 0.45; }
+.kind-turn .timeline-bar { background: var(--text-dim); opacity: 0.25; top: 13px; height: 6px; }
+.kind-compaction .timeline-bar { background: var(--amber); }
+.kind-span .timeline-bar { background: var(--mark-gray, var(--text-dim)); opacity: 0.6; }
+.g-root { background: var(--bg-hover); color: var(--text); }
+.kind-root .timeline-text { font-weight: 600; }
+.kind-root .timeline-bar { background: var(--text-dim); opacity: 0.25; top: 13px; height: 6px; }
+.timeline-stat { flex: 0 0 auto; font-size: 10.5px; color: var(--text-dim); white-space: nowrap; padding-right: 4px; font-variant-numeric: tabular-nums; }
+.timeline-row.error .timeline-bar, .timeline-row.blocked .timeline-bar { background: var(--red); }
+.timeline-row.denied .timeline-bar, .timeline-row.asked .timeline-bar { background: var(--amber); }
+.timeline-row.by-time .timeline-bar { opacity: 0.55; outline: 1px dashed var(--text-dim); outline-offset: 1px; }
+.timeline-dur { position: absolute; top: 9px; margin-left: 6px; font-size: 10.5px; line-height: 14px; color: var(--text-dim); white-space: nowrap; pointer-events: none; }
+.timeline-body { padding: 4px 12px 12px calc(32px + var(--depth, 0) * 16px); display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--border); }
+.timeline-meta { font-size: 11.5px; }
+.timeline-reason { color: var(--amber); font-size: 12px; }
+.timeline-body .muted { font-size: 11px; }
+@media (max-width: 760px) {
+  .timeline { --tl-label: 170px; }
+  .timeline-dur { display: none; }
+}
+
+/* ── Agent record bodies (shared by the timeline) ───────────────────────── */
 .activity-pre { margin: 0; padding: 8px 10px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; font-size: 11.5px; line-height: 16px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }

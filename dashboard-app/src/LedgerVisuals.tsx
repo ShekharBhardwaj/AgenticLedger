@@ -108,7 +108,7 @@ export function RunTimeline({ run, flags, onOpenSession }: {
       })}
       {!lastCallShown && <li><span className="timeline-mark"><Icon name="clock" size={14} /></span>
         <div><strong>Last recorded call</strong><time>{fmtTime(run.last_call_at)}</time>
-          <p>{plural(run.iterations, "iteration")} · {plural(run.call_count, "call")}</p></div></li>}
+          <p>{run.iterations != null ? `${plural(run.iterations, "iteration")} · ` : ""}{plural(run.call_count, "call")}</p></div></li>}
     </ol>
     <div className="timeline-footnote">{flags.length > 0 ? `${recent.length} of ${flags.length} calls with flags shown · full evidence below` : "Observed events from this run's ledger."}</div>
   </section>;

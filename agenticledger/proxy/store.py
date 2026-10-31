@@ -782,9 +782,12 @@ class _SqliteStore(Store):
                 cwd           TEXT,
                 source        TEXT NOT NULL,
                 detail        TEXT,
-                timestamp     REAL NOT NULL
+                timestamp     REAL NOT NULL,
+                parent_id     TEXT
             )
         """)
+        with contextlib.suppress(Exception):   # upgraded DBs: the column arrives later
+            await db.execute("ALTER TABLE agent_events ADD COLUMN parent_id TEXT")
         await db.execute("""
             CREATE INDEX IF NOT EXISTS agent_events_session_idx
             ON agent_events (session_id, timestamp)
@@ -1435,8 +1438,9 @@ class _SqliteStore(Store):
             """
             INSERT OR REPLACE INTO agent_events
                 (id, session_id, agent_id, agent_type, event, outcome, tool_name, tool_use_id,
-                 tool_input, tool_response, reason, duration_ms, prompt_id, cwd, source, detail, timestamp)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 tool_input, tool_response, reason, duration_ms, prompt_id, cwd, source, detail, timestamp,
+                 parent_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             [_agent_event_tuple(e) for e in events],
         )
@@ -1751,7 +1755,7 @@ def _agent_event_tuple(e: dict) -> tuple:
         e["id"], e["session_id"], e.get("agent_id"), e.get("agent_type"), e["event"], e.get("outcome"),
         e.get("tool_name"), e.get("tool_use_id"), e.get("tool_input"), e.get("tool_response"),
         e.get("reason"), e.get("duration_ms"), e.get("prompt_id"), e.get("cwd"), e.get("source", "hook"),
-        e.get("detail"), float(e["timestamp"]),
+        e.get("detail"), float(e["timestamp"]), e.get("parent_id"),
     )
 
 
@@ -1966,9 +1970,11 @@ class _PostgresStore(Store):
                     cwd           TEXT,
                     source        TEXT NOT NULL,
                     detail        TEXT,
-                    timestamp     TIMESTAMPTZ NOT NULL
+                    timestamp     TIMESTAMPTZ NOT NULL,
+                    parent_id     TEXT
                 )
             """)
+            await conn.execute("ALTER TABLE agent_events ADD COLUMN IF NOT EXISTS parent_id TEXT")
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS agent_events_session_idx
                 ON agent_events (session_id, timestamp)
@@ -2625,8 +2631,9 @@ class _PostgresStore(Store):
                 """
                 INSERT INTO agent_events
                     (id, session_id, agent_id, agent_type, event, outcome, tool_name, tool_use_id,
-                     tool_input, tool_response, reason, duration_ms, prompt_id, cwd, source, detail, timestamp)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,to_timestamp($17))
+                     tool_input, tool_response, reason, duration_ms, prompt_id, cwd, source, detail, timestamp,
+                     parent_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,to_timestamp($17),$18)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 [_agent_event_tuple(e) for e in events],

@@ -497,6 +497,50 @@ export interface AgentEvent {
   timestamp: string;
 }
 
+/** One step of a trace: a model call, a tool run, a sub-agent, a turn, a
+ *  compaction or a plain span, with a start, an end, a status and a parent.
+ *  link says how the parent was found: "id" from the data, "time" from the
+ *  parent's window, null for a root. */
+export interface Step {
+  id: string;
+  kind: "call" | "tool" | "agent" | "turn" | "compaction" | "span";
+  name: string;
+  parent_id: string | null;
+  link: "id" | "time" | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_ms: number;
+  status: "ok" | "error" | "blocked" | "denied" | "asked" | "running";
+  source: string;
+  agent: string | null;
+  agent_id: string | null;
+  model: string | null;
+  cost_usd: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  input: string | null;
+  output: string | null;
+  detail: Record<string, unknown>;
+  ref: Record<string, string | null>;
+  depth: number;
+  children: number;
+}
+
+export interface StepSummary {
+  steps: number;
+  kinds: Record<string, number>;
+  sources: string[];
+  started_at: string | null;
+  ended_at: string | null;
+  duration_ms: number;
+  placed_by_time: number;
+  cost_usd: number;
+}
+
+export function getTraceSteps(sessionId: string): Promise<{ steps: Step[]; summary: StepSummary }> {
+  return get(`/api/traces/${encodeURIComponent(sessionId)}/steps`);
+}
+
 export function getSessionEvents(sessionId: string): Promise<AgentEvent[]> {
   return get<AgentEvent[]>(`/api/sessions/${encodeURIComponent(sessionId)}/events`);
 }

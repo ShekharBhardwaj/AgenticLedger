@@ -360,7 +360,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
             )}
             <div className="card-sub">
               <span>{fmtAgo(r.last_call_at)}</span>
-              <span>{plural(r.iterations, "iteration")}</span>
+              {r.iterations != null && <span>{plural(r.iterations, "iteration")}</span>}
               <span>{plural(r.call_count, "call")}</span>
               {r.models && (
                 <span className="mono model-cell" title={r.models.split(",").join("\n")}>
@@ -740,7 +740,7 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                       </>
                     ) : ceilingEdit === null ? (
                       <>
-                        <div className="metric-secondary muted">No run ceiling</div>
+                        <div className="metric-secondary muted">none set</div>
                         <div className="metric-sub">
                           <button className="link-btn"
                                   title="refuse this run's calls at the proxy once its spend reaches a dollar amount; survives restarts"
@@ -779,9 +779,9 @@ export default function RunsView({ onOpenSession, focusRun, onSelectedChange }: 
                     <div className="metric-label">Model calls</div>
                     <div className="metric-secondary mono">{detail.call_count}</div>
                     <div className="metric-sub">
-                      {plural(detail.iterations, "iteration")}
+                      {detail.iterations != null && plural(detail.iterations, "iteration")}
                       {detail.flagged_calls ? (
-                        <span style={{ color: "var(--amber)" }}> · {detail.flagged_calls} flagged</span>
+                        <span style={{ color: "var(--amber)" }}>{detail.iterations != null ? " · " : ""}{detail.flagged_calls} flagged</span>
                       ) : null}
                     </div>
                   </div>

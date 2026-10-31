@@ -1,5 +1,13 @@
 import { plural, Call, fmtUsd } from "../api";
-import { agentColor } from "./TraceView";
+
+const PALETTE = ["#4ea1ff", "#a371f7", "#3fb950", "#d29922", "#f778ba", "#39c5bb", "#e3b341", "#7ee787"];
+
+export function agentColor(name: string | null | undefined): string {
+  if (!name) return "#8b98a9";
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
 
 interface Node {
   name: string;

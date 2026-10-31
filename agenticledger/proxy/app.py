@@ -113,6 +113,7 @@ from .otel import emit_audit_log, emit_span
 from .otlp_ingest import decode_protobuf as decode_otlp_protobuf
 from .otlp_ingest import extract_api_requests as extract_otlp_api_requests
 from .otlp_ingest import extract_calls as extract_otlp_calls
+from .otlp_ingest import extract_spans as extract_otlp_spans
 from .otlp_ingest import extract_tool_events as extract_otlp_tool_events
 from .policy import LIST_FIELDS, Policy, check_policies, parse_list, refusal_type
 from .pricing import compute_cost, infer_provider
@@ -3088,6 +3089,27 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
         events = await request.app.state.store.get_agent_events(session_id)
         return JSONResponse(events)
 
+    @app.get("/api/traces/{session_id}/steps")
+    async def api_trace_steps(session_id: str, request: Request) -> JSONResponse:
+        """One timeline for a trace: model calls, tool runs, sub-agents,
+        turns, compactions and plain spans, as a tree with a start, an end,
+        a status and a parent each, built from every source the ledger
+        holds. Each link says whether the data named the parent ("id") or
+        the step was placed inside a window ("time")."""
+        principal = await _require(request, ROLE_VIEWER)
+        store = request.app.state.store
+        calls = await store.get_session(session_id)
+        scope = await _scope_for(request, principal)
+        if calls and not scope.allows_row(calls[0]):
+            raise HTTPException(status_code=404, detail="session_id not found")
+        events = await store.get_agent_events(session_id)
+        if not calls and not events:
+            raise HTTPException(status_code=404, detail="session_id not found")
+        if not calls and not scope.unscoped:
+            raise HTTPException(status_code=404, detail="session_id not found")
+        tools = await store.get_tool_executions(session_id)
+        return JSONResponse(build_steps(calls, events, tools))
+
     @app.get("/api/sessions/{session_id}/tools")
     async def api_session_tools(session_id: str, request: Request) -> JSONResponse:
         """Derived tool executions for a session — the proxy pairs each
@@ -3593,6 +3615,12 @@ a{{color:#2f6fd0}}</style>{body}""", status_code=status)
                 # Duplicate action_id (re-exported batch) or storage hiccup —
                 # OTLP delivery is at-least-once, so duplicates are expected.
                 pass
+        # The rest of the tree (tool runs, agent invocations, plain spans)
+        # keeps its parent links, so the timeline shows what the exporter saw.
+        spans = extract_otlp_spans(payload)
+        if spans:
+            with suppress(Exception):
+                await store.save_agent_events(spans)
         return _otlp_ack(request)
 
     @app.post("/v1/logs")

@@ -124,6 +124,7 @@ def event_from_hook(body: dict, now: float) -> Optional[dict]:
         "prompt_id": _opt(body.get("prompt_id")),
         "cwd": _opt(body.get("cwd")),
         "source": "hook",
+        "parent_id": None,   # placed by tool_use_id or time when the steps are built
         "detail": json.dumps(detail, default=str) if detail else None,
         "timestamp": now,
     }

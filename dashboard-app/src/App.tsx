@@ -250,8 +250,9 @@ type Route = { tab: Tab; runId?: string; sessionId?: string; callId?: string };
 function parseRoute(): Route {
   const h = window.location.hash.replace(/^#\/?/, "");
   const [head, id, kind, sub] = h.split("/").map((part) => part.split("?")[0]);
-  if (head === "sessions") {
-    // #/sessions/<id>/calls/<action_id> reopens one call, expanded (#122).
+  if (head === "traces" || head === "sessions") {
+    // #/traces/<id>/calls/<action_id> reopens one call, expanded (#122).
+    // #/sessions/... is the old spelling; links to it keep working.
     return { tab: "sessions", sessionId: id ? decodeURIComponent(id) : undefined,
              callId: kind === "calls" && sub ? decodeURIComponent(sub) : undefined };
   }
@@ -264,8 +265,8 @@ function parseRoute(): Route {
 function routeHash(r: Route): string {
   if (r.tab === "runs") return r.runId ? `#/runs/${encodeURIComponent(r.runId)}` : "#/runs";
   if (r.tab === "sessions") {
-    if (!r.sessionId) return "#/sessions";
-    const base = `#/sessions/${encodeURIComponent(r.sessionId)}`;
+    if (!r.sessionId) return "#/traces";
+    const base = `#/traces/${encodeURIComponent(r.sessionId)}`;
     return r.callId ? `${base}/calls/${encodeURIComponent(r.callId)}` : base;
   }
   return `#/${r.tab}`;
@@ -350,7 +351,7 @@ export default function App() {
     <>
       <a href="#main-content" className="skip-link">Skip to content</a>
       <header className="topbar">
-        <button className="brand" title="Home: the Loop Lens overview"
+        <button className="brand" title="Home: Runs"
                 onClick={() => openRun("")}>
           <Logo />
           <h1>
@@ -365,10 +366,10 @@ export default function App() {
         )}
         <nav className="tabs" aria-label="Views">
           <button className={`tab ${tab === "runs" ? "active" : ""}`} aria-current={tab === "runs" ? "page" : undefined} onClick={() => setTab("runs")}>
-            <Icon name="activity" />Loop Lens
+            <Icon name="activity" />Runs
           </button>
           <button className={`tab ${tab === "sessions" ? "active" : ""}`} aria-current={tab === "sessions" ? "page" : undefined} onClick={() => setTab("sessions")}>
-            <Icon name="sessions" />Sessions
+            <Icon name="sessions" />Traces
           </button>
           <button className={`tab ${tab === "reports" ? "active" : ""}`} aria-current={tab === "reports" ? "page" : undefined} onClick={() => setTab("reports")}>
             <Icon name="reports" />Reports

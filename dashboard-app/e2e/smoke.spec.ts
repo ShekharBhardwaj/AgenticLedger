@@ -5,8 +5,8 @@ import { expect, test } from "@playwright/test";
 
 test("the app boots with its three tabs", async ({ page }) => {
   await page.goto("/app");
-  await expect(page.getByRole("button", { name: "Loop Lens" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sessions" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Runs" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Traces" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reports" })).toBeVisible();
 });
 
@@ -32,9 +32,9 @@ test("a blocked refusal renders amber in the iterations table", async ({ page })
   await expect(page.locator(".main table.grid .badge.blocked")).toContainText("1 blocked");
 });
 
-test("Sessions lists sessions and opens one with call cards", async ({ page }) => {
+test("Traces lists traces and opens one with call cards", async ({ page }) => {
   await page.goto("/app");
-  await page.getByRole("button", { name: "Sessions" }).click();
+  await page.getByRole("button", { name: "Traces" }).click();
   const cards = page.locator(".sidebar .card");
   await expect(cards.first()).toBeVisible();
   await cards.filter({ hasText: "smoke-loop-s1" }).first().click();
@@ -96,11 +96,11 @@ test("brand, deep links and Back work without a request storm", async ({ page, r
   for (const href of icons) expect((await request.get(href!)).ok()).toBeTruthy();
   await expect(page.getByRole("region", { name: "Recorded run timeline" })).toContainText("Stuck loop suspected");
   await page.getByRole("button", { name: /^Iteration 1:/ }).click();
-  await expect(page).toHaveURL(/#\/sessions\/smoke-loop-s1$/);
+  await expect(page).toHaveURL(/#\/traces\/smoke-loop-s1$/);
   await page.goBack();
   await expect(page.locator(".run-title")).toContainText("Smoke loop");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Loop Lens", exact: true }).click();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page).toHaveURL(/#\/runs\/smoke-loop$/);
   // Observe a quiet window after route transitions: the previous release
   // fixed a render/fetch feedback loop that exhausted browser resources.
@@ -111,7 +111,7 @@ test("brand, deep links and Back work without a request storm", async ({ page, r
 });
 
 test("session overview, all inspector tabs, Flow and Trace retain captured data", async ({ page }) => {
-  await page.goto("/app#/sessions/smoke-loop-s3");
+  await page.goto("/app#/traces/smoke-loop-s3");
   await expect(page.locator(".session-metrics")).toContainText("$0.0036");
   await expect(page.locator(".cost-bar")).toHaveCount(3);
   await page.locator(".call-row").first().click();
@@ -124,39 +124,51 @@ test("session overview, all inspector tabs, Flow and Trace retain captured data"
   await expect(inspector).toContainText('"session_id": "smoke-loop-s3"');
   await inspector.getByRole("tab", { name: "Response", exact: true }).click();
   await expect(inspector).toContainText("No text: the model answered with tool calls.");
-  for (const name of ["Flow", "Trace"]) {
-    await page.getByRole("tab", { name, exact: true }).click();
-    await expect(page.locator(".svg-scroll svg")).toBeVisible();
-  }
+  await page.getByRole("tab", { name: "Flow", exact: true }).click();
+  await expect(page.locator(".svg-scroll svg")).toBeVisible();
   await page.getByRole("tab", { name: "Calls", exact: true }).click();
   await expect(page.locator(".call-card")).toHaveCount(3);
   await page.locator(".session-tools > summary").click();
   await expect(page.locator(".whatif")).toBeVisible();
 });
 
-test("the Activity tab shows what the agent did on its machine, from its hooks", async ({ page }) => {
-  await page.goto("/app#/sessions/smoke-loop-s3");
-  await page.getByRole("tab", { name: /^Activity/ }).click();
-  const rows = page.locator(".activity-row");
+test("the Timeline joins proxied calls and hook events into one tree", async ({ page }) => {
+  await page.goto("/app#/traces/smoke-loop-s3");
+  await page.getByRole("tab", { name: /^Timeline/ }).click();
+  const rows = page.locator(".timeline-row");
+  // the trace's own root row, one turn, three calls, one tool run, one
+  // denied tool, one sub-agent
   await expect(rows).toHaveCount(8);
-  await expect(page.locator(".activity-summary")).toContainText("1 tool run, 1 denied");
-  await expect(rows.filter({ hasText: "Bash denied" })).toBeVisible();
-  await expect(rows.filter({ hasText: "sub-agent started: Explore" })).toBeVisible();
-  // a tool run opens to its input and output
-  await rows.filter({ hasText: "Bash ran" }).getByRole("button").click();
+  await expect(page.locator(".timeline-summary")).toContainText("3 model calls, 2 tool runs, 1 sub-agent, 1 turn");
+  // the trace anchors the tree and carries its totals; the turn nests
+  // under it, and the hook's Bash run hangs off the call that issued
+  // tu-5, by id
+  await expect(rows.first()).toHaveClass(/kind-root/);
+  await expect(rows.first()).toContainText("tok");
+  await expect(rows.nth(1)).toHaveClass(/kind-turn/);
+  const bash = rows.filter({ hasText: "Bash" }).filter({ has: page.locator(".g-tool") }).first();
+  await expect(bash).not.toHaveClass(/by-time/);
+  await bash.locator(".timeline-name").click();
+  await expect(page.locator(".timeline-body")).toContainText("from hooks");
   await expect(page.locator(".activity-pre").first()).toContainText("date");
-  await expect(page.locator(".activity-body")).toContainText("Oct 23");
-  // a session the proxy never saw a call for still lists, and opens on Activity
-  await page.goto("/app#/sessions");
+  // the denied run shows as denied; the sub-agent folds
+  await expect(rows.filter({ hasText: "denied" })).toHaveCount(1);
+  await expect(rows.filter({ has: page.locator(".g-agent") })).toHaveCount(1);
+  await page.locator(".timeline-row.kind-turn .timeline-caret").click();
+  await expect(rows).toHaveCount(2);                  // the root and the folded turn
+  await page.locator(".timeline-row.kind-root .timeline-caret").click();
+  await expect(rows).toHaveCount(1);                  // the root folds the whole trace
+  // a trace the proxy never saw a call for still lists, and opens on its Timeline
+  await page.goto("/app#/traces");
   const card = page.locator(".sidebar .card").filter({ hasText: "gateway-only-s1" });
   await expect(card).toContainText("3 events");
   await card.click();
-  await expect(page.getByRole("tab", { name: /^Activity/ })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator(".activity-row")).toHaveCount(3);
-  // a session without hooks never shows the tab
-  await page.goto("/app#/sessions/smoke-loop-s1");
+  await expect(page.getByRole("tab", { name: /^Timeline/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".timeline-row")).toHaveCount(2);   // the root and its one tool run
+  // a trace with calls and no hooks still has a Timeline, of its calls
+  await page.goto("/app#/traces/smoke-loop-s1");
   await expect(page.getByRole("tab", { name: "Calls", exact: true })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /^Activity/ })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Timeline \(2\)/ })).toBeVisible();
 });
 
 test("unknown prices remain explicit in the new metrics and chart", async ({ page }) => {
@@ -166,7 +178,7 @@ test("unknown prices remain explicit in the new metrics and chart", async ({ pag
     calls[0].cost_usd = null;
     await route.fulfill({ response, json: calls });
   });
-  await page.goto("/app#/sessions/smoke-loop-s1");
+  await page.goto("/app#/traces/smoke-loop-s1");
   await expect(page.locator(".session-metrics")).toContainText("1 unpriced call excluded");
   await expect(page.locator(".session-metrics")).toContainText("$0.0012");
   await expect(page.locator(".cost-bar.unpriced")).toHaveAttribute("aria-label", /Unknown cost/);
@@ -192,7 +204,7 @@ test("ceiling validation, saving, blocking and allowing update the real ledger",
     await page.getByRole("button", { name: "allow calls again", exact: true }).click();
     await expect(page.locator(".run-title .badge")).toHaveText("Ended");
     await page.getByRole("button", { name: "Remove", exact: true }).click();
-    await expect(page.locator(".metric").filter({ hasText: "Run ceiling" })).toContainText("No run ceiling");
+    await expect(page.locator(".metric").filter({ hasText: "Run ceiling" })).toContainText("none set");
   } finally {
     await request.delete("/api/runs/old-batch/stop");
     await request.put("/api/labels/run/old-batch", { data: { budget_usd: 0 } });
@@ -249,7 +261,7 @@ test("an icon and a color mark a run on its card, its title and its breadcrumb",
 });
 
 test("search, cache, live activity and what-if tools remain usable", async ({ page }) => {
-  await page.goto("/app#/sessions");
+  await page.goto("/app#/traces");
   await page.getByRole("textbox", { name: "Search captured calls" }).fill("smoke-loop step 1");
   await expect(page.locator(".main .section-title")).toContainText("search results");
   await expect(page.locator(".call-card").first()).toBeVisible();
@@ -265,7 +277,7 @@ test("search, cache, live activity and what-if tools remain usable", async ({ pa
 
 test("the audit trail lists actions, filters, and verifies its chain", async ({ page }) => {
   // Viewing a session is an audited read, so the trail has a row to show.
-  await page.goto("/app#/sessions/smoke-loop-s1");
+  await page.goto("/app#/traces/smoke-loop-s1");
   await expect(page.locator(".session-header-title")).toContainText("smoke-loop-s1");
   await page.goto("/app#/settings");
   const trail = page.getByRole("region", { name: "Audit trail" });
@@ -289,7 +301,7 @@ test("stop all calls engages from Loop Lens, banners every page, and lifts", asy
     await expect(page.getByRole("alert")).toContainText("All calls are stopped");
     expect((await (await request.get("/health")).json()).calls_stopped).toBe(true);
     // The stop is state, not a page: it follows the operator everywhere.
-    await page.goto("/app#/sessions");
+    await page.goto("/app#/traces");
     await expect(page.getByRole("alert")).toContainText("All calls are stopped");
     await expect(page.getByRole("button", { name: "Stop all calls", exact: true })).toHaveCount(0);
     await page.getByRole("alert").getByRole("button", { name: "allow calls again", exact: true }).click();
@@ -311,14 +323,14 @@ test("the notifications panel says plainly that no webhook is configured", async
 test("a call link reopens the session with that call expanded, and the lists know their totals", async ({ page, request }) => {
   const calls = await (await request.get("/session/smoke-loop-s1")).json();
   const target = calls[calls.length - 1].action_id;
-  await page.goto(`/app#/sessions/smoke-loop-s1/calls/${encodeURIComponent(target)}`);
+  await page.goto(`/app#/traces/smoke-loop-s1/calls/${encodeURIComponent(target)}`);
   await expect(page.locator(".session-header-title")).toContainText("smoke-loop-s1");
   const card = page.locator(`#call-${target}`);
   await expect(card).toHaveClass(/focused/);
   await expect(card.locator(".call-row")).toHaveAttribute("aria-expanded", "true");
   // Collapsing it takes the call out of the address; the session stays.
   await card.locator(".call-row").click();
-  await expect(page).toHaveURL(/#\/sessions\/smoke-loop-s1$/);
+  await expect(page).toHaveURL(/#\/traces\/smoke-loop-s1$/);
   // Paged lists: the seeded ledger fits in one page, so nothing older is offered.
   const runs = await request.get("/api/runs?limit=1");
   expect(runs.headers()["x-total-count"]).toBe("2");
@@ -355,7 +367,7 @@ test("light appearance persists across reload and navigation", async ({ page }) 
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.getByRole("button", { name: "Loop Lens", exact: true }).click();
+  await page.getByRole("button", { name: "Runs", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
@@ -371,7 +383,7 @@ for (const width of [320, 390, 768]) {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.locator(".mobile-back").click();
     await expect(page.getByRole("heading", { name: "Run overview" })).toBeVisible();
-    await page.getByRole("button", { name: "Sessions", exact: true }).click();
+    await page.getByRole("button", { name: "Traces", exact: true }).click();
     await page.locator(".sidebar .card").filter({ hasText: "smoke-loop-s3" }).click();
     await expect(page.locator(".session-header-title")).toContainText("smoke-loop-s3");
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -251,7 +251,7 @@ below has a config-file home; an `[env]` section passes any other
 Every provider below rides the same proxy; the only thing that changes is
 which base URL you point at it. Each recipe assumes the proxy is up
 (`agenticledger start`) and ends with the same check: run one call, open
-http://localhost:8000, and see it in Sessions.
+http://localhost:8000, and see it in Traces.
 
 **OpenAI (and any OpenAI-compatible API)**
 
@@ -261,7 +261,7 @@ http://localhost:8000, and see it in Sessions.
    ```
 2. Keep your `OPENAI_API_KEY` exactly as it was - the proxy passes your
    auth header through untouched.
-3. Make a call; it appears in Sessions with an O mark.
+3. Make a call; it appears in Traces with an O mark.
 
 **Anthropic**
 
@@ -501,7 +501,7 @@ Every LLM call is stored with:
 | `parent_action_id` | Parent call in a nested agent graph |
 | `handoff_from` / `handoff_to` | Agent handoff tracking for the Flow DAG |
 
-Beside the model calls, a session can carry the agent's own record: `agenticledger connect claude-code --hooks` installs Claude Code hooks that post what the agent did on its machine (tools run with input, output and duration, permissions asked or denied, sub-agents, compaction, session start and end) to `/v1/hooks/claude-code`. It shows as the session's **Activity** tab, works behind a managed gateway, and is never used to steer the agent.
+Beside the model calls, a session can carry the agent's own record: `agenticledger connect claude-code --hooks` installs Claude Code hooks that post what the agent did on its machine (tools run with input, output and duration, permissions asked or denied, sub-agents, compaction, session start and end) to `/v1/hooks/claude-code`. They become steps on the trace's **Timeline**, work behind a managed gateway, and are never used to steer the agent.
 
 ---
 

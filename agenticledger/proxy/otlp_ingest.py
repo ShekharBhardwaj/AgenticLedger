@@ -25,6 +25,7 @@ metadata-level records (model, tokens, cost, latency, session, agent).
 
 import base64
 import contextlib
+import json
 import logging
 import uuid
 from typing import Any, Optional
@@ -124,34 +125,135 @@ def _first(attrs: dict, *keys: str) -> Any:
     return None
 
 
+# GenAI spans that are not model calls: the semantic conventions name
+# tool runs and agent invocations with these operation names.
+_TOOL_OPS = {"execute_tool"}
+_AGENT_OPS = {"invoke_agent", "create_agent"}
+
+
+def _span_kind(attrs: dict) -> str:
+    """call (a model call), tool, agent, or span (anything else)."""
+    op = str(attrs.get("gen_ai.operation.name") or "").lower()
+    if op in _TOOL_OPS:
+        return "tool"
+    if op in _AGENT_OPS:
+        return "agent"
+    if any(k.startswith("gen_ai.") for k in attrs):
+        return "call"
+    return "span"
+
+
 def _is_llm_span(attrs: dict) -> bool:
-    return any(k.startswith("gen_ai.") for k in attrs)
+    return _span_kind(attrs) == "call"
 
 
-def extract_calls(payload: dict) -> list[dict]:
-    """Yield save-ready call dicts from an OTLP/JSON ExportTraceServiceRequest."""
-    calls: list[dict] = []
+def _span_id_of(trace_id: str, span_id: str) -> str:
+    return str(uuid.uuid5(_NS, f"otlp:{trace_id}:{span_id}"))
+
+
+def _session_by_trace(payload: dict) -> dict[str, str]:
+    """trace_id -> session id, from any span in the trace that names one,
+    so the plain spans of a trace file under the same session as its
+    model calls."""
+    out: dict[str, str] = {}
+    for rs in payload.get("resourceSpans") or []:
+        for ss in rs.get("scopeSpans") or []:
+            for span in ss.get("spans") or []:
+                attrs = _attr_map(span.get("attributes"))
+                sid = _first(attrs, "gen_ai.conversation.id", "session.id")
+                tid = span.get("traceId") or ""
+                if sid is not None and tid and tid not in out:
+                    out[tid] = str(sid)
+    return out
+
+
+def _iter_spans(payload: dict):
     for rs in payload.get("resourceSpans") or []:
         resource_attrs = _attr_map((rs.get("resource") or {}).get("attributes"))
         service = resource_attrs.get("service.name")
         for ss in rs.get("scopeSpans") or []:
             for span in ss.get("spans") or []:
-                attrs = _attr_map(span.get("attributes"))
-                if not _is_llm_span(attrs):
-                    continue
-                call = _span_to_call(span, attrs, service)
-                if call is not None:
-                    calls.append(call)
+                yield span, _attr_map(span.get("attributes")), service
+
+
+def extract_calls(payload: dict) -> list[dict]:
+    """Yield save-ready call dicts from an OTLP/JSON ExportTraceServiceRequest."""
+    calls: list[dict] = []
+    sessions = _session_by_trace(payload)
+    for span, attrs, service in _iter_spans(payload):
+        if not _is_llm_span(attrs):
+            continue
+        call = _span_to_call(span, attrs, service, sessions)
+        if call is not None:
+            calls.append(call)
     return calls
 
 
-def _span_to_call(span: dict, attrs: dict, service: Optional[str]) -> Optional[dict]:
+_SPAN_DETAIL_CAP = 8000
+
+
+def extract_spans(payload: dict) -> list[dict]:
+    """The rest of the trace tree: tool runs, agent invocations and plain
+    spans, as agent_events rows (source otel) that keep their parent span,
+    so the timeline shows the tree the exporter saw and not only the
+    model calls at its leaves."""
+    events: list[dict] = []
+    sessions = _session_by_trace(payload)
+    for span, attrs, service in _iter_spans(payload):
+        kind = _span_kind(attrs)
+        if kind == "call":
+            continue
+        trace_id = span.get("traceId") or ""
+        span_id = span.get("spanId") or ""
+        if not span_id:
+            continue
+        start_ns = int(span.get("startTimeUnixNano") or 0)
+        end_ns = int(span.get("endTimeUnixNano") or start_ns)
+        status = span.get("status") or {}
+        errored = status.get("code") == 2
+        parent = span.get("parentSpanId") or ""
+        detail = {"kind": kind, "service": service, "trace_id": trace_id, "span_id": span_id}
+        for k, v in attrs.items():
+            if k not in ("gen_ai.tool.call.arguments", "gen_ai.tool.call.result"):
+                detail[k] = v
+        if errored and status.get("message"):
+            detail["error"] = status.get("message")
+        detail_json = json.dumps(detail, default=str)
+        if len(detail_json) > _SPAN_DETAIL_CAP:
+            detail_json = json.dumps({"kind": kind, "service": service, "trace_id": trace_id,
+                                      "span_id": span_id, "note": "attributes cut by the ledger"})
+        events.append({
+            "id": _span_id_of(trace_id, span_id),
+            "session_id": sessions.get(trace_id) or f"otlp-{trace_id[:12] or 'unknown'}",
+            "agent_id": _opt_str(attrs.get("gen_ai.agent.id")) if kind == "agent" else None,
+            "agent_type": _opt_str(_first(attrs, "gen_ai.agent.name", "agent.name")) if kind == "agent" else None,
+            "event": "Span",
+            "outcome": "error" if errored else "ok",
+            "tool_name": _opt_str(_first(attrs, "gen_ai.tool.name", "gen_ai.agent.name")) or span.get("name") or kind,
+            "tool_use_id": _opt_str(attrs.get("gen_ai.tool.call.id")),
+            "tool_input": _opt_str(attrs.get("gen_ai.tool.call.arguments")),
+            "tool_response": _opt_str(attrs.get("gen_ai.tool.call.result")),
+            "reason": None,
+            "duration_ms": max((end_ns - start_ns) / 1e6, 0.0) if start_ns else None,
+            "prompt_id": None,
+            "cwd": None,
+            "source": "otel",
+            "detail": detail_json,
+            "timestamp": start_ns / 1e9 if start_ns else 0.0,
+            "parent_id": _span_id_of(trace_id, parent) if parent else None,
+        })
+    return events
+
+
+def _span_to_call(span: dict, attrs: dict, service: Optional[str],
+                  sessions: Optional[dict[str, str]] = None) -> Optional[dict]:
     try:
         trace_id = span.get("traceId") or ""
         span_id = span.get("spanId") or ""
         if not span_id:
             return None
-        action_id = str(uuid.uuid5(_NS, f"otlp:{trace_id}:{span_id}"))
+        action_id = _span_id_of(trace_id, span_id)
+        parent = span.get("parentSpanId") or ""
 
         start_ns = int(span.get("startTimeUnixNano") or 0)
         end_ns = int(span.get("endTimeUnixNano") or start_ns)
@@ -191,8 +293,12 @@ def _span_to_call(span: dict, attrs: dict, service: Optional[str]) -> Optional[d
         meta = {
             "session_id": str(
                 _first(attrs, "gen_ai.conversation.id", "session.id")
+                or (sessions or {}).get(trace_id)
                 or f"otlp-{trace_id[:12] or 'unknown'}"
             ),
+            # The parent span, by the same id rule, so the call hangs off
+            # the tool or agent span that made it in the timeline.
+            "parent_action_id": _span_id_of(trace_id, parent) if parent else None,
             "agent_name": _opt_str(_first(attrs, "gen_ai.agent.name", "agent.name")),
             "user_id": _opt_str(attrs.get("user.id")),
             "framework": _opt_str(service),

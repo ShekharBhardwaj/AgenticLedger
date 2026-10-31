@@ -3,7 +3,7 @@ import {
   Call, del, flagBadgeClass, flagInfo, fmtAgo, fmtNum, fmtTime, fmtUsd, get,
   getCall, getPage, interactionTags, liftLoopBlock, listProjects, listQuery, liveUpdates, LoopBlock,
   loopBlockState, post, ReplayResult,
-  replayModels, replayTargets, ReplayTarget, Session, toolNames, AgentEvent, getSessionEvents, plural } from "../api";
+  replayModels, replayTargets, ReplayTarget, Session, toolNames, Step, StepSummary, getTraceSteps, plural } from "../api";
 import { LabelEditor, matchesFilter, PinButton, pinnedFirst, ProjectFilter, RUN_PREFIX, TimeSortToggle, timeSorted } from "./LabelBits";
 import { JobSummary, listReplayJobs } from "../api";
 import ProviderMark from "./ProviderMark";
@@ -137,11 +137,11 @@ function ReplayPanel({ call }: { call: Call }) {
   );
 }
 import FlowView from "./FlowView";
-import TraceView from "./TraceView";
+import TimelineView from "./TimelineView";
 import BatchReplay from "./BatchReplay";
 import WhatIf from "./WhatIf";
 
-type Mode = "overview" | "calls" | "flow" | "trace" | "activity";
+type Mode = "overview" | "timeline" | "calls" | "flow";
 
 /** Zero-state that diagnoses instead of shrugging: wrong wiring produces
  *  silence, so the silence itself must say what to check. The dashboard's
@@ -211,9 +211,9 @@ function SessionHeader({ session, sessionId, onOpenSession }: {
   }, [sessionId]);
   return (
     <div className="session-header">
-      <Breadcrumb area="Sessions" project={session?.project} name={session?.label ?? sessionId}
+      <Breadcrumb area="Traces" project={session?.project} name={session?.label ?? sessionId}
                   icon={session?.icon} color={session?.color} />
-      <div className="eyebrow detail-eyebrow">{session?.agent_name || "Agent session"} · Session overview</div>
+      <div className="eyebrow detail-eyebrow">{session?.agent_name || "Agent"} · Trace</div>
       <h2 className="session-header-title">
         <LabelMark icon={session?.icon} color={session?.color} size={22} />
         {session?.label ?? sessionId}
@@ -474,8 +474,11 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [selected]);
   const [calls, setCalls] = useState<Call[]>([]);
-  // The agent's own record (hooks, telemetry, transcript) for the selected session.
-  const [events, setEvents] = useState<AgentEvent[]>([]);
+  // The trace's steps: every source joined into one tree (the Timeline).
+  const [trace, setTrace] = useState<{ steps: Step[]; summary: StepSummary } | null>(null);
+  // True while a just-selected trace's calls and steps are still loading,
+  // so the body says "loading" instead of an empty state that is not true.
+  const [detailLoading, setDetailLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Call[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);   // sessions fetch failed
@@ -502,7 +505,7 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
     // keep an open session view fresh too
     setSelected((cur) => {
       if (cur) get<Call[]>(`/session/${encodeURIComponent(cur)}`).then(setCalls).catch(() => {});
-      if (cur) getSessionEvents(cur).then(setEvents).catch(() => setEvents([]));
+      if (cur) getTraceSteps(cur).then(setTrace).catch(() => setTrace(null));
       return cur;
     });
   }, []);
@@ -513,26 +516,33 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
   }, [refresh]);
 
   useEffect(() => {
-    if (!selected) { setCalls([]); setEvents([]); return; }
+    if (!selected) { setCalls([]); setTrace(null); setDetailLoading(false); return; }
     let alive = true;
     const id = selected;
-    setEvents([]);
+    setTrace(null);
+    setDetailLoading(true);
     // Discard an out-of-order response for a session no longer selected.
-    get<Call[]>(`/session/${encodeURIComponent(id)}`)
+    const callsReq = get<Call[]>(`/session/${encodeURIComponent(id)}`)
       .then((v) => { if (alive && id === selected) setCalls(v); })
       .catch(() => { if (alive && id === selected) setCalls([]); });
-    getSessionEvents(id)
-      .then((v) => { if (alive && id === selected) setEvents(v); })
-      .catch(() => { if (alive && id === selected) setEvents([]); });
+    const stepsReq = getTraceSteps(id)
+      .then((v) => { if (alive && id === selected) setTrace(v); })
+      .catch(() => { if (alive && id === selected) setTrace(null); });
+    Promise.allSettled([callsReq, stepsReq]).then(() => {
+      if (alive && id === selected) setDetailLoading(false);
+    });
     return () => { alive = false; };
   }, [selected]);
 
-  // The Activity tab exists only while the session has agent events, and
-  // a session the proxy saw no calls for (hooks behind a gateway) opens on it.
+  // A trace the proxy saw no calls for (hooks behind a gateway) opens on
+  // its Timeline, the only view with something to show; a trace with no
+  // steps at all leaves the Timeline again once the fetch has settled.
+  const stepCount = trace?.steps.length ?? 0;
   useEffect(() => {
-    if (mode === "activity" && events.length === 0) setMode("overview");
-    else if (mode === "overview" && calls.length === 0 && events.length > 0) setMode("activity");
-  }, [mode, events.length, calls.length]);
+    if (detailLoading) return;
+    if (mode === "overview" && calls.length === 0 && stepCount > 0) setMode("timeline");
+    else if (mode === "timeline" && stepCount === 0) setMode("overview");
+  }, [mode, stepCount, calls.length, detailLoading]);
 
   useEffect(() => {
     if (!query.trim()) { setResults(null); setSearchError(null); return; }
@@ -583,8 +593,8 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
   return (
     <div className={`layout ${selected ? "has-detail" : ""}`}>
       <div className="sidebar">
-        <div className="sidebar-heading"><Icon name="sessions" /><h2>Sessions</h2><span className="sidebar-count" title={older > 0 ? `${sessions.length} loaded of ${total}` : undefined}>{total ?? sessions.length}</span></div>
-        <p className="sidebar-caption">Follow every call, from prompt to response.</p>
+        <div className="sidebar-heading"><Icon name="sessions" /><h2>Traces</h2><span className="sidebar-count" title={older > 0 ? `${sessions.length} loaded of ${total}` : undefined}>{total ?? sessions.length}</span></div>
+        <p className="sidebar-caption">Every step of a run, from prompt to response.</p>
         <input
           className="search"
           aria-label="Search captured calls"
@@ -764,12 +774,12 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
         {results !== null && (
           <div className="section-title">{results.length} search results</div>
         )}
-        {results === null && selected && (shown.length > 0 || events.length > 0) && (
-          <div className="subview-row session-views"><div className="subtabs" role="tablist" aria-label="Session views">
-            {(["overview", "calls", "flow", "trace", "activity"] as Mode[])
-              .filter((m) => (m === "activity" ? events.length > 0 : shown.length > 0)).map((m) => (
+        {results === null && selected && (shown.length > 0 || stepCount > 0) && (
+          <div className="subview-row session-views"><div className="subtabs" role="tablist" aria-label="Trace views">
+            {(["overview", "timeline", "calls", "flow"] as Mode[])
+              .filter((m) => (m === "timeline" ? stepCount > 0 : shown.length > 0)).map((m) => (
               <button key={m} role="tab" aria-selected={mode === m} className={`subtab ${mode === m ? "active" : ""}`} onClick={() => setMode(m)}>
-                {m === "overview" ? "Overview" : m === "calls" ? "Calls" : m === "flow" ? "Flow" : m === "trace" ? "Trace" : `Activity (${events.length})`}
+                {m === "overview" ? "Overview" : m === "timeline" ? `Timeline (${stepCount})` : m === "calls" ? "Calls" : "Flow"}
               </button>
             ))}
           </div><span className="view-count">{shown.length > 0 ? `${shown.length} captured calls` : "no calls reached the proxy"}</span></div>
@@ -793,15 +803,24 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
           <div className="empty">
             Nothing is filed under your projects yet ({scope.join(", ")}).
             <br />
-            <span className="muted">Sessions appear here once someone files them under one of your projects.</span>
+            <span className="muted">Traces appear here once someone files them under one of your projects.</span>
           </div>
+        ) : sessions.length === 0 && results === null && total === null ? (
+          // First page still in flight: an empty ledger is a diagnosis, a
+          // loading one is not, so say nothing alarming yet.
+          <div className="empty muted">Loading traces…</div>
         ) : sessions.length === 0 && results === null ? (
           <WiringGuide />
-        ) : results === null && selected && mode === "activity" && events.length > 0 ? (
-          <ActivityView events={events} />
+        ) : results === null && selected && detailLoading ? (
+          <div className="empty muted">Loading the trace…</div>
+        ) : results === null && selected && mode === "timeline" && trace ? (
+          <TimelineView steps={trace.steps} summary={trace.summary} sessionId={selected}
+                        rootName={sessions.find((s) => s.session_id === selected)?.label ?? selected} />
         ) : shown.length === 0 ? (
           <div className="empty">
-            {results !== null ? "No matches." : "Select a session to inspect its calls."}
+            {results !== null ? "No matches."
+              : selected ? "Nothing recorded for this trace."
+              : "Select a trace to follow its steps."}
           </div>
         ) : results !== null || mode === "calls" || mode === "overview" ? (
           // Latest call on top for live watching. Search results already
@@ -816,85 +835,11 @@ export default function SessionsView({ focusSession, focusCall, onOpenRun, onSel
                         ? (aid) => onCallFocused?.(selected, aid) : undefined}
                       onOpenSession={(sid) => { setQuery(""); setSelected(sid); }} />
           ))
-        ) : mode === "flow" ? (
-          <FlowView calls={calls} />
         ) : (
-          <TraceView calls={calls} />
+          <FlowView calls={calls} />
         )}
       </div>
     </div>
   );
 }
 
-/** What the agent did on its machine, in order: the record its own hooks
- *  (or telemetry, or transcript) sent, beside the model calls the proxy
- *  saw. Tool runs show input, output and duration; permissions show the
- *  decision and the rule; sub-agents, compaction and the session's start
- *  and end are the beats between. Nothing here is inferred. */
-function ActivityView({ events }: { events: AgentEvent[] }) {
-  const [open, setOpen] = useState<string | null>(null);
-  const tools = events.filter((e) => e.event === "PostToolUse" || e.event === "PostToolUseFailure");
-  const denied = events.filter((e) => e.outcome === "denied").length;
-  const failed = events.filter((e) => e.outcome === "failed").length;
-  const subagents = new Set(events.filter((e) => e.agent_id).map((e) => e.agent_id)).size;
-  const label = (e: AgentEvent): string => {
-    switch (e.event) {
-      case "PostToolUse": return `${e.tool_name ?? "tool"} ran`;
-      case "PostToolUseFailure": return `${e.tool_name ?? "tool"} failed`;
-      case "PermissionRequest": return `asked to run ${e.tool_name ?? "a tool"}`;
-      case "PermissionDenied": return `${e.tool_name ?? "a tool"} denied`;
-      case "SessionStart": return `session started${e.detail?.source ? ` (${String(e.detail.source)})` : ""}`;
-      case "SessionEnd": return `session ended${e.detail?.reason ? ` (${String(e.detail.reason)})` : ""}`;
-      case "SubagentStart": return `sub-agent started${e.agent_type ? `: ${e.agent_type}` : ""}`;
-      case "SubagentStop": return `sub-agent stopped${e.agent_type ? `: ${e.agent_type}` : ""}`;
-      case "UserPromptSubmit": return "prompt submitted";
-      case "PreCompact": return `context compaction${e.detail?.trigger ? ` (${String(e.detail.trigger)})` : ""}`;
-      case "PostCompact": return "context compacted";
-      case "Stop": return "turn ended";
-      default: return e.event;
-    }
-  };
-  const text = (e: AgentEvent): string | null => {
-    if (e.event === "UserPromptSubmit") return (e.detail?.prompt as string) ?? null;
-    if (e.event === "Stop" || e.event === "SubagentStop") return (e.detail?.last_assistant_message as string) ?? null;
-    if (e.event === "PostCompact") return (e.detail?.compact_summary as string) ?? null;
-    return null;
-  };
-  return (
-    <div className="activity">
-      <div className="muted activity-summary">
-        {plural(tools.length, "tool run")}{failed ? `, ${failed} failed` : ""}{denied ? `, ${denied} denied` : ""}
-        {subagents ? ` · ${plural(subagents, "sub-agent")}` : ""} · recorded by the agent's own hooks on its machine
-      </div>
-      <ol className="activity-list">
-        {events.map((e) => {
-          const expandable = Boolean(e.tool_input || e.tool_response || e.reason || text(e));
-          const isOpen = open === e.id;
-          return (
-            <li key={e.id} className={`activity-row ${e.outcome ?? ""} ${e.agent_id ? "sub" : ""}`}>
-              <button type="button" className="activity-head" disabled={!expandable}
-                      onClick={() => setOpen(isOpen ? null : e.id)} aria-expanded={isOpen}>
-                <span className="activity-time mono">{fmtTime(e.timestamp)}</span>
-                <span className={`activity-dot ${e.outcome ?? ""}`} aria-hidden="true" />
-                <span className="activity-label">{label(e)}</span>
-                {e.agent_id && <span className="badge fw" title={`sub-agent ${e.agent_id}`}>{e.agent_type ?? "sub-agent"}</span>}
-                {e.outcome === "denied" && <span className="badge blocked">denied</span>}
-                {e.outcome === "failed" && <span className="badge error">failed</span>}
-                {e.duration_ms != null && <span className="muted mono activity-dur">{e.duration_ms >= 1000 ? `${(e.duration_ms / 1000).toFixed(1)} s` : `${e.duration_ms} ms`}</span>}
-                {expandable && <span className="muted activity-caret">{isOpen ? "▾" : "▸"}</span>}
-              </button>
-              {isOpen && (
-                <div className="activity-body">
-                  {e.reason && <div className="activity-reason">{e.reason}</div>}
-                  {text(e) && <pre className="activity-pre">{text(e)}</pre>}
-                  {e.tool_input && <><div className="muted">input</div><pre className="activity-pre">{e.tool_input}</pre></>}
-                  {e.tool_response && <><div className="muted">output</div><pre className="activity-pre">{e.tool_response}</pre></>}
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
