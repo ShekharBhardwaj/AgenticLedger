@@ -7,8 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Everything below is on main and not yet tagged. It becomes 0.16.0 when
-it is tagged; the date is set then, not before.
+## [0.16.0] - 2026-10-31
 
 ### Added
 - **The step model: one timeline per trace.** A trace (one session) is
